@@ -1,7 +1,7 @@
 
-  # Local Transportation Booking System (Copy)
+  # Arangkada: Local Transportation Booking System 
 
-  This is a code bundle for Local Transportation Booking System (Copy). The original project is available at https://www.figma.com/design/5E6NnvkaARUDsEe94SvZ3f/Local-Transportation-Booking-System--Copy-.
+  This is a code bundle for the Local Transportation Booking System. The original project is available at https://www.figma.com/design/5E6NnvkaARUDsEe94SvZ3f/Local-Transportation-Booking-System--Copy-.
 
   ## Running the code
 
