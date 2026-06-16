@@ -10,10 +10,10 @@ export default function BookingMonitoring() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const bookings = [
-    { id: 1, passenger: "Juan Cruz", driver: "Pedro Santos", pickup: "PUP Sta. Mesa", destination: "San Juan", fare: 45, status: "ongoing", time: "14:30", date: "2026-06-07" },
-    { id: 2, passenger: "Maria Garcia", driver: "Jose Reyes", pickup: "Divisoria", destination: "Sta. Mesa", fare: 60, status: "completed", time: "13:15", date: "2026-06-07" },
+    { id: 1, passenger: "Juan Cruz", driver: "Pedro Santos", pickup: "PUP Sta. Mesa", destination: "SM City Sta. Mesa", fare: 25, status: "ongoing", time: "14:30", date: "2026-06-07" },
+    { id: 2, passenger: "Maria Garcia", driver: "Jose Reyes", pickup: "Sta. Mesa Market", destination: "Pureza LRT Station", fare: 30, status: "completed", time: "13:15", date: "2026-06-07" },
     { id: 3, passenger: "Ana Lopez", driver: "Carlos Mendoza", pickup: "V. Mapa", destination: "PUP", fare: 35, status: "ongoing", time: "14:45", date: "2026-06-07" },
-    { id: 4, passenger: "Jose Santos", driver: "Maria Garcia", pickup: "San Juan", destination: "Divisoria", fare: 55, status: "cancelled", time: "12:30", date: "2026-06-07" },
+    { id: 4, passenger: "Jose Santos", driver: "Maria Garcia", pickup: "Teresa Street", destination: "Sta. Mesa Market", fare: 20, status: "cancelled", time: "12:30", date: "2026-06-07" },
   ];
 
   const filteredBookings = bookings.filter(b => {
@@ -30,7 +30,7 @@ export default function BookingMonitoring() {
         <p className="text-gray-600">Track and manage all ride bookings</p>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
           <Input
@@ -40,8 +40,8 @@ export default function BookingMonitoring() {
             className="pl-10"
           />
         </div>
-        <Tabs value={filter} onValueChange={setFilter}>
-          <TabsList>
+        <Tabs value={filter} onValueChange={setFilter} className="min-w-0 sm:max-w-[420px]">
+          <TabsList className="w-full">
             <TabsTrigger value="all">All</TabsTrigger>
             <TabsTrigger value="ongoing">Ongoing</TabsTrigger>
             <TabsTrigger value="completed">Completed</TabsTrigger>
@@ -54,14 +54,14 @@ export default function BookingMonitoring() {
         {filteredBookings.map((booking) => (
           <Card key={booking.id}>
             <CardContent className="pt-4">
-              <div className="flex items-start justify-between mb-3">
-                <div>
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <Clock className="h-4 w-4 text-gray-400" />
                     <span className="text-sm text-gray-600">{booking.date} at {booking.time}</span>
                   </div>
-                  <p className="font-semibold">Passenger: {booking.passenger}</p>
-                  <p className="text-sm text-gray-600">Driver: {booking.driver}</p>
+                  <p className="truncate font-semibold">Passenger: {booking.passenger}</p>
+                  <p className="truncate text-sm text-gray-600">Driver: {booking.driver}</p>
                 </div>
                 <Badge variant={
                   booking.status === "completed" ? "default" :
@@ -85,7 +85,7 @@ export default function BookingMonitoring() {
                 </div>
               </div>
 
-              <div className="mt-3 pt-3 border-t flex justify-between items-center">
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
                 <span className="text-sm text-gray-600">Fare</span>
                 <span className="text-xl font-bold text-green-600">₱{booking.fare}</span>
               </div>

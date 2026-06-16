@@ -1,5 +1,10 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { BookingData, getPassengerActiveBooking, getDriverActiveBooking, getPendingBookings } from "../utils/bookingDatabase";
+import {
+  getSupabaseDriverActiveBooking,
+  getSupabasePassengerActiveBooking,
+  getSupabasePendingBookings,
+} from "../utils/supabaseBookings";
 
 interface BookingContextType {
   activeBooking: BookingData | null;
@@ -34,33 +39,35 @@ export function BookingProvider({ children }: { children: ReactNode }) {
 
   // Refresh booking data when trigger changes
   useEffect(() => {
-    // This will be updated by individual pages based on user role
-    // For now, just refresh the active booking if it exists
-    if (activeBooking) {
+    let cancelled = false;
+
+    const refreshData = async () => {
       const currentUser = localStorage.getItem("current_user");
-      if (currentUser) {
-        const user = JSON.parse(currentUser);
+      const user = currentUser ? JSON.parse(currentUser) : null;
+
+      if (activeBooking && user) {
         if (user.role === "passenger") {
-          const updated = getPassengerActiveBooking(user.username);
-          if (updated) {
-            setActiveBookingState(updated);
-          } else {
-            setActiveBookingState(null);
-          }
+          const supabaseBooking = await getSupabasePassengerActiveBooking(user);
+          const updated = supabaseBooking || getPassengerActiveBooking(user.username);
+          if (!cancelled) setActiveBookingState(updated);
         } else if (user.role === "driver") {
-          const updated = getDriverActiveBooking(user.username);
-          if (updated) {
-            setActiveBookingState(updated);
-          } else {
-            setActiveBookingState(null);
-          }
+          const supabaseBooking = await getSupabaseDriverActiveBooking(user);
+          const updated = supabaseBooking || getDriverActiveBooking(user.username);
+          if (!cancelled) setActiveBookingState(updated);
         }
       }
-    }
 
-    // Refresh pending bookings
-    setPendingBookings(getPendingBookings());
-  }, [refreshTrigger]);
+      const supabasePending = await getSupabasePendingBookings();
+      const localPending = getPendingBookings();
+      if (!cancelled) setPendingBookings([...supabasePending, ...localPending]);
+    };
+
+    void refreshData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshTrigger, activeBooking?.id]);
 
   return (
     <BookingContext.Provider value={{ activeBooking, pendingBookings, refreshBooking, setActiveBooking }}>

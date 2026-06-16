@@ -1,51 +1,153 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "../../components/ui/input-otp";
 import { Navigation } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
-import { registerUser, type UserData } from "../../utils/userDatabase";
+import { DEMO_OTP_RESEND_SECONDS, createDemoOtp } from "../../utils/demoOtp";
+import { registerUser, updateUser, type UserData } from "../../utils/userDatabase";
+import { signUpWithEmailPassword } from "../../utils/supabaseAuth";
+import { syncSupabaseProfile } from "../../utils/supabaseProfiles";
+
+type OtpMode = "login" | "register" | "google-phone";
+
+type OtpRouteState = {
+  phoneNumber?: string;
+  mode?: OtpMode;
+  role?: "passenger" | "driver";
+  userData?: Partial<UserData>;
+  generatedOtp?: string;
+};
+
+function buildRegistrationUser(state: OtpRouteState): UserData {
+  const userData = state.userData || {};
+  const role = (state.role || userData.role || "passenger") as "passenger" | "driver";
+
+  return {
+    supabaseId: userData.supabaseId,
+    displayName: userData.displayName,
+    username: userData.username || "",
+    password: userData.password || "",
+    phoneNumber: state.phoneNumber || userData.phoneNumber || "",
+    surname: userData.surname || "",
+    firstName: userData.firstName || "",
+    middleName: userData.middleName || "",
+    suffix: userData.suffix || "",
+    email: userData.email || "",
+    birthdate: userData.birthdate || "",
+    role,
+    guardianName: userData.guardianName || "",
+    guardianPhone: userData.guardianPhone || "",
+    rating: userData.rating || 5,
+    totalTrips: userData.totalTrips || 0,
+    totalEarnings: userData.totalEarnings || 0,
+    vehicleType: role === "driver" ? (userData.vehicleType || "Tricycle") : "",
+    plateNumber: role === "driver" ? (userData.plateNumber || "") : "",
+    driverLicensePhoto: role === "driver" ? (userData.driverLicensePhoto || "") : "",
+    vehicleColor: userData.vehicleColor || "",
+    memberSince: userData.memberSince || new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+    approvalStatus: userData.approvalStatus || (role === "driver" ? "pending" : "approved"),
+    profilePhoto: userData.profilePhoto || "",
+  };
+}
 
 export default function OTPPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { setUser } = useUser();
-  const state = location.state as {
-    phoneNumber?: string;
-    mode?: "login" | "register";
-    role?: "passenger" | "driver";
-    userData?: any;
-    generatedOtp?: string;
-  };
+  const { user: currentUser, setUser } = useUser();
+  const state = (location.state || {}) as OtpRouteState;
 
   const [otp, setOtp] = useState("");
+  const [currentOtp, setCurrentOtp] = useState(state.generatedOtp || createDemoOtp());
   const [loading, setLoading] = useState(false);
-  const [resendTimer, setResendTimer] = useState(60);
+  const [resendTimer, setResendTimer] = useState(DEMO_OTP_RESEND_SECONDS);
   const [canResend, setCanResend] = useState(false);
 
   useEffect(() => {
-    if (!state?.phoneNumber) {
-      navigate("/login");
+    if (!state.phoneNumber) {
+      navigate("/login", { replace: true });
       return;
     }
 
-    const timer = setInterval(() => {
+    toast.success(`Demo OTP: ${currentOtp}`, { duration: 10000 });
+  }, []);
+
+  useEffect(() => {
+    if (canResend) return;
+
+    const timer = window.setInterval(() => {
       setResendTimer((prev) => {
         if (prev <= 1) {
+          window.clearInterval(timer);
           setCanResend(true);
-          clearInterval(timer);
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, [state, navigate]);
+    return () => window.clearInterval(timer);
+  }, [canResend]);
+
+  const handleVerifiedRegistration = async () => {
+    const user = buildRegistrationUser(state);
+    const result = registerUser(user);
+
+    if (!result.success) {
+      toast.error(result.message);
+      return;
+    }
+
+    let accountUser = user;
+    try {
+      const supabaseUser = await signUpWithEmailPassword(user);
+      if (supabaseUser) accountUser = supabaseUser;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Supabase account creation failed.";
+      toast.info(`Local account created. Supabase booking sync needs attention: ${message}`, { duration: 6000 });
+    }
+
+    if (accountUser.role === "driver") {
+      toast.success("Phone verified. Your driver application is pending approval.");
+      navigate("/pending-approval", { replace: true });
+      return;
+    }
+
+    setUser(accountUser);
+    toast.success("Account created successfully!");
+    navigate("/passenger", { replace: true });
+  };
+
+  const handleVerifiedGooglePhone = async () => {
+    const baseUser = (state.userData || currentUser) as UserData | null;
+    if (!baseUser?.username) {
+      toast.error("Google account session expired. Please sign in with Google again.");
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    const verifiedUser = {
+      ...baseUser,
+      phoneNumber: state.phoneNumber || "",
+    };
+
+    const updated = updateUser(baseUser.username, verifiedUser);
+    if (!updated) {
+      toast.error("Unable to save phone number. Please use a different number.");
+      return;
+    }
+
+    await syncSupabaseProfile(verifiedUser);
+    setUser(verifiedUser);
+    toast.success("Phone number verified successfully!");
+    navigate(verifiedUser.role === "driver" ? "/pending-approval" : "/passenger", { replace: true });
+  };
 
   const handleVerifyOTP = async () => {
+    if (loading) return;
+
     if (otp.length !== 6) {
       toast.error("Please enter a complete 6-digit OTP");
       return;
@@ -54,126 +156,46 @@ export default function OTPPage() {
     setLoading(true);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => window.setTimeout(resolve, 700));
 
-      // Verify OTP matches the generated one
-      if (state.generatedOtp && otp !== state.generatedOtp) {
+      if (otp !== currentOtp) {
         toast.error("Invalid OTP. Please try again.");
         setOtp("");
-        setLoading(false);
         return;
       }
 
-      toast.success("Phone number verified successfully!");
-
-      // Create user object with registration data
-      const userData = state.userData || {};
-      const fullName = `${userData.firstName || ""} ${userData.middleName || ""} ${userData.surname || ""}`.trim();
-
-      // Convert birthdate to string if it's a Date object
-      let birthdateString = "";
-      if (userData.birthdate) {
-        if (userData.birthdate instanceof Date) {
-          birthdateString = userData.birthdate.toISOString();
-        } else {
-          birthdateString = userData.birthdate;
-        }
-      }
-
-      const user: UserData = {
-        username: userData.username || "",
-        password: userData.password || "",
-        phoneNumber: state.phoneNumber || "",
-        surname: userData.surname || "",
-        firstName: userData.firstName || "",
-        middleName: userData.middleName || "",
-        suffix: userData.suffix || "",
-        email: userData.email || "",
-        birthdate: birthdateString,
-        role: (state.role || "passenger") as "passenger" | "driver",
-        guardianName: userData.guardianName || "",
-        guardianPhone: userData.guardianPhone || "",
-        rating: 5.0,
-        totalTrips: 0,
-        totalEarnings: 0,
-        vehicleType: state.role === "driver" ? (userData.vehicleType || "tricycle") : "",
-        plateNumber: state.role === "driver" ? (userData.plateNumber || "") : "",
-        driverLicensePhoto: state.role === "driver" ? (userData.driverLicensePhoto || "") : "",
-        vehicleColor: state.role === "driver" ? "" : "",
-        memberSince: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
-      };
-
-      if (state.mode === "register") {
-        // Register new user in database
-        const result = registerUser(user);
-
-        if (!result.success) {
-          toast.error(result.message);
-          setLoading(false);
-          return;
-        }
-
-        console.log("User registered in database:", { username: user.username, phoneNumber: user.phoneNumber, role: user.role });
-      }
-
-      // Set as current logged-in user
-      setUser(user);
-
-      // Navigate based on role
-      if (user.role === "driver") {
-        navigate("/driver");
+      if (state.mode === "google-phone") {
+        await handleVerifiedGooglePhone();
+      } else if (state.mode === "register") {
+        await handleVerifiedRegistration();
       } else {
-        navigate("/passenger");
+        toast.success("Phone number verified successfully!");
+        navigate("/login", { replace: true });
       }
-    } catch (error) {
-      toast.error("Invalid OTP. Please try again.");
-      setOtp("");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResendOTP = async () => {
+  const handleResendOTP = () => {
     if (!canResend) return;
 
-    try {
-      // Generate new random 6-digit OTP
-      const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
-
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Display new OTP at the top of the screen
-      toast.success(`Your new OTP is: ${newOtp}`, { duration: 10000 });
-
-      // Update the state with new OTP
-      if (state) {
-        state.generatedOtp = newOtp;
-      }
-
-      setResendTimer(60);
-      setCanResend(false);
-
-      const timer = setInterval(() => {
-        setResendTimer((prev) => {
-          if (prev <= 1) {
-            setCanResend(true);
-            clearInterval(timer);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } catch (error) {
-      toast.error("Failed to resend OTP. Please try again.");
-    }
+    const nextOtp = createDemoOtp();
+    setCurrentOtp(nextOtp);
+    setOtp("");
+    setResendTimer(DEMO_OTP_RESEND_SECONDS);
+    setCanResend(false);
+    toast.success(`New demo OTP: ${nextOtp}`, { duration: 10000 });
   };
 
-  // Auto-verify when OTP is complete
   useEffect(() => {
     if (otp.length === 6) {
-      handleVerifyOTP();
+      void handleVerifyOTP();
     }
   }, [otp]);
+
+  const backTarget = state.mode === "google-phone" ? "/auth/phone" : state.mode === "register" ? "/register" : "/login";
+  const isDriverRegistration = state.mode === "register" && state.role === "driver";
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[rgba(75,15,20,0.08)] to-white flex items-center justify-center p-4">
@@ -184,19 +206,28 @@ export default function OTPPage() {
           </div>
           <h1 className="text-3xl font-bold text-gray-900">Verify Your Number</h1>
           <p className="text-gray-600 mt-2">
-            Enter the OTP sent to {state?.phoneNumber}
+            {isDriverRegistration
+              ? "Verify your phone number to submit your driver application."
+              : `Enter the demo OTP for ${state.phoneNumber}`}
           </p>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Enter OTP</CardTitle>
+            <CardTitle>Demo OTP Verification</CardTitle>
             <CardDescription>
-              We've sent a 6-digit code to your phone number
+              {isDriverRegistration
+                ? "No SMS is sent yet. Use this demo code to finish driver phone verification."
+                : "No SMS is sent yet. Use the demo code below for capstone testing."}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
+              <div className="rounded-xl border border-[#4B0F14]/20 bg-[#4B0F14]/5 p-4 text-center">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Demo OTP Code</p>
+                <p className="mt-1 text-3xl font-black tracking-[0.2em] text-[#4B0F14]">{currentOtp}</p>
+              </div>
+
               <div className="flex justify-center">
                 <InputOTP
                   maxLength={6}
@@ -221,36 +252,40 @@ export default function OTPPage() {
                 </div>
               )}
 
+              <Button onClick={handleVerifyOTP} disabled={loading || otp.length !== 6} className="w-full">
+                Verify Number
+              </Button>
+
               <div className="text-center space-y-2">
-                <p className="text-sm text-gray-600">Didn't receive the code?</p>
+                <p className="text-sm text-gray-600">Need another demo code?</p>
                 {canResend ? (
                   <Button
                     variant="link"
                     onClick={handleResendOTP}
                     className="text-[#4B0F14]"
                   >
-                    Resend OTP
+                    Generate New OTP
                   </Button>
                 ) : (
                   <p className="text-sm text-gray-500">
-                    Resend in {resendTimer} seconds
+                    Generate again in {resendTimer} seconds
                   </p>
                 )}
               </div>
 
               <div className="space-y-2 text-sm text-gray-600 bg-[rgba(75,15,20,0.05)] p-4 rounded-lg">
-                <p className="font-semibold">Tips:</p>
+                <p className="font-semibold">Demo mode:</p>
                 <ul className="space-y-1">
-                  <li>• Check your messages for the OTP</li>
-                  <li>• OTP expires in 5 minutes</li>
-                  <li>• Make sure you have network signal</li>
+                  <li>Use the displayed code to verify the phone number.</li>
+                  <li>Later, this screen can be connected to Supabase SMS OTP.</li>
+                  <li>The 60-second resend timer is kept to match real OTP behavior.</li>
                 </ul>
               </div>
 
               <Button
                 variant="outline"
                 className="w-full"
-                onClick={() => navigate(state?.mode === "register" ? "/register" : "/login")}
+                onClick={() => navigate(backTarget)}
               >
                 Change Phone Number
               </Button>
@@ -263,7 +298,7 @@ export default function OTPPage() {
             onClick={() => navigate("/")}
             className="text-sm text-gray-600 hover:text-gray-900"
           >
-            ← Back to Home
+            Back to Home
           </button>
         </div>
       </div>

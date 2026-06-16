@@ -37,7 +37,7 @@ export default function TermsAndConditions() {
 
         <Section title="2. About Arangkada">
           Arangkada is a ride-hailing platform that connects passengers with registered tricycle
-          drivers in Sta. Mesa, Manila and surrounding areas. We are a technology intermediary — we
+          drivers on designated routes within Sta. Mesa, Manila only. We are a technology intermediary - we
           do not own, operate, or employ the drivers on our platform. Transportation services are
           provided by independent drivers who use our platform to connect with passengers.
         </Section>
@@ -141,7 +141,7 @@ export default function TermsAndConditions() {
         </Section>
 
         <p className="text-center text-xs text-gray-400 pt-4">
-          © 2026 Arangkada. All rights reserved.
+          (c) 2026 Arangkada. All rights reserved.
         </p>
       </div>
     </div>
@@ -156,3 +156,4 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     </div>
   );
 }
+

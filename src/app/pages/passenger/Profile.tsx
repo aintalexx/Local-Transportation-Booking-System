@@ -8,6 +8,7 @@ import { useUser } from "../../context/UserContext";
 import { format } from "date-fns";
 import { deleteUser } from "../../utils/userDatabase";
 import { toast } from "sonner";
+import { formatPersonName, normalizeOptionalSuffix } from "../../utils/nameFormatting";
 
 export default function PassengerProfile() {
   const navigate = useNavigate();
@@ -26,7 +27,7 @@ export default function PassengerProfile() {
   };
 
   const user = {
-    name: currentUser ? `${currentUser.firstName} ${currentUser.middleName} ${currentUser.surname} ${currentUser.suffix}`.trim() : "Guest",
+    name: formatPersonName(currentUser, "Guest"),
     phone: currentUser?.phoneNumber || "N/A",
     email: currentUser?.email || "Not set",
     photo: null,
@@ -37,7 +38,7 @@ export default function PassengerProfile() {
     surname: currentUser?.surname || "",
     firstName: currentUser?.firstName || "",
     middleName: currentUser?.middleName || "",
-    suffix: currentUser?.suffix || "",
+    suffix: normalizeOptionalSuffix(currentUser?.suffix),
     guardianName: currentUser?.guardianName || "",
     guardianPhone: currentUser?.guardianPhone || "",
   };
@@ -92,18 +93,18 @@ export default function PassengerProfile() {
         {/* Profile Card */}
         <Card className="shadow-lg mb-4">
           <CardContent className="pt-6">
-            <div className="flex items-center gap-4 mb-4">
-              <Avatar className="h-20 w-20">
+            <div className="mb-4 flex items-start gap-4 sm:items-center">
+              <Avatar className="h-20 w-20 shrink-0">
                 <AvatarImage src={currentUser?.profilePhoto || user.photo || undefined} />
                 <AvatarFallback className="text-2xl">{user.name.charAt(0)}</AvatarFallback>
               </Avatar>
-              <div className="flex-1">
-                <h2 className="text-xl font-bold">{user.name}</h2>
-                <p className="text-gray-600">Member since {user.memberSince}</p>
-                <div className="flex items-center gap-2 mt-1">
+              <div className="min-w-0 flex-1">
+                <h2 className="break-words text-xl font-bold">{user.name}</h2>
+                <p className="break-words text-gray-600">Member since {user.memberSince}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
                   <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
                   <span className="font-semibold">{user.rating}</span>
-                  <Badge variant="secondary" className="ml-2">{user.totalRides} rides</Badge>
+                  <Badge variant="secondary">{user.totalRides} rides</Badge>
                 </div>
               </div>
             </div>
@@ -120,29 +121,29 @@ export default function PassengerProfile() {
             <CardTitle>Personal Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-lg border">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="min-w-0 p-3 rounded-lg border">
                 <p className="text-sm text-gray-600">Surname</p>
-                <p className="font-semibold">{user.surname}</p>
+                <p className="break-words font-semibold">{user.surname}</p>
               </div>
-              <div className="p-3 rounded-lg border">
+              <div className="min-w-0 p-3 rounded-lg border">
                 <p className="text-sm text-gray-600">First Name</p>
-                <p className="font-semibold">{user.firstName}</p>
+                <p className="break-words font-semibold">{user.firstName}</p>
               </div>
-              <div className="p-3 rounded-lg border">
+              <div className="min-w-0 p-3 rounded-lg border">
                 <p className="text-sm text-gray-600">Middle Name</p>
-                <p className="font-semibold">{user.middleName || "N/A"}</p>
+                <p className="break-words font-semibold">{user.middleName || "N/A"}</p>
               </div>
-              <div className="p-3 rounded-lg border">
+              <div className="min-w-0 p-3 rounded-lg border">
                 <p className="text-sm text-gray-600">Suffix</p>
-                <p className="font-semibold">{user.suffix || "None"}</p>
+                <p className="break-words font-semibold">{user.suffix || "Not set"}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 rounded-lg border">
-              <Calendar className="h-5 w-5 text-gray-400" />
-              <div className="flex-1">
+              <Calendar className="h-5 w-5 shrink-0 text-gray-400" />
+              <div className="min-w-0 flex-1">
                 <p className="text-sm text-gray-600">Birthdate</p>
-                <p className="font-semibold">
+                <p className="break-words font-semibold">
                   {user.birthdate && user.birthdate !== ""
                     ? format(new Date(user.birthdate), "MMMM dd, yyyy")
                     : "Not set"}
@@ -157,17 +158,17 @@ export default function PassengerProfile() {
                   <h4 className="text-sm font-semibold text-gray-700 mb-3">Guardian Information</h4>
                   <div className="space-y-3">
                     <div className="flex items-center gap-3 p-3 rounded-lg border bg-orange-50 border-orange-200">
-                      <UserCircle className="h-5 w-5 text-orange-600" />
-                      <div className="flex-1">
+                      <UserCircle className="h-5 w-5 shrink-0 text-orange-600" />
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm text-gray-600">Guardian Name</p>
-                        <p className="font-semibold">{user.guardianName}</p>
+                        <p className="break-words font-semibold">{user.guardianName}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3 p-3 rounded-lg border bg-orange-50 border-orange-200">
-                      <Phone className="h-5 w-5 text-orange-600" />
-                      <div className="flex-1">
+                      <Phone className="h-5 w-5 shrink-0 text-orange-600" />
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm text-gray-600">Guardian Phone</p>
-                        <p className="font-semibold">{user.guardianPhone}</p>
+                        <p className="break-words font-semibold">{user.guardianPhone}</p>
                       </div>
                     </div>
                   </div>
@@ -184,17 +185,17 @@ export default function PassengerProfile() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center gap-3 p-3 rounded-lg border">
-              <Phone className="h-5 w-5 text-gray-400" />
-              <div className="flex-1">
+              <Phone className="h-5 w-5 shrink-0 text-gray-400" />
+              <div className="min-w-0 flex-1">
                 <p className="text-sm text-gray-600">Phone</p>
-                <p className="font-semibold">{user.phone}</p>
+                <p className="break-words font-semibold">{user.phone}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 rounded-lg border">
-              <Mail className="h-5 w-5 text-gray-400" />
-              <div className="flex-1">
+              <Mail className="h-5 w-5 shrink-0 text-gray-400" />
+              <div className="min-w-0 flex-1">
                 <p className="text-sm text-gray-600">Email</p>
-                <p className="font-semibold">{user.email || "Not set"}</p>
+                <p className="break-words font-semibold">{user.email || "Not set"}</p>
               </div>
             </div>
           </CardContent>
@@ -206,19 +207,19 @@ export default function PassengerProfile() {
             <CardTitle>Settings</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <button className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors">
-              <div className="flex items-center gap-3">
-                <MapPin className="h-5 w-5 text-gray-400" />
-                <span>Saved Locations</span>
+            <button className="w-full flex items-center justify-between gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
+              <div className="flex min-w-0 items-center gap-3">
+                <MapPin className="h-5 w-5 shrink-0 text-gray-400" />
+                <span className="truncate">Saved Locations</span>
               </div>
-              <ChevronRight className="h-5 w-5 text-gray-400" />
+              <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" />
             </button>
-            <button className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors">
-              <div className="flex items-center gap-3">
-                <Bell className="h-5 w-5 text-gray-400" />
-                <span>Notifications</span>
+            <button className="w-full flex items-center justify-between gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
+              <div className="flex min-w-0 items-center gap-3">
+                <Bell className="h-5 w-5 shrink-0 text-gray-400" />
+                <span className="truncate">Notifications</span>
               </div>
-              <ChevronRight className="h-5 w-5 text-gray-400" />
+              <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" />
             </button>
           </CardContent>
         </Card>
@@ -230,34 +231,34 @@ export default function PassengerProfile() {
           </CardHeader>
           <CardContent className="space-y-2">
             <button
-              className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center justify-between gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors"
               onClick={() => navigate("/support")}
             >
-              <div className="flex items-center gap-3">
-                <HelpCircle className="h-5 w-5 text-gray-400" />
-                <span>Help & Support</span>
+              <div className="flex min-w-0 items-center gap-3">
+                <HelpCircle className="h-5 w-5 shrink-0 text-gray-400" />
+                <span className="truncate">Help & Support</span>
               </div>
-              <ChevronRight className="h-5 w-5 text-gray-400" />
+              <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" />
             </button>
             <button
-              className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center justify-between gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors"
               onClick={() => navigate("/terms")}
             >
-              <div className="flex items-center gap-3">
-                <FileText className="h-5 w-5 text-gray-400" />
-                <span>Terms & Conditions</span>
+              <div className="flex min-w-0 items-center gap-3">
+                <FileText className="h-5 w-5 shrink-0 text-gray-400" />
+                <span className="truncate">Terms & Conditions</span>
               </div>
-              <ChevronRight className="h-5 w-5 text-gray-400" />
+              <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" />
             </button>
             <button
-              className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center justify-between gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors"
               onClick={() => navigate("/privacy")}
             >
-              <div className="flex items-center gap-3">
-                <FileText className="h-5 w-5 text-gray-400" />
-                <span>Privacy Policy</span>
+              <div className="flex min-w-0 items-center gap-3">
+                <FileText className="h-5 w-5 shrink-0 text-gray-400" />
+                <span className="truncate">Privacy Policy</span>
               </div>
-              <ChevronRight className="h-5 w-5 text-gray-400" />
+              <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" />
             </button>
           </CardContent>
         </Card>

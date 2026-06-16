@@ -28,15 +28,15 @@ export default function DriverLayout() {
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-gray-200 px-2 py-1 z-50 shadow-lg safe-bottom">
         <div className="swipe-indicator"></div>
-        <div className="max-w-screen-md mx-auto flex justify-around items-center gap-1">
+        <div className="max-w-screen-md mx-auto flex items-stretch gap-1">
           {navItems.map((item) => (
             <button
               key={item.path}
               onClick={() => navigate(item.path)}
               className={cn(
-                "flex flex-col items-center gap-1 px-8 py-3 rounded-2xl transition-smooth min-w-[100px] relative touch-active",
+                "flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 transition-smooth relative touch-active",
                 isActive(item.path)
-                  ? "text-green-600 bg-green-50"
+                  ? "text-[#4B0F14] bg-[rgba(75,15,20,0.05)]"
                   : "text-gray-500 hover:text-gray-700 active:bg-gray-100"
               )}
             >
@@ -49,11 +49,11 @@ export default function DriverLayout() {
                   isActive(item.path) && "stroke-[2.5px] scale-110"
                 )} />
                 {isActive(item.path) && (
-                  <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 bg-green-600 rounded-full" />
+                  <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 bg-[#4B0F14] rounded-full" />
                 )}
               </div>
               <span className={cn(
-                "text-xs transition-all",
+                "max-w-full truncate text-xs leading-tight transition-all",
                 isActive(item.path) && "font-bold scale-105"
               )}>
                 {item.label}

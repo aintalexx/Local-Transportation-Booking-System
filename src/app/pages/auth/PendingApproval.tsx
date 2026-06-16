@@ -51,7 +51,7 @@ export default function PendingApproval() {
           {/* Steps */}
           <div className="space-y-3 mb-6">
             {[
-              { icon: CheckCircle, label: "Registration complete", done: true },
+              { icon: CheckCircle, label: "Phone verification complete", done: true },
               { icon: Clock, label: "Admin review (1–2 business days)", done: false },
               { icon: Phone, label: "You'll be notified once approved", done: false },
             ].map((step, i) => (

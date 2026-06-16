@@ -20,6 +20,8 @@ import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
 import { useBooking } from "../../context/BookingContext";
 import { cancelBooking } from "../../utils/bookingDatabase";
+import { subscribeToSupabaseBooking, updateSupabaseBookingStatus } from "../../utils/supabaseBookings";
+import { subscribeToDriverLocation, type RealtimeDriverLocation } from "../../utils/realtimeTracking";
 import MapView from "../../components/MapView";
 import {
   AlertDialog,
@@ -37,6 +39,7 @@ export default function OngoingBooking() {
   const { user } = useUser();
   const { activeBooking, refreshBooking, setActiveBooking } = useBooking();
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [liveDriverLocation, setLiveDriverLocation] = useState<RealtimeDriverLocation | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -61,8 +64,16 @@ export default function OngoingBooking() {
     }
   }, [user, activeBooking, navigate, setActiveBooking]);
 
-  const handleCancelBooking = () => {
+  const handleCancelBooking = async () => {
     if (!activeBooking) return;
+
+    const supabaseBooking = await updateSupabaseBookingStatus(activeBooking.id, "cancelled");
+    if (supabaseBooking) {
+      toast.success("Booking cancelled");
+      setActiveBooking(null);
+      navigate("/passenger");
+      return;
+    }
 
     const success = cancelBooking(activeBooking.id);
     if (success) {
@@ -73,6 +84,24 @@ export default function OngoingBooking() {
       toast.error("Failed to cancel booking");
     }
   };
+
+  useEffect(() => {
+    if (!activeBooking?.id) {
+      setLiveDriverLocation(null);
+      return;
+    }
+
+    setLiveDriverLocation(null);
+    return subscribeToDriverLocation(activeBooking.id, setLiveDriverLocation);
+  }, [activeBooking?.id]);
+
+  useEffect(() => {
+    if (!activeBooking?.id) return;
+
+    return subscribeToSupabaseBooking(activeBooking.id, (updatedBooking) => {
+      setActiveBooking(updatedBooking);
+    });
+  }, [activeBooking?.id, setActiveBooking]);
 
   const getStatusInfo = () => {
     if (!activeBooking) return { text: "Loading...", color: "gray", icon: Clock };
@@ -129,16 +158,24 @@ export default function OngoingBooking() {
 
   const statusInfo = getStatusInfo();
   const StatusIcon = statusInfo.icon;
+  const statusStyles: Record<string, { border: string; bg: string; text: string }> = {
+    blue: { border: "border-blue-500", bg: "bg-blue-100", text: "text-blue-600" },
+    green: { border: "border-green-500", bg: "bg-green-100", text: "text-green-600" },
+    purple: { border: "border-purple-500", bg: "bg-purple-100", text: "text-purple-600" },
+    indigo: { border: "border-indigo-500", bg: "bg-indigo-100", text: "text-indigo-600" },
+    gray: { border: "border-gray-500", bg: "bg-gray-100", text: "text-gray-600" },
+  };
+  const statusStyle = statusStyles[statusInfo.color] || statusStyles.gray;
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/passenger")}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-white px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <Button variant="ghost" size="icon" className="shrink-0" onClick={() => navigate("/passenger")}>
             <X className="h-5 w-5" />
           </Button>
-          <h1 className="text-xl font-bold">Ongoing Booking</h1>
+          <h1 className="truncate text-xl font-bold">Ongoing Booking</h1>
         </div>
         {activeBooking.status === "pending" && (
           <Button
@@ -157,20 +194,20 @@ export default function OngoingBooking() {
         <MapView
           pickup={activeBooking.pickupLocation}
           destination={activeBooking.destination}
-          driverLocation={activeBooking.currentDriverLocation}
+          driverLocation={liveDriverLocation || activeBooking.currentDriverLocation}
           height="100%"
           showCurrentLocation={false}
         />
 
         {/* Status Banner */}
         <div className="absolute top-4 left-4 right-4">
-          <Card className={`shadow-lg border-l-4 border-${statusInfo.color}-500`}>
+          <Card className={`shadow-lg border-l-4 ${statusStyle.border}`}>
             <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-full bg-${statusInfo.color}-100`}>
-                  <StatusIcon className={`h-5 w-5 text-${statusInfo.color}-600`} />
+              <div className="flex items-start gap-3">
+                <div className={`shrink-0 p-2 rounded-full ${statusStyle.bg}`}>
+                  <StatusIcon className={`h-5 w-5 ${statusStyle.text}`} />
                 </div>
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <h3 className="font-semibold text-gray-900">{statusInfo.text}</h3>
                   <p className="text-sm text-gray-600">{statusInfo.description}</p>
                 </div>
@@ -186,22 +223,22 @@ export default function OngoingBooking() {
         {activeBooking.driverName && (
           <Card className="mb-4 border-2 border-green-200">
             <CardContent className="p-4">
-              <div className="flex items-center gap-4 mb-3">
-                <Avatar className="h-14 w-14">
+              <div className="mb-3 flex items-start gap-4">
+                <Avatar className="h-14 w-14 shrink-0">
                   <AvatarFallback className="bg-green-100 text-green-600 text-xl">
                     {activeBooking.driverName.charAt(0)}
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg">{activeBooking.driverName}</h3>
-                  <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <h3 className="break-words text-lg font-bold">{activeBooking.driverName}</h3>
+                  <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="secondary">{activeBooking.driverVehicleType}</Badge>
                     {activeBooking.driverPlateNumber && (
                       <span className="text-sm text-gray-600">{activeBooking.driverPlateNumber}</span>
                     )}
                   </div>
                 </div>
-                <a href={`tel:${activeBooking.driverPhone}`}>
+                <a className="shrink-0" href={`tel:${activeBooking.driverPhone}`}>
                   <Button size="icon" variant="outline" className="rounded-full">
                     <Phone className="h-5 w-5" />
                   </Button>
@@ -217,53 +254,53 @@ export default function OngoingBooking() {
 
           <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
             <MapPin className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <p className="text-xs text-gray-600">Pickup</p>
-              <p className="font-medium text-sm">{activeBooking.pickupLocation.address}</p>
+              <p className="break-words text-sm font-medium">{activeBooking.pickupLocation.address}</p>
             </div>
           </div>
 
           <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
             <MapPin className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <p className="text-xs text-gray-600">Destination</p>
-              <p className="font-medium text-sm">{activeBooking.destination.address}</p>
+              <p className="break-words text-sm font-medium">{activeBooking.destination.address}</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className="p-3 bg-gray-50 rounded-lg">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="min-w-0 rounded-lg bg-gray-50 p-3">
               <div className="flex items-center gap-2 mb-1">
-                <Bike className="h-4 w-4 text-gray-600" />
+                <Bike className="h-4 w-4 shrink-0 text-gray-600" />
                 <p className="text-xs text-gray-600">Vehicle</p>
               </div>
-              <p className="font-semibold text-sm">{activeBooking.vehicleType}</p>
+              <p className="break-words text-sm font-semibold">{activeBooking.vehicleType}</p>
             </div>
 
-            <div className="p-3 bg-gray-50 rounded-lg">
+            <div className="min-w-0 rounded-lg bg-gray-50 p-3">
               <div className="flex items-center gap-2 mb-1">
-                <Navigation className="h-4 w-4 text-gray-600" />
+                <Navigation className="h-4 w-4 shrink-0 text-gray-600" />
                 <p className="text-xs text-gray-600">Distance</p>
               </div>
-              <p className="font-semibold text-sm">{activeBooking.distance.toFixed(1)} km</p>
+              <p className="break-words text-sm font-semibold">{activeBooking.distance.toFixed(1)} km</p>
             </div>
 
-            <div className="p-3 bg-green-50 rounded-lg">
+            <div className="min-w-0 rounded-lg bg-green-50 p-3">
               <div className="flex items-center gap-2 mb-1">
-                <DollarSign className="h-4 w-4 text-green-600" />
+                <DollarSign className="h-4 w-4 shrink-0 text-green-600" />
                 <p className="text-xs text-gray-600">Fare</p>
               </div>
-              <p className="font-semibold text-sm text-green-600">₱{activeBooking.finalPrice}</p>
+              <p className="break-words text-sm font-semibold text-green-600">₱{activeBooking.finalPrice}</p>
             </div>
           </div>
 
           <div className="p-3 bg-gray-50 rounded-lg">
-            <div className="flex items-center justify-between text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <span className="text-gray-600">Payment Method</span>
               <span className="font-semibold">{activeBooking.paymentMethod}</span>
             </div>
             {activeBooking.discount && (
-              <div className="flex items-center justify-between text-sm mt-2 pt-2 border-t">
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm">
                 <span className="text-gray-600">Discount Applied</span>
                 <Badge variant="secondary">{activeBooking.discount.type} (-{activeBooking.discount.amount}%)</Badge>
               </div>

@@ -131,12 +131,12 @@ export default function AdminDashboard() {
         <CardContent>
           <div className="space-y-3">
             {recentBookings.map((booking) => (
-              <div key={booking.id} className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex-1">
-                  <p className="font-semibold">{booking.passenger}</p>
-                  <p className="text-sm text-gray-600">Driver: {booking.driver}</p>
+              <div key={booking.id} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold">{booking.passenger}</p>
+                  <p className="truncate text-sm text-gray-600">Driver: {booking.driver}</p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <span className="font-bold text-green-600">₱{booking.fare}</span>
                   <span
                     className={`px-3 py-1 rounded-full text-xs font-semibold ${

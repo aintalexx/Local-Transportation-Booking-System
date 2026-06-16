@@ -1,7 +1,12 @@
+import { formatPHPhoneInput, validateEmail, validatePHPhone, validatePassword, validateUsername } from "./validators";
+import { normalizeDisplayName, normalizeOptionalSuffix } from "./nameFormatting";
+
 // User Database using localStorage
 // This stores multiple users and handles registration/login
 
 export interface UserData {
+  supabaseId?: string;
+  displayName?: string;
   username: string;
   password: string;
   phoneNumber: string;
@@ -23,6 +28,7 @@ export interface UserData {
   vehicleColor?: string;
   memberSince?: string;
   approvalStatus?: "pending" | "approved" | "rejected";
+  profilePhoto?: string;
 }
 
 const USERS_KEY = "ridestamesa_users";
@@ -56,34 +62,75 @@ export function usernameExists(username: string): boolean {
 }
 
 // Check if phone number already exists
-export function phoneExists(phoneNumber: string): boolean {
+export function phoneExists(phoneNumber: string, exceptUsername?: string): boolean {
   const users = getAllUsers();
-  return users.some(user => user.phoneNumber === phoneNumber);
+  const normalizedPhone = formatPHPhoneInput(phoneNumber);
+  return users.some(user => user.username !== exceptUsername && formatPHPhoneInput(user.phoneNumber) === normalizedPhone);
+}
+
+// Check if email already exists
+export function emailExists(email: string, exceptUsername?: string): boolean {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) return false;
+  const users = getAllUsers();
+  return users.some(user => user.username !== exceptUsername && user.email?.trim().toLowerCase() === normalizedEmail);
 }
 
 // Register a new user
 export function registerUser(userData: UserData): { success: boolean; message: string } {
   try {
     const users = getAllUsers();
+    const normalizedUser = {
+      ...userData,
+      username: userData.username.trim(),
+      phoneNumber: formatPHPhoneInput(userData.phoneNumber),
+      email: userData.email.trim(),
+      displayName: normalizeDisplayName(userData.displayName),
+      suffix: normalizeOptionalSuffix(userData.suffix),
+    };
+
+    const usernameCheck = validateUsername(normalizedUser.username);
+    if (!usernameCheck.valid) {
+      return { success: false, message: usernameCheck.message };
+    }
+
+    const phoneCheck = validatePHPhone(normalizedUser.phoneNumber);
+    if (!phoneCheck.valid) {
+      return { success: false, message: phoneCheck.message };
+    }
+
+    const emailCheck = validateEmail(normalizedUser.email);
+    if (!emailCheck.valid) {
+      return { success: false, message: emailCheck.message };
+    }
+
+    const passwordCheck = validatePassword(normalizedUser.password);
+    if (!passwordCheck.valid) {
+      return { success: false, message: passwordCheck.message };
+    }
 
     // Check if username already exists
-    if (usernameExists(userData.username)) {
+    if (usernameExists(normalizedUser.username)) {
       return { success: false, message: "Username already exists" };
     }
 
     // Check if phone number already exists
-    if (phoneExists(userData.phoneNumber)) {
+    if (phoneExists(normalizedUser.phoneNumber)) {
       return { success: false, message: "Phone number already registered" };
     }
 
+    if (emailExists(normalizedUser.email)) {
+      return { success: false, message: "Email already registered" };
+    }
+
     // Add new user to database
-    users.push(userData);
+    users.push(normalizedUser);
     saveAllUsers(users);
 
     console.log("User registered successfully:", {
-      username: userData.username,
-      phoneNumber: userData.phoneNumber,
-      role: userData.role
+      username: normalizedUser.username,
+      phoneNumber: normalizedUser.phoneNumber,
+      role: normalizedUser.role
     });
 
     return { success: true, message: "Registration successful" };
@@ -96,9 +143,11 @@ export function registerUser(userData: UserData): { success: boolean; message: s
 // Find user by username or phone number
 export function findUser(usernameOrPhone: string): UserData | null {
   const users = getAllUsers();
+  const normalizedPhone = formatPHPhoneInput(usernameOrPhone);
+  const normalizedUsername = usernameOrPhone.trim().toLowerCase();
   const user = users.find(
-    u => u.username.toLowerCase() === usernameOrPhone.toLowerCase() ||
-         u.phoneNumber === usernameOrPhone
+    u => u.username.toLowerCase() === normalizedUsername ||
+         formatPHPhoneInput(u.phoneNumber) === normalizedPhone
   );
   return user || null;
 }
@@ -126,19 +175,46 @@ export function updateUser(username: string, updatedData: Partial<UserData>): bo
   try {
     const users = getAllUsers();
     const userIndex = users.findIndex(u => u.username === username);
+    const normalizedData = {
+      ...updatedData,
+      ...(updatedData.phoneNumber && { phoneNumber: formatPHPhoneInput(updatedData.phoneNumber) }),
+      ...(updatedData.email !== undefined && { email: updatedData.email.trim() }),
+      ...(updatedData.displayName !== undefined && { displayName: normalizeDisplayName(updatedData.displayName) }),
+      ...(updatedData.suffix !== undefined && { suffix: normalizeOptionalSuffix(updatedData.suffix) }),
+    };
+
+    if (normalizedData.phoneNumber) {
+      const phoneCheck = validatePHPhone(normalizedData.phoneNumber);
+      if (!phoneCheck.valid || phoneExists(normalizedData.phoneNumber, username)) {
+        console.error("Invalid or duplicate phone number:", normalizedData.phoneNumber);
+        return false;
+      }
+    }
+
+    if (normalizedData.email) {
+      const emailCheck = validateEmail(normalizedData.email);
+      if (!emailCheck.valid || emailExists(normalizedData.email, username)) {
+        console.error("Invalid or duplicate email:", normalizedData.email);
+        return false;
+      }
+    }
 
     if (userIndex === -1) {
       // User not in DB (e.g. session from old flow) — insert them
-      users.push(updatedData as UserData);
+      users.push(normalizedData as UserData);
     } else {
-      users[userIndex] = { ...users[userIndex], ...updatedData };
+      users[userIndex] = { ...users[userIndex], ...normalizedData };
     }
 
     saveAllUsers(users);
-    // Also sync current_user in localStorage
-    localStorage.setItem("current_user", JSON.stringify(
-      userIndex === -1 ? updatedData : { ...users[userIndex === -1 ? users.length - 1 : userIndex] }
-    ));
+
+    const currentUserJson = localStorage.getItem("current_user");
+    const currentUser = currentUserJson ? JSON.parse(currentUserJson) : null;
+    if (currentUser?.username === username) {
+      localStorage.setItem("current_user", JSON.stringify(
+        userIndex === -1 ? normalizedData : { ...users[userIndex === -1 ? users.length - 1 : userIndex] }
+      ));
+    }
 
     return true;
   } catch (error) {

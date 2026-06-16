@@ -206,10 +206,17 @@
     border-radius: 4px;
   }
 
-  /* Touch-friendly tap targets */
+  /* Touch-friendly tap targets for actual controls. Inline text links opt out below. */
   button, a, [role="button"] {
     min-height: 44px;
     min-width: 44px;
+  }
+
+  p button,
+  label button,
+  .inline-action {
+    min-height: 0;
+    min-width: 0;
   }
 
   /* Active state for buttons */

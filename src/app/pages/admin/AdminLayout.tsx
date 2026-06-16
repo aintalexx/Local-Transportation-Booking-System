@@ -40,12 +40,12 @@ export default function AdminLayout() {
       )}>
         <div className="flex flex-col h-full">
           <div className="p-6 border-b">
-            <div className="flex items-center justify-between">
-              <h1 className="text-xl font-bold text-[#4B0F14]">Arangkada Admin</h1>
+            <div className="flex items-center justify-between gap-3">
+              <h1 className="min-w-0 break-words text-xl font-bold text-[#4B0F14]">Arangkada Admin</h1>
               <Button
                 variant="ghost"
                 size="icon"
-                className="lg:hidden"
+                className="shrink-0 lg:hidden"
                 onClick={() => setSidebarOpen(false)}
               >
                 <X className="h-5 w-5" />
@@ -62,14 +62,14 @@ export default function AdminLayout() {
                   setSidebarOpen(false);
                 }}
                 className={cn(
-                  "w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
+                  "flex w-full min-w-0 items-center gap-3 rounded-lg px-4 py-3 transition-colors",
                   isActive(item.path)
                     ? "bg-[rgba(75,15,20,0.05)] text-[#4B0F14] font-semibold"
                     : "text-gray-600 hover:bg-gray-50"
                 )}
               >
-                <item.icon className="h-5 w-5" />
-                <span>{item.label}</span>
+                <item.icon className="h-5 w-5 shrink-0" />
+                <span className="truncate">{item.label}</span>
               </button>
             ))}
           </nav>
@@ -98,12 +98,12 @@ export default function AdminLayout() {
       {/* Main Content */}
       <div className="flex-1 lg:ml-64 flex flex-col">
         {/* Top bar for mobile */}
-        <header className="lg:hidden bg-white border-b px-4 py-3 flex items-center justify-between">
-          <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)}>
+        <header className="flex items-center justify-between gap-3 border-b bg-white px-4 py-3 lg:hidden">
+          <Button variant="ghost" size="icon" className="shrink-0" onClick={() => setSidebarOpen(true)}>
             <Menu className="h-5 w-5" />
           </Button>
-          <h1 className="text-lg font-bold">Admin Panel</h1>
-          <div className="w-10" />
+          <h1 className="min-w-0 truncate text-lg font-bold">Admin Panel</h1>
+          <div className="w-10 shrink-0" />
         </header>
 
         {/* Page Content */}

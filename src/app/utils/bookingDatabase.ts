@@ -1,3 +1,5 @@
+import { validatePositiveMoney } from "./validators";
+
 // Booking Database using localStorage
 // This stores all bookings and handles booking lifecycle
 
@@ -67,6 +69,21 @@ function saveAllBookings(bookings: BookingData[]): void {
 
 // Create a new booking
 export function createBooking(bookingData: Omit<BookingData, "id" | "createdAt" | "status">): BookingData {
+  const basePriceCheck = validatePositiveMoney(bookingData.basePrice, "Base price");
+  const finalPriceCheck = validatePositiveMoney(bookingData.finalPrice, "Final price");
+
+  if (!basePriceCheck.valid) {
+    throw new Error(basePriceCheck.message);
+  }
+
+  if (!finalPriceCheck.valid) {
+    throw new Error(finalPriceCheck.message);
+  }
+
+  if (!Number.isFinite(bookingData.distance) || bookingData.distance <= 0 || bookingData.distance > 500) {
+    throw new Error("Distance must be greater than 0 and realistic.");
+  }
+
   const bookings = getAllBookings();
 
   const newBooking: BookingData = {

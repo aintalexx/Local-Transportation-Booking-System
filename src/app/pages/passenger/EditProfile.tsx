@@ -7,7 +7,16 @@ import { Label } from "../../components/ui/label";
 import { ArrowLeft, UserCircle, Phone, Camera } from "lucide-react";
 import { useUser } from "../../context/UserContext";
 import { toast } from "sonner";
-import { updateUser } from "../../utils/userDatabase";
+import { emailExists, phoneExists, updateUser } from "../../utils/userDatabase";
+import {
+  firstInvalid,
+  formatPHPhoneInput,
+  normalizeSpaces,
+  validateEmail,
+  validateName,
+  validatePHPhone,
+} from "../../utils/validators";
+import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
 
 export default function EditProfile() {
   const navigate = useNavigate();
@@ -33,7 +42,7 @@ export default function EditProfile() {
     firstName: user?.firstName || "",
     middleName: user?.middleName || "",
     surname: user?.surname || "",
-    suffix: user?.suffix || "",
+    suffix: normalizeOptionalSuffix(user?.suffix),
     phoneNumber: user?.phoneNumber || "",
     email: user?.email || "",
     guardianName: user?.guardianName || "",
@@ -50,36 +59,66 @@ export default function EditProfile() {
 
   const handleSave = () => {
     if (!user) return;
+    const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
+    const normalizedGuardianPhone = formatPHPhoneInput(formData.guardianPhone);
+    const normalizedEmail = formData.email.trim();
 
-    // Validate phone number
-    const phoneRegex = /^09\d{9}$/;
-    if (!phoneRegex.test(formData.phoneNumber)) {
-      toast.error("Please enter a valid phone number (09XXXXXXXXX)");
+    const basicCheck = firstInvalid([
+      validateName(formData.surname, "Surname"),
+      validateName(formData.firstName, "First name"),
+      validateName(formData.middleName, "Middle name", false),
+      validatePHPhone(normalizedPhone),
+      validateEmail(normalizedEmail),
+    ]);
+
+    if (!basicCheck.valid) {
+      toast.error(basicCheck.message);
+      return;
+    }
+
+    if (phoneExists(normalizedPhone, user.username)) {
+      toast.error("Phone number already registered. Please use a different number.");
+      return;
+    }
+
+    if (emailExists(normalizedEmail, user.username)) {
+      toast.error("Email already registered. Please use a different email.");
       return;
     }
 
     // Validate guardian info for minors
     if (isMinor) {
-      if (!formData.guardianName.trim()) {
-        toast.error("Guardian name is required for users 17 and below");
-        return;
-      }
-      if (!phoneRegex.test(formData.guardianPhone)) {
-        toast.error("Please enter a valid guardian phone number (09XXXXXXXXX)");
+      const guardianCheck = firstInvalid([
+        validateName(formData.guardianName, "Guardian name"),
+        validatePHPhone(normalizedGuardianPhone, "Guardian phone number"),
+      ]);
+
+      if (!guardianCheck.valid) {
+        toast.error(guardianCheck.message);
         return;
       }
     }
 
+    const nextName = {
+      firstName: normalizeSpaces(formData.firstName),
+      middleName: normalizeSpaces(formData.middleName),
+      surname: normalizeSpaces(formData.surname),
+      suffix: normalizeOptionalSuffix(formData.suffix),
+    };
+    const nameFieldsChanged =
+      nextName.firstName !== (user.firstName || "") ||
+      nextName.middleName !== (user.middleName || "") ||
+      nextName.surname !== (user.surname || "") ||
+      nextName.suffix !== normalizeOptionalSuffix(user.suffix);
+
     const updatedUser = {
       ...user,
-      firstName: formData.firstName,
-      middleName: formData.middleName,
-      surname: formData.surname,
-      suffix: formData.suffix,
-      phoneNumber: formData.phoneNumber,
-      email: formData.email,
-      guardianName: formData.guardianName,
-      guardianPhone: formData.guardianPhone,
+      ...nextName,
+      displayName: nameFieldsChanged ? "" : user.displayName,
+      phoneNumber: normalizedPhone,
+      email: normalizedEmail,
+      guardianName: normalizeSpaces(formData.guardianName),
+      guardianPhone: normalizedGuardianPhone,
       profilePhoto,
     };
 
@@ -200,9 +239,11 @@ export default function EditProfile() {
                   type="tel"
                   value={formData.phoneNumber}
                   onChange={(e) => {
-                    const formatted = e.target.value.replace(/\D/g, "").slice(0, 11);
+                    const formatted = formatPHPhoneInput(e.target.value);
                     setFormData({ ...formData, phoneNumber: formatted });
                   }}
+                  inputMode="numeric"
+                  maxLength={11}
                   placeholder="09XXXXXXXXX"
                   className="pl-10"
                   required
@@ -217,7 +258,7 @@ export default function EditProfile() {
                 id="email"
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value.trim() })}
                 placeholder="your.email@example.com"
               />
             </div>
@@ -260,9 +301,11 @@ export default function EditProfile() {
                     type="tel"
                     value={formData.guardianPhone}
                     onChange={(e) => {
-                      const formatted = e.target.value.replace(/\D/g, "").slice(0, 11);
+                      const formatted = formatPHPhoneInput(e.target.value);
                       setFormData({ ...formData, guardianPhone: formatted });
                     }}
+                    inputMode="numeric"
+                    maxLength={11}
                     placeholder="09XXXXXXXXX"
                     className="pl-10"
                     required

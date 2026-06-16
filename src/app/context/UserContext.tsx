@@ -1,6 +1,8 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useCallback, useContext, useState, ReactNode } from "react";
 
 interface UserData {
+  supabaseId?: string;
+  displayName?: string;
   username: string;
   password: string;
   phoneNumber: string;
@@ -39,7 +41,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return currentUser ? JSON.parse(currentUser) : null;
   });
 
-  const setUser = (userData: UserData | null) => {
+  const setUser = useCallback((userData: UserData | null) => {
     setUserState(userData);
     if (userData) {
       // Store current logged-in user
@@ -49,12 +51,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem("current_user");
       console.log("User logged out");
     }
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setUser(null);
     localStorage.removeItem("current_user");
-  };
+  }, [setUser]);
 
   return (
     <UserContext.Provider value={{ user, setUser, logout }}>

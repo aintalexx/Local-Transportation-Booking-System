@@ -2,7 +2,10 @@ import { createBrowserRouter } from "react-router";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
+import OTPPage from "./pages/auth/OTPPage";
 import PendingApproval from "./pages/auth/PendingApproval";
+import AuthCallbackPage from "./pages/auth/AuthCallbackPage";
+import GooglePhonePage from "./pages/auth/GooglePhonePage";
 
 // Passenger pages
 import PassengerLayout from "./pages/passenger/PassengerLayout";
@@ -54,8 +57,20 @@ export const router = createBrowserRouter([
     Component: RegisterPage,
   },
   {
+    path: "/otp",
+    Component: OTPPage,
+  },
+  {
     path: "/pending-approval",
     Component: PendingApproval,
+  },
+  {
+    path: "/auth/callback",
+    Component: AuthCallbackPage,
+  },
+  {
+    path: "/auth/phone",
+    Component: GooglePhonePage,
   },
   {
     path: "/passenger",

@@ -46,15 +46,15 @@ export default function PassengerChat() {
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b px-4 py-3 flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+        <Button variant="ghost" size="icon" className="shrink-0" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <Avatar className="h-10 w-10">
+        <Avatar className="h-10 w-10 shrink-0">
           <AvatarImage src={driver.photo || undefined} />
           <AvatarFallback>{driver.name.charAt(0)}</AvatarFallback>
         </Avatar>
-        <div className="flex-1">
-          <h2 className="font-semibold">{driver.name}</h2>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate font-semibold">{driver.name}</h2>
           <p className="text-xs text-gray-600">Your driver</p>
         </div>
       </div>
@@ -67,7 +67,7 @@ export default function PassengerChat() {
             className={`flex ${msg.sender === "passenger" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[70%] rounded-2xl px-4 py-2 ${
+                className={`max-w-[85%] break-words rounded-2xl px-4 py-2 sm:max-w-[70%] ${
                 msg.sender === "passenger"
                   ? "bg-[#4B0F14] text-white"
                   : "bg-white border"
@@ -114,12 +114,13 @@ export default function PassengerChat() {
       <div className="bg-white border-t px-4 py-3">
         <div className="flex gap-2">
           <Input
+            className="min-w-0"
             placeholder="Type a message..."
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyPress={(e) => e.key === "Enter" && handleSend()}
           />
-          <Button onClick={handleSend} disabled={!message.trim()}>
+          <Button className="shrink-0" onClick={handleSend} disabled={!message.trim()}>
             <Send className="h-5 w-5" />
           </Button>
         </div>

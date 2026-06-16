@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { Card, CardContent } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { MapPin, Clock, Star, Calendar } from "lucide-react";
 
 export default function RideHistory() {
@@ -16,8 +16,8 @@ export default function RideHistory() {
       date: "2026-06-06",
       time: "14:30",
       pickup: "PUP Sta. Mesa",
-      destination: "Divisoria",
-      fare: 65,
+      destination: "SM City Sta. Mesa",
+      fare: 25,
       driver: "Maria Garcia",
       vehicleType: "Tricycle",
       plateNumber: "ABC 123",
@@ -28,9 +28,9 @@ export default function RideHistory() {
       id: "2",
       date: "2026-06-05",
       time: "08:15",
-      pickup: "San Juan",
+      pickup: "Pureza LRT Station",
       destination: "PUP Sta. Mesa",
-      fare: 40,
+      fare: 30,
       driver: "Jose Reyes",
       vehicleType: "E-Bike",
       plateNumber: "XYZ 456",
@@ -54,9 +54,9 @@ export default function RideHistory() {
       id: "4",
       date: "2026-06-03",
       time: "12:00",
-      pickup: "Divisoria",
+      pickup: "Teresa Street",
       destination: "Sta. Mesa Market",
-      fare: 50,
+      fare: 20,
       driver: "Carlos Mendoza",
       vehicleType: "E-Bike",
       plateNumber: "GHI 321",
@@ -80,17 +80,17 @@ export default function RideHistory() {
       <div className="bg-gradient-to-r from-[#4B0F14] to-[#6E171D] text-white p-6">
         <div className="max-w-screen-md mx-auto">
           <h1 className="text-2xl font-bold mb-4">Ride History</h1>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Card className="bg-white/10 backdrop-blur border-white/20">
               <CardContent className="pt-4">
                 <p className="text-[rgba(255,248,231,0.7)] text-sm">Total Rides</p>
-                <p className="text-2xl font-bold">{rides.filter(r => r.status === "completed").length}</p>
+                <p className="break-words text-2xl font-bold">{rides.filter(r => r.status === "completed").length}</p>
               </CardContent>
             </Card>
             <Card className="bg-white/10 backdrop-blur border-white/20">
               <CardContent className="pt-4">
                 <p className="text-[rgba(255,248,231,0.7)] text-sm">Total Spent</p>
-                <p className="text-2xl font-bold">₱{totalSpent}</p>
+                <p className="break-words text-2xl font-bold">₱{totalSpent}</p>
               </CardContent>
             </Card>
           </div>
@@ -100,7 +100,7 @@ export default function RideHistory() {
       <div className="max-w-screen-md mx-auto p-4 pb-20">
         {/* Filter Tabs */}
         <Tabs value={filter} onValueChange={setFilter} className="mb-4">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="w-full">
             <TabsTrigger value="all">All</TabsTrigger>
             <TabsTrigger value="completed">Completed</TabsTrigger>
             <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
@@ -112,8 +112,8 @@ export default function RideHistory() {
           {filteredRides.map((ride) => (
             <Card key={ride.id} className="hover:shadow-md transition-shadow">
               <CardContent className="pt-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                     <Calendar className="h-4 w-4 text-gray-400" />
                     <span className="text-sm text-gray-600">{ride.date}</span>
                     <span className="text-sm text-gray-400">{ride.time}</span>
@@ -143,21 +143,21 @@ export default function RideHistory() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-3 border-t">
-                  <div className="flex items-center gap-3">
-                    <div>
+                <div className="grid gap-3 border-t pt-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                  <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="min-w-0">
                       <p className="text-xs text-gray-600">Driver</p>
-                      <p className="text-sm font-semibold">{ride.driver}</p>
+                      <p className="truncate text-sm font-semibold">{ride.driver}</p>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-gray-600">Vehicle</p>
-                      <p className="text-sm font-semibold">{ride.vehicleType}</p>
+                      <p className="truncate text-sm font-semibold">{ride.vehicleType}</p>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="min-w-fit text-left sm:text-right">
                     <p className="text-xl font-bold text-[#4B0F14]">₱{ride.fare}</p>
                     {ride.status === "completed" && (
-                      <div className="flex items-center gap-1 justify-end mt-1">
+                      <div className="mt-1 flex flex-wrap items-center gap-1 sm:justify-end">
                         {[...Array(5)].map((_, i) => (
                           <Star
                             key={i}

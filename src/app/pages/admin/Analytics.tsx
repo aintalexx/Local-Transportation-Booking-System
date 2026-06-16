@@ -2,6 +2,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/ca
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { TrendingUp, Users, DollarSign, Navigation2 } from "lucide-react";
 import { useState } from "react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 export default function Analytics() {
   const [timeFilter, setTimeFilter] = useState("daily");
@@ -15,16 +26,33 @@ export default function Analytics() {
     avgFare: 48,
     peakHour: "5:00 PM - 6:00 PM",
   };
+  const rideTrend = [
+    { label: "Mon", rides: 280 },
+    { label: "Tue", rides: 325 },
+    { label: "Wed", rides: 360 },
+    { label: "Thu", rides: 342 },
+    { label: "Fri", rides: 430 },
+    { label: "Sat", rides: 390 },
+    { label: "Sun", rides: 310 },
+  ];
+  const peakHours = [
+    { label: "6 AM", rides: 120 },
+    { label: "9 AM", rides: 210 },
+    { label: "12 PM", rides: 165 },
+    { label: "3 PM", rides: 195 },
+    { label: "6 PM", rides: 285 },
+    { label: "9 PM", rides: 150 },
+  ];
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold">Analytics</h1>
           <p className="text-gray-600">Business insights and statistics</p>
         </div>
-        <Tabs value={timeFilter} onValueChange={setTimeFilter}>
-          <TabsList>
+        <Tabs value={timeFilter} onValueChange={setTimeFilter} className="w-full sm:w-auto">
+          <TabsList className="w-full sm:w-fit">
             <TabsTrigger value="daily">Daily</TabsTrigger>
             <TabsTrigger value="weekly">Weekly</TabsTrigger>
             <TabsTrigger value="monthly">Monthly</TabsTrigger>
@@ -90,15 +118,29 @@ export default function Analytics() {
         </Card>
       </div>
 
-      {/* Charts Placeholder */}
+      {/* Charts */}
       <div className="grid md:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Ride Volume Trend</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-64 bg-gradient-to-br from-[rgba(75,15,20,0.08)] to-purple-50 rounded-lg flex items-center justify-center">
-              <p className="text-gray-500">Chart: Ride volume over time</p>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={rideTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="rideVolume" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#4B0F14" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#4B0F14" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(75,15,20,0.1)" />
+                  <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Area type="monotone" dataKey="rides" stroke="#4B0F14" strokeWidth={2} fill="url(#rideVolume)" />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>
@@ -108,11 +150,17 @@ export default function Analytics() {
             <CardTitle>Peak Hours</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-64 bg-gradient-to-br from-green-50 to-[rgba(75,15,20,0.08)] rounded-lg flex items-center justify-center">
-              <div className="text-center">
-                <p className="text-gray-500 mb-2">Chart: Hourly distribution</p>
-                <p className="text-lg font-semibold">Peak: {stats.peakHour}</p>
-              </div>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={peakHours} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(75,15,20,0.1)" />
+                  <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Bar dataKey="rides" fill="#D4AF37" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+              <p className="mt-2 text-center text-sm text-gray-600">Peak: {stats.peakHour}</p>
             </div>
           </CardContent>
         </Card>
@@ -127,13 +175,13 @@ export default function Analytics() {
           <div className="space-y-3">
             {[
               { name: "PUP Sta. Mesa", rides: 450 },
-              { name: "San Juan City Hall", rides: 380 },
-              { name: "Divisoria Market", rides: 320 },
+              { name: "SM City Sta. Mesa", rides: 380 },
+              { name: "Sta. Mesa Market", rides: 320 },
               { name: "V. Mapa Station", rides: 280 },
             ].map((location, index) => (
-              <div key={index} className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="font-semibold">{location.name}</p>
+              <div key={index} className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="break-words font-semibold">{location.name}</p>
                   <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
                     <div
                       className="bg-[#4B0F14] h-2 rounded-full"
@@ -141,7 +189,7 @@ export default function Analytics() {
                     />
                   </div>
                 </div>
-                <span className="ml-4 font-bold text-[#4B0F14]">{location.rides}</span>
+                <span className="shrink-0 font-bold text-[#4B0F14]">{location.rides}</span>
               </div>
             ))}
           </div>

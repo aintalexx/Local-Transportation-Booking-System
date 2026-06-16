@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { Search, Star, Phone, Mail, Check, X, Ban, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { getAllUsers, updateUser, type UserData } from "../../utils/userDatabase";
+import { formatPersonName } from "../../utils/nameFormatting";
 
 export default function DriverManagement() {
   const [filter, setFilter] = useState("all");
@@ -31,8 +32,9 @@ export default function DriverManagement() {
       (filter === "approved" && status === "approved") ||
       (filter === "rejected" && status === "rejected");
     const q = searchQuery.toLowerCase();
+    const fullName = formatPersonName(driver, "");
     const matchesSearch =
-      `${driver.firstName} ${driver.surname}`.toLowerCase().includes(q) ||
+      fullName.toLowerCase().includes(q) ||
       driver.phoneNumber.includes(q) ||
       (driver.plateNumber || "").toLowerCase().includes(q);
     return matchesFilter && matchesSearch;
@@ -72,7 +74,7 @@ export default function DriverManagement() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {[
           { label: "Total Drivers", value: drivers.length, color: "text-gray-900" },
           { label: "Pending Approval", value: drivers.filter(d => (d.approvalStatus || "pending") === "pending").length, color: "text-amber-600" },
@@ -118,11 +120,11 @@ export default function DriverManagement() {
         <div className="grid gap-4">
           {filteredDrivers.map((driver) => {
             const status = driver.approvalStatus || "pending";
-            const fullName = `${driver.firstName} ${driver.middleName ? driver.middleName + " " : ""}${driver.surname}`.trim();
+            const fullName = formatPersonName(driver, driver.username);
             return (
               <Card key={driver.username}>
                 <CardContent className="pt-6">
-                  <div className="flex items-start gap-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                     <Avatar className="h-14 w-14">
                       <AvatarFallback className="bg-green-100 text-green-700 font-bold">
                         {driver.firstName?.charAt(0)}{driver.surname?.charAt(0)}
@@ -133,15 +135,15 @@ export default function DriverManagement() {
                         <h3 className="font-bold text-lg">{fullName}</h3>
                         {statusBadge(status)}
                       </div>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm text-gray-600">
-                        <div className="flex items-center gap-1">
+                      <div className="grid grid-cols-1 gap-2 text-sm text-gray-600 md:grid-cols-3">
+                        <div className="flex min-w-0 items-center gap-1">
                           <Phone className="h-3 w-3" />
-                          {driver.phoneNumber}
+                          <span className="truncate">{driver.phoneNumber}</span>
                         </div>
                         {driver.email && (
-                          <div className="flex items-center gap-1">
+                          <div className="flex min-w-0 items-center gap-1">
                             <Mail className="h-3 w-3" />
-                            {driver.email}
+                            <span className="truncate">{driver.email}</span>
                           </div>
                         )}
                         <div>Plate: <span className="font-semibold">{driver.plateNumber || "N/A"}</span></div>
@@ -169,7 +171,7 @@ export default function DriverManagement() {
                         </div>
                       )}
                     </div>
-                    <div className="flex flex-col gap-2">
+                    <div className="flex shrink-0 flex-row flex-wrap gap-2 sm:flex-col">
                       {status === "pending" && (
                         <>
                           <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => handleApprove(driver.username)}>

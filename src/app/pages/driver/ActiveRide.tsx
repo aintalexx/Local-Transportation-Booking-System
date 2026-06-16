@@ -17,6 +17,8 @@ import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
 import { useBooking } from "../../context/BookingContext";
 import { updateBookingStatus, updateDriverLocation } from "../../utils/bookingDatabase";
+import { updateSupabaseBookingStatus } from "../../utils/supabaseBookings";
+import { publishDriverLocation } from "../../utils/realtimeTracking";
 import MapView from "../../components/MapView";
 import {
   AlertDialog,
@@ -58,7 +60,17 @@ export default function ActiveRide() {
 
           // Update driver location in booking
           if (activeBooking) {
-            updateDriverLocation(activeBooking.id, latitude, longitude);
+            if (!activeBooking.id.includes("-")) {
+              updateDriverLocation(activeBooking.id, latitude, longitude);
+            }
+            void publishDriverLocation({
+              bookingId: activeBooking.id,
+              driverUsername: user.username,
+              lat: latitude,
+              lng: longitude,
+              heading: position.coords.heading,
+              speed: position.coords.speed,
+            });
             refreshBooking();
           }
         },
@@ -80,8 +92,21 @@ export default function ActiveRide() {
     return () => clearInterval(interval);
   }, [user, activeBooking, navigate, refreshBooking]);
 
-  const handleStatusUpdate = (newStatus: "en_route" | "arrived" | "in_progress") => {
+  const handleStatusUpdate = async (newStatus: "en_route" | "arrived" | "in_progress") => {
     if (!activeBooking) return;
+
+    const supabaseBooking = await updateSupabaseBookingStatus(activeBooking.id, newStatus);
+    if (supabaseBooking) {
+      setActiveBooking(supabaseBooking);
+      refreshBooking();
+      const messages = {
+        en_route: "Status updated: En route to pickup",
+        arrived: "Status updated: Arrived at pickup",
+        in_progress: "Trip started!",
+      };
+      toast.success(messages[newStatus]);
+      return;
+    }
 
     const success = updateBookingStatus(activeBooking.id, newStatus);
     if (success) {
@@ -95,8 +120,16 @@ export default function ActiveRide() {
     }
   };
 
-  const handleCompleteRide = () => {
+  const handleCompleteRide = async () => {
     if (!activeBooking) return;
+
+    const supabaseBooking = await updateSupabaseBookingStatus(activeBooking.id, "completed");
+    if (supabaseBooking) {
+      toast.success(`Trip completed! You earned â‚±${activeBooking.finalPrice}`);
+      setActiveBooking(null);
+      navigate("/driver");
+      return;
+    }
 
     const success = updateBookingStatus(activeBooking.id, "completed");
     if (success) {
@@ -117,7 +150,7 @@ export default function ActiveRide() {
       case "accepted":
         return (
           <Button
-            className="w-full bg-[#4B0F14] hover:bg-[#6E171D]"
+            className="w-full whitespace-normal bg-[#4B0F14] hover:bg-[#6E171D]"
             size="lg"
             onClick={() => handleStatusUpdate("en_route")}
           >
@@ -128,7 +161,7 @@ export default function ActiveRide() {
       case "en_route":
         return (
           <Button
-            className="w-full bg-green-600 hover:bg-green-700"
+            className="w-full whitespace-normal bg-green-600 hover:bg-green-700"
             size="lg"
             onClick={() => handleStatusUpdate("arrived")}
           >
@@ -139,7 +172,7 @@ export default function ActiveRide() {
       case "arrived":
         return (
           <Button
-            className="w-full bg-purple-600 hover:bg-purple-700"
+            className="w-full whitespace-normal bg-purple-600 hover:bg-purple-700"
             size="lg"
             onClick={() => handleStatusUpdate("in_progress")}
           >
@@ -150,7 +183,7 @@ export default function ActiveRide() {
       case "in_progress":
         return (
           <Button
-            className="w-full bg-orange-600 hover:bg-orange-700"
+            className="w-full whitespace-normal bg-orange-600 hover:bg-orange-700"
             size="lg"
             onClick={() => setShowCompleteDialog(true)}
           >
@@ -182,12 +215,12 @@ export default function ActiveRide() {
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/driver")}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-white px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <Button variant="ghost" size="icon" className="shrink-0" onClick={() => navigate("/driver")}>
             <X className="h-5 w-5" />
           </Button>
-          <h1 className="text-xl font-bold">Active Ride</h1>
+          <h1 className="truncate text-xl font-bold">Active Ride</h1>
         </div>
         {getStatusBadge()}
       </div>
@@ -208,17 +241,17 @@ export default function ActiveRide() {
         {/* Passenger Info */}
         <Card className="mb-4 border-2 border-[rgba(75,15,20,0.2)]">
           <CardContent className="p-4">
-            <div className="flex items-center gap-4 mb-3">
-              <Avatar className="h-14 w-14">
+            <div className="mb-3 flex items-start gap-4">
+              <Avatar className="h-14 w-14 shrink-0">
                 <AvatarFallback className="bg-[rgba(75,15,20,0.08)] text-[#4B0F14] text-xl">
                   {activeBooking.passengerName.charAt(0)}
                 </AvatarFallback>
               </Avatar>
-              <div className="flex-1">
-                <h3 className="font-bold text-lg">{activeBooking.passengerName}</h3>
-                <p className="text-sm text-gray-600">{activeBooking.passengerPhone}</p>
+              <div className="min-w-0 flex-1">
+                <h3 className="break-words text-lg font-bold">{activeBooking.passengerName}</h3>
+                <p className="break-words text-sm text-gray-600">{activeBooking.passengerPhone}</p>
               </div>
-              <a href={`tel:${activeBooking.passengerPhone}`}>
+              <a className="shrink-0" href={`tel:${activeBooking.passengerPhone}`}>
                 <Button size="icon" variant="outline" className="rounded-full">
                   <Phone className="h-5 w-5" />
                 </Button>
@@ -231,36 +264,36 @@ export default function ActiveRide() {
         <div className="space-y-3 mb-4">
           <div className="flex items-start gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
             <MapPin className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <p className="text-xs text-gray-600">Pickup Location</p>
-              <p className="font-medium text-sm">{activeBooking.pickupLocation.address}</p>
+              <p className="break-words text-sm font-medium">{activeBooking.pickupLocation.address}</p>
             </div>
           </div>
 
           <div className="flex items-start gap-3 p-3 bg-red-50 rounded-lg border border-red-200">
             <MapPin className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <p className="text-xs text-gray-600">Destination</p>
-              <p className="font-medium text-sm">{activeBooking.destination.address}</p>
+              <p className="break-words text-sm font-medium">{activeBooking.destination.address}</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 bg-gray-50 rounded-lg">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="min-w-0 rounded-lg bg-gray-50 p-3">
               <p className="text-xs text-gray-600">Distance</p>
-              <p className="font-semibold text-sm">{activeBooking.distance.toFixed(1)} km</p>
+              <p className="break-words text-sm font-semibold">{activeBooking.distance.toFixed(1)} km</p>
             </div>
-            <div className="p-3 bg-green-50 rounded-lg">
+            <div className="min-w-0 rounded-lg bg-green-50 p-3">
               <div className="flex items-center gap-2 mb-1">
-                <DollarSign className="h-4 w-4 text-green-600" />
+                <DollarSign className="h-4 w-4 shrink-0 text-green-600" />
                 <p className="text-xs text-gray-600">Fare</p>
               </div>
-              <p className="font-semibold text-lg text-green-600">₱{activeBooking.finalPrice}</p>
+              <p className="break-words text-lg font-semibold text-green-600">₱{activeBooking.finalPrice}</p>
             </div>
           </div>
 
           <div className="p-3 bg-gray-50 rounded-lg">
-            <div className="flex items-center justify-between text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <span className="text-gray-600">Payment Method</span>
               <span className="font-semibold">{activeBooking.paymentMethod}</span>
             </div>

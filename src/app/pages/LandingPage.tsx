@@ -122,15 +122,15 @@ export default function LandingPage() {
                 </li>
                 <li className="flex items-center gap-2">
                   <MapPin className="h-5 w-5 text-[#4B0F14]" />
-                  <span>San Juan</span>
+                  <span>V. Mapa LRT Station</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <MapPin className="h-5 w-5 text-[#4B0F14]" />
-                  <span>Divisoria</span>
+                  <span>Pureza LRT Station</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <MapPin className="h-5 w-5 text-[#4B0F14]" />
-                  <span>And other designated routes</span>
+                  <span>Sta. Mesa Market and SM City Sta. Mesa</span>
                 </li>
               </ul>
             </div>

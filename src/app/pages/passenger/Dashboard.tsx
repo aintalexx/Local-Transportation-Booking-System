@@ -1,10 +1,22 @@
 import { useNavigate } from "react-router";
-import { MapPin, Clock, Star, Zap, Users, User, Navigation2, ChevronRight } from "lucide-react";
+import { Bell, MapPin, Clock, Star, Zap, Users, User, Navigation2, ChevronRight, ShieldCheck } from "lucide-react";
 import { useUser } from "../../context/UserContext";
 
 const MAROON = "#4B0F14";
 const GOLD = "#D4AF37";
 const CREAM = "#FFF8E7";
+
+const SANTA_MESA_QUICK_DESTINATIONS = [
+  { name: "PUP Sta. Mesa", icon: "PUP" },
+  { name: "SM City Sta. Mesa", icon: "SM" },
+  { name: "V. Mapa LRT", icon: "LRT" },
+  { name: "Sta. Mesa Market", icon: "MKT" },
+];
+
+const SANTA_MESA_RECENT_RIDES = [
+  { pickup: "PUP Sta. Mesa", destination: "SM City Sta. Mesa", fare: 25, date: "Kahapon, 2:30 PM", rating: 5 },
+  { pickup: "Pureza LRT Station", destination: "PUP Sta. Mesa", fare: 30, date: "Lunes, 8:15 AM", rating: 4 },
+];
 
 export default function PassengerDashboard() {
   const navigate = useNavigate();
@@ -13,17 +25,7 @@ export default function PassengerDashboard() {
   const firstName = currentUser?.firstName || "Pasahero";
   const profilePhoto = currentUser?.profilePhoto;
 
-  const quickDestinations = [
-    { name: "PUP Sta. Mesa", icon: "🎓" },
-    { name: "Divisoria", icon: "🛍️" },
-    { name: "V. Mapa LRT", icon: "🚉" },
-    { name: "Sta. Mesa Market", icon: "🏪" },
-  ];
 
-  const recentRides = [
-    { pickup: "PUP Sta. Mesa", destination: "Divisoria", fare: 65, date: "Kahapon, 2:30 PM", rating: 5 },
-    { pickup: "San Juan", destination: "PUP Sta. Mesa", fare: 40, date: "Lunes, 8:15 AM", rating: 4 },
-  ];
 
   const promos = [
     { code: "RIDE20", label: "20% OFF", desc: "First shared ride" },
@@ -39,20 +41,20 @@ export default function PassengerDashboard() {
         style={{ background: `linear-gradient(160deg, ${MAROON} 0%, #6E171D 100%)` }}
       >
         {/* Top row */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             {/* Logo */}
             <div className="h-8 w-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(212,175,55,0.2)", border: "1px solid rgba(212,175,55,0.3)" }}>
-              <span style={{ fontSize: 16 }}>🛺</span>
+              <span style={{ fontSize: 16 }}>AR</span>
             </div>
-            <span style={{ color: CREAM, fontSize: 16, fontWeight: 900 }}>Arangkada</span>
+            <span className="truncate" style={{ color: CREAM, fontSize: 16, fontWeight: 900 }}>Arangkada</span>
           </div>
           <button
             onClick={() => navigate("/passenger/notifications")}
-            className="h-10 w-10 rounded-full flex items-center justify-center relative"
+            className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
             style={{ background: "rgba(255,248,231,0.15)" }}
           >
-            <span style={{ fontSize: 18 }}>🔔</span>
+            <Bell size={18} color={CREAM} />
             <div className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full" style={{ background: GOLD }} />
           </button>
         </div>
@@ -70,26 +72,26 @@ export default function PassengerDashboard() {
               <span style={{ color: GOLD, fontSize: 20, fontWeight: 800 }}>{firstName.charAt(0)}</span>
             )}
           </div>
-          <div>
+          <div className="min-w-0">
             <p style={{ color: "rgba(255,248,231,0.65)", fontSize: 13 }}>Magandang araw,</p>
-            <p style={{ color: CREAM, fontSize: 20, fontWeight: 800, lineHeight: 1.1 }}>{firstName}! 👋</p>
+            <p style={{ color: CREAM, fontSize: 20, fontWeight: 800, lineHeight: 1.1 }}>{firstName}! </p>
           </div>
         </div>
 
         {/* Book ride search bar */}
         <button
           onClick={() => navigate("/passenger/book")}
-          className="w-full rounded-2xl p-4 flex items-center gap-3"
+          className="flex w-full min-w-0 items-center gap-3 rounded-2xl p-4"
           style={{ background: CREAM, boxShadow: "0 4px 24px rgba(0,0,0,0.2)" }}
         >
           <div className="h-11 w-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(75,15,20,0.08)" }}>
             <MapPin size={22} color={MAROON} />
           </div>
-          <div className="flex-1 text-left">
+          <div className="min-w-0 flex-1 text-left">
             <p style={{ color: "#9a8a7a", fontSize: 12, fontWeight: 500 }}>Saan ka pupunta?</p>
-            <p style={{ color: MAROON, fontSize: 15, fontWeight: 700, marginTop: 1 }}>I-book ang iyong sakay</p>
+            <p className="truncate" style={{ color: MAROON, fontSize: 15, fontWeight: 700, marginTop: 1 }}>I-book ang iyong sakay</p>
           </div>
-          <div className="h-9 w-9 rounded-xl flex items-center justify-center" style={{ background: MAROON }}>
+          <div className="h-9 w-9 shrink-0 rounded-xl flex items-center justify-center" style={{ background: MAROON }}>
             <Navigation2 size={16} color={GOLD} />
           </div>
         </button>
@@ -99,7 +101,7 @@ export default function PassengerDashboard() {
 
         {/* Solo / Shared ride type */}
         <p style={{ color: "#1E1E1E", fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Uri ng Biyahe</p>
-        <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {/* Solo */}
           <button
             onClick={() => navigate("/passenger/book", { state: { rideType: "solo" } })}
@@ -135,22 +137,22 @@ export default function PassengerDashboard() {
 
         {/* Quick Destinations */}
         <div className="mb-5">
-          <div className="flex items-center justify-between mb-3">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <p style={{ color: "#1E1E1E", fontSize: 15, fontWeight: 700 }}>Mabilis na Destinasyon</p>
-            <button onClick={() => navigate("/passenger/book")} style={{ color: MAROON, fontSize: 12, fontWeight: 600 }}>
-              I-book →
+            <button className="inline-action" onClick={() => navigate("/passenger/book")} style={{ color: MAROON, fontSize: 12, fontWeight: 600 }}>
+              I-book -&gt;
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-2.5">
-            {quickDestinations.map((dest) => (
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            {SANTA_MESA_QUICK_DESTINATIONS.map((dest) => (
               <button
                 key={dest.name}
                 onClick={() => navigate("/passenger/book")}
-                className="flex items-center gap-3 p-3.5 rounded-xl text-left"
+                className="flex min-w-0 items-center gap-3 p-3.5 rounded-xl text-left"
                 style={{ background: "#ffffff", border: "1.5px solid rgba(75,15,20,0.1)", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}
               >
-                <span style={{ fontSize: 20 }}>{dest.icon}</span>
-                <p style={{ color: "#1E1E1E", fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>{dest.name}</p>
+                <span className="shrink-0" style={{ fontSize: 20 }}>{dest.icon}</span>
+                <p className="min-w-0 break-words" style={{ color: "#1E1E1E", fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>{dest.name}</p>
               </button>
             ))}
           </div>
@@ -181,40 +183,41 @@ export default function PassengerDashboard() {
 
         {/* Recent rides */}
         <div className="mb-5">
-          <div className="flex items-center justify-between mb-3">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <p style={{ color: "#1E1E1E", fontSize: 15, fontWeight: 700 }}>Nakaraang Biyahe</p>
-            <button onClick={() => navigate("/passenger/history")} style={{ color: MAROON, fontSize: 12, fontWeight: 600 }}>
-              Tingnan lahat →
+            <button className="inline-action" onClick={() => navigate("/passenger/history")} style={{ color: MAROON, fontSize: 12, fontWeight: 600 }}>
+              Tingnan lahat -&gt;
             </button>
           </div>
           <div className="space-y-2.5">
-            {recentRides.map((ride, i) => (
+            {SANTA_MESA_RECENT_RIDES.map((ride, i) => (
               <div
                 key={i}
-                className="p-4 rounded-2xl flex items-center gap-3"
+                className="flex flex-col gap-3 rounded-2xl p-4 sm:flex-row sm:items-center"
                 style={{ background: "#ffffff", border: "1.5px solid rgba(75,15,20,0.08)", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}
               >
                 <div className="h-11 w-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(75,15,20,0.06)" }}>
-                  <span style={{ fontSize: 20 }}>🛺</span>
+                  <span style={{ fontSize: 20 }}>AR</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 mb-0.5">
+                  <div className="mb-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
                     <p style={{ color: "#1E1E1E", fontSize: 13, fontWeight: 700 }} className="truncate">{ride.pickup}</p>
-                    <span style={{ color: "#9a8a7a", fontSize: 10 }}>→</span>
+                    <span style={{ color: "#9a8a7a", fontSize: 10 }}>-&gt;</span>
                     <p style={{ color: "#1E1E1E", fontSize: 13, fontWeight: 700 }} className="truncate">{ride.destination}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <p style={{ color: "#9a8a7a", fontSize: 11 }}>{ride.date}</p>
-                    <span style={{ color: GOLD, fontSize: 11 }}>{"★".repeat(ride.rating)}</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="min-w-0 break-words" style={{ color: "#9a8a7a", fontSize: 11 }}>{ride.date}</p>
+                    <span style={{ color: GOLD, fontSize: 11 }}>{"*".repeat(ride.rating)}</span>
                   </div>
                 </div>
-                <div className="text-right flex-shrink-0">
-                  <p style={{ color: MAROON, fontSize: 16, fontWeight: 800 }}>₱{ride.fare}</p>
+                <div className="flex shrink-0 items-center justify-between gap-3 text-left sm:block sm:text-right">
+                  <p style={{ color: MAROON, fontSize: 16, fontWeight: 800 }}>PHP {ride.fare}</p>
                   <button
+                    className="inline-action"
                     style={{ color: MAROON, fontSize: 11, fontWeight: 600 }}
                     onClick={() => navigate("/passenger/book")}
                   >
-                    Ulit →
+                    Ulit -&gt;
                   </button>
                 </div>
               </div>
@@ -224,11 +227,11 @@ export default function PassengerDashboard() {
 
         {/* Safety card */}
         <div
-          className="p-4 rounded-2xl flex items-center gap-3"
+          className="flex items-start gap-3 rounded-2xl p-4"
           style={{ background: "rgba(75,15,20,0.05)", border: "1.5px solid rgba(75,15,20,0.12)" }}
         >
-          <span style={{ fontSize: 28 }}>🛡️</span>
-          <div>
+          <ShieldCheck className="shrink-0" size={28} color={MAROON} />
+          <div className="min-w-0">
             <p style={{ color: MAROON, fontSize: 13, fontWeight: 700 }}>Safety First</p>
             <p style={{ color: "#7a6a5a", fontSize: 12, lineHeight: 1.4 }}>
               Lahat ng driver ay na-verify. May emergency button sa tracking page.
@@ -240,3 +243,4 @@ export default function PassengerDashboard() {
     </div>
   );
 }
+

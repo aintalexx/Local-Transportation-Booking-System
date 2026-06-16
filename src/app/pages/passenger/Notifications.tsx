@@ -18,10 +18,10 @@ interface Notification {
 
 export default function Notifications() {
   const [notifications, setNotifications] = useState<Notification[]>([
-    { id: 1, type: "ride",   icon: MapPin,       title: "Ride Completed",           message: "Your ride to Divisoria has been completed. Fare: ₱65",              time: "2 hours ago",  read: false },
+    { id: 1, type: "ride",   icon: MapPin,       title: "Ride Completed",           message: "Your ride to SM City Sta. Mesa has been completed. Fare: PHP 25",              time: "2 hours ago",  read: false },
     { id: 2, type: "rating", icon: Star,          title: "Driver rated you 5 stars", message: "Maria Garcia gave you an excellent rating!",                         time: "3 hours ago",  read: false },
     { id: 3, type: "promo",  icon: Gift,          title: "Special Promo!",           message: "Use code ARANGKADA for 20% off on your next ride this week",         time: "1 day ago",    read: true  },
-    { id: 4, type: "system", icon: AlertCircle,   title: "Service Update",           message: "Route to San Juan temporarily affected due to road construction",    time: "2 days ago",   read: true  },
+    { id: 4, type: "system", icon: AlertCircle,   title: "Service Update",           message: "Route to Teresa Street may be slower due to road work",    time: "2 days ago",   read: true  },
     { id: 5, type: "ride",   icon: CheckCircle,   title: "Driver on the way!",       message: "Your driver Juan dela Cruz is heading to your pickup point. ETA: 5 mins", time: "3 days ago", read: true },
   ]);
 
@@ -47,8 +47,8 @@ export default function Notifications() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-gradient-to-r from-[#4B0F14] to-[#6E171D] text-white p-6">
-        <div className="max-w-screen-md mx-auto flex items-center justify-between">
-          <div>
+        <div className="mx-auto flex max-w-screen-md flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold">Notifications</h1>
             <p className="text-[rgba(255,248,231,0.7)] mt-1">
               {unreadCount > 0 ? `${unreadCount} new notification${unreadCount > 1 ? "s" : ""}` : "All caught up!"}
@@ -58,7 +58,7 @@ export default function Notifications() {
             <Button
               variant="ghost"
               size="sm"
-              className="text-[#D4AF37] hover:bg-white/10 text-xs"
+              className="shrink-0 text-xs text-[#D4AF37] hover:bg-white/10"
               onClick={markAllRead}
             >
               Mark all read
@@ -83,16 +83,16 @@ export default function Notifications() {
                       <div className={`h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 ${getIconColor(notification.type)}`}>
                         <Icon className="h-5 w-5" />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <h3 className={`text-sm ${!notification.read ? "font-bold" : "font-semibold"}`}>
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-start justify-between gap-2">
+                          <h3 className={`min-w-0 break-words text-sm ${!notification.read ? "font-bold" : "font-semibold"}`}>
                             {notification.title}
                           </h3>
                           {!notification.read && (
                             <div className="h-2.5 w-2.5 rounded-full bg-[#4B0F14] flex-shrink-0 mt-1" />
                           )}
                         </div>
-                        <p className="text-sm text-gray-600 mb-2">{notification.message}</p>
+                        <p className="mb-2 break-words text-sm text-gray-600">{notification.message}</p>
                         <p className="text-xs text-gray-500">{notification.time}</p>
                       </div>
                     </div>
@@ -115,3 +115,4 @@ export default function Notifications() {
     </div>
   );
 }
+

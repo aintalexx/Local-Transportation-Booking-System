@@ -11,6 +11,13 @@ import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
 import { useBooking } from "../../context/BookingContext";
 import { getPendingBookings, acceptBooking, getDriverActiveBooking } from "../../utils/bookingDatabase";
+import {
+  acceptSupabaseBooking,
+  getSupabaseDriverActiveBooking,
+  getSupabasePendingBookings,
+} from "../../utils/supabaseBookings";
+import { setDriverOnlineStatus, syncSupabaseProfile } from "../../utils/supabaseProfiles";
+import { formatPersonName } from "../../utils/nameFormatting";
 
 export default function DriverDashboard() {
   const navigate = useNavigate();
@@ -26,12 +33,16 @@ export default function DriverDashboard() {
       return;
     }
 
-    // Check if driver has an active booking
-    const driverActiveBooking = getDriverActiveBooking(currentUser.username);
-    if (driverActiveBooking) {
-      setActiveBooking(driverActiveBooking);
-      navigate("/driver/active-ride");
-    }
+    const checkActiveBooking = async () => {
+      await syncSupabaseProfile(currentUser);
+      const driverActiveBooking = await getSupabaseDriverActiveBooking(currentUser) || getDriverActiveBooking(currentUser.username);
+      if (driverActiveBooking) {
+        setActiveBooking(driverActiveBooking);
+        navigate("/driver/active-ride");
+      }
+    };
+
+    void checkActiveBooking();
   }, [currentUser, navigate, setActiveBooking]);
 
   // Load pending bookings
@@ -41,13 +52,17 @@ export default function DriverDashboard() {
       return;
     }
 
-    // Get pending bookings that match driver's vehicle type
-    const bookings = getPendingBookings(currentUser.vehicleType?.toLowerCase());
-    setPendingBookings(bookings);
+    const loadBookings = async () => {
+      const supabaseBookings = await getSupabasePendingBookings(currentUser.vehicleType || "Tricycle");
+      const localBookings = getPendingBookings(currentUser.vehicleType?.toLowerCase());
+      setPendingBookings([...supabaseBookings, ...localBookings]);
+    };
+
+    void loadBookings();
   }, [isOnline, currentUser, activeBooking]);
 
   const driver = {
-    name: currentUser ? `${currentUser.firstName} ${currentUser.middleName} ${currentUser.surname}`.trim() : "Driver",
+    name: currentUser ? formatPersonName(currentUser, "Driver") : "Driver",
     vehicleType: currentUser?.vehicleType || "Tricycle",
     plateNumber: currentUser?.plateNumber || "ABC 1234",
     rating: currentUser?.rating || 4.8,
@@ -63,13 +78,23 @@ export default function DriverDashboard() {
 
   const handleToggleOnline = (checked: boolean) => {
     setIsOnline(checked);
+    if (currentUser) void setDriverOnlineStatus(currentUser, checked);
     toast.success(checked ? "You are now online" : "You are now offline");
   };
 
-  const handleAcceptRequest = (bookingId: string) => {
+  const handleAcceptRequest = async (bookingId: string) => {
     if (!currentUser) return;
 
-    const driverName = `${currentUser.firstName} ${currentUser.middleName} ${currentUser.surname}`.trim();
+    const supabaseBooking = await acceptSupabaseBooking(bookingId, currentUser);
+    if (supabaseBooking) {
+      setActiveBooking(supabaseBooking);
+      toast.success("Ride accepted! Navigate to pickup location.");
+      refreshBooking();
+      navigate("/driver/active-ride");
+      return;
+    }
+
+    const driverName = formatPersonName(currentUser, currentUser.username);
     const success = acceptBooking(
       bookingId,
       currentUser.username,
@@ -96,23 +121,23 @@ export default function DriverDashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-gradient-to-r from-green-600 to-green-700 text-white p-6 safe-top animate-slide-down shadow-lg">
+      <div className="bg-gradient-to-r from-[#4B0F14] to-[#6E171D] text-white p-6 safe-top animate-slide-down shadow-lg">
         <div className="max-w-screen-md mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-2xl font-bold">Driver Dashboard</h1>
-              <p className="text-green-100">Welcome, {driver.name}</p>
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="break-words text-2xl font-bold">Driver Dashboard</h1>
+              <p className="break-words text-[#FFF8E7]/80">Welcome, {driver.name}</p>
             </div>
-            <div className="flex items-center gap-3 backdrop-ios rounded-xl p-3 shadow-sm border border-white/20">
+            <div className="flex shrink-0 items-center gap-3 backdrop-ios rounded-xl p-3 shadow-sm border border-white/20">
               <span className="text-sm font-semibold">{isOnline ? "Online" : "Offline"}</span>
               <Switch
                 checked={isOnline}
                 onCheckedChange={handleToggleOnline}
-                className="data-[state=checked]:bg-green-600"
+                className="data-[state=checked]:bg-[#D4AF37]"
               />
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary" className="bg-white/25 backdrop-blur text-white border-white/30 px-3 py-1">
               {driver.vehicleType}
             </Badge>
@@ -142,13 +167,13 @@ export default function DriverDashboard() {
             {pendingBookings.map((booking) => (
               <Card key={booking.id} className="border-2 border-green-200 shadow-lg hover:shadow-xl transition-smooth animate-fade-in">
                 <CardHeader className="pb-3">
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-3">
-                      <Avatar>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Avatar className="shrink-0">
                         <AvatarFallback>{booking.passengerName.charAt(0)}</AvatarFallback>
                       </Avatar>
-                      <div>
-                        <CardTitle className="text-lg">{booking.passengerName}</CardTitle>
+                      <div className="min-w-0">
+                        <CardTitle className="break-words text-lg">{booking.passengerName}</CardTitle>
                         <CardDescription className="text-sm text-gray-600">
                           {booking.passengerPhone}
                         </CardDescription>
@@ -163,32 +188,32 @@ export default function DriverDashboard() {
                       <div className="h-6 w-6 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mt-1">
                         <div className="h-2 w-2 rounded-full bg-green-600"></div>
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-sm text-gray-600">Pickup</p>
-                        <p className="font-semibold">{booking.pickupLocation.address}</p>
+                        <p className="break-words font-semibold">{booking.pickupLocation.address}</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
                       <MapPin className="h-6 w-6 text-red-500 flex-shrink-0 mt-1" />
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-sm text-gray-600">Destination</p>
-                        <p className="font-semibold">{booking.destination.address}</p>
+                        <p className="break-words font-semibold">{booking.destination.address}</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                    <div>
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-gray-50 p-3">
+                    <div className="min-w-0">
                       <p className="text-sm text-gray-600">Distance</p>
-                      <p className="font-semibold">{booking.distance.toFixed(1)} km</p>
+                      <p className="break-words font-semibold">{booking.distance.toFixed(1)} km</p>
                     </div>
-                    <div className="text-right">
+                    <div className="min-w-0 text-left sm:text-right">
                       <p className="text-sm text-gray-600">Fare</p>
-                      <p className="text-xl font-bold text-green-600">₱{booking.finalPrice}</p>
+                      <p className="break-words text-xl font-bold text-green-600">₱{booking.finalPrice}</p>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Button
                       variant="outline"
                       className="border-2 border-red-400 text-red-600 hover:bg-red-50 active:bg-red-100 font-semibold h-12 touch-active transition-smooth"
@@ -214,7 +239,7 @@ export default function DriverDashboard() {
           <Card className="mb-4 animate-fade-in shadow-sm">
             <CardContent className="pt-8 pb-8 text-center">
               <div className="h-20 w-20 bg-gradient-to-br from-green-100 to-green-200 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-sm animate-pulse-slow">
-                <Navigation2 className="h-10 w-10 text-green-600" />
+                <Navigation2 className="h-10 w-10 text-[#4B0F14]" />
               </div>
               <h3 className="text-lg font-semibold mb-2 text-gray-900">Looking for passengers...</h3>
               <p className="text-gray-600 text-sm">You'll receive notifications when passengers request a ride</p>
@@ -229,7 +254,7 @@ export default function DriverDashboard() {
             <CardDescription>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="p-4 bg-gradient-to-br from-green-50 to-green-100 rounded-2xl border-2 border-green-200 shadow-sm touch-active">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="h-8 w-8 bg-green-600 rounded-lg flex items-center justify-center">
@@ -237,7 +262,7 @@ export default function DriverDashboard() {
                   </div>
                   <p className="text-xs font-medium text-gray-700">Earnings</p>
                 </div>
-                <p className="text-2xl font-bold text-green-700">₱{todayStats.earnings}</p>
+                <p className="break-words text-2xl font-bold text-green-700">₱{todayStats.earnings}</p>
               </div>
               <div className="p-4 bg-gradient-to-br from-[rgba(75,15,20,0.04)] to-[rgba(75,15,20,0.08)] rounded-2xl border-2 border-[rgba(75,15,20,0.2)] shadow-sm touch-active">
                 <div className="flex items-center gap-2 mb-2">
@@ -277,25 +302,25 @@ export default function DriverDashboard() {
             <CardDescription>Overall statistics</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-gray-600">Total Trips</span>
               <span className="font-bold">{driver.totalTrips}</span>
             </div>
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-gray-600">Average Rating</span>
               <span className="font-bold flex items-center gap-1">
                 <span className="text-yellow-600">★</span>
                 {driver.rating}
               </span>
             </div>
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-gray-600">Vehicle Type</span>
-              <span className="font-bold">{driver.vehicleType}</span>
+              <span className="break-words text-right font-bold">{driver.vehicleType}</span>
             </div>
             {driver.plateNumber && (
-              <div className="flex justify-between items-center">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-gray-600">Plate Number</span>
-                <span className="font-bold">{driver.plateNumber}</span>
+                <span className="break-words text-right font-bold">{driver.plateNumber}</span>
               </div>
             )}
           </CardContent>

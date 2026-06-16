@@ -7,7 +7,17 @@ import { Label } from "../../components/ui/label";
 import { ArrowLeft, Phone, Bike, Camera } from "lucide-react";
 import { useUser } from "../../context/UserContext";
 import { toast } from "sonner";
-import { updateUser } from "../../utils/userDatabase";
+import { emailExists, phoneExists, updateUser } from "../../utils/userDatabase";
+import {
+  firstInvalid,
+  formatPHPhoneInput,
+  normalizeSpaces,
+  validateEmail,
+  validateName,
+  validatePHPhone,
+  validatePlateNumber,
+} from "../../utils/validators";
+import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
 
 export default function DriverEditProfile() {
   const navigate = useNavigate();
@@ -18,7 +28,7 @@ export default function DriverEditProfile() {
     firstName: user?.firstName || "",
     middleName: user?.middleName || "",
     surname: user?.surname || "",
-    suffix: user?.suffix || "",
+    suffix: normalizeOptionalSuffix(user?.suffix),
     phoneNumber: user?.phoneNumber || "",
     email: user?.email || "",
     plateNumber: user?.plateNumber || "",
@@ -35,28 +45,55 @@ export default function DriverEditProfile() {
 
   const handleSave = () => {
     if (!user) return;
+    const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
+    const normalizedEmail = formData.email.trim();
+    const normalizedPlate = formData.plateNumber.trim().toUpperCase();
 
-    const phoneRegex = /^09\d{9}$/;
-    if (!phoneRegex.test(formData.phoneNumber)) {
-      toast.error("Please enter a valid phone number (09XXXXXXXXX)");
+    const basicCheck = firstInvalid([
+      validateName(formData.surname, "Surname"),
+      validateName(formData.firstName, "First name"),
+      validateName(formData.middleName, "Middle name", false),
+      validatePHPhone(normalizedPhone),
+      validateEmail(normalizedEmail),
+      validatePlateNumber(normalizedPlate, false),
+      validateName(formData.vehicleColor, "Vehicle color", false),
+    ]);
+
+    if (!basicCheck.valid) {
+      toast.error(basicCheck.message);
       return;
     }
 
-    if (formData.plateNumber && formData.plateNumber.length > 6) {
-      toast.error("Plate number must be 6 characters or less");
+    if (phoneExists(normalizedPhone, user.username)) {
+      toast.error("Phone number already registered. Please use a different number.");
       return;
     }
+
+    if (emailExists(normalizedEmail, user.username)) {
+      toast.error("Email already registered. Please use a different email.");
+      return;
+    }
+
+    const nextName = {
+      firstName: normalizeSpaces(formData.firstName),
+      middleName: normalizeSpaces(formData.middleName),
+      surname: normalizeSpaces(formData.surname),
+      suffix: normalizeOptionalSuffix(formData.suffix),
+    };
+    const nameFieldsChanged =
+      nextName.firstName !== (user.firstName || "") ||
+      nextName.middleName !== (user.middleName || "") ||
+      nextName.surname !== (user.surname || "") ||
+      nextName.suffix !== normalizeOptionalSuffix(user.suffix);
 
     const updatedUser = {
       ...user,
-      firstName: formData.firstName,
-      middleName: formData.middleName,
-      surname: formData.surname,
-      suffix: formData.suffix,
-      phoneNumber: formData.phoneNumber,
-      email: formData.email,
-      plateNumber: formData.plateNumber,
-      vehicleColor: formData.vehicleColor,
+      ...nextName,
+      displayName: nameFieldsChanged ? "" : user.displayName,
+      phoneNumber: normalizedPhone,
+      email: normalizedEmail,
+      plateNumber: normalizedPlate,
+      vehicleColor: normalizeSpaces(formData.vehicleColor),
       profilePhoto,
     };
 
@@ -74,7 +111,7 @@ export default function DriverEditProfile() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-gradient-to-r from-green-600 to-green-700 text-white p-6">
+      <div className="bg-gradient-to-r from-[#4B0F14] to-[#6E171D] text-white p-6">
         <div className="max-w-screen-md mx-auto">
           <Button
             variant="ghost"
@@ -175,9 +212,11 @@ export default function DriverEditProfile() {
                   type="tel"
                   value={formData.phoneNumber}
                   onChange={(e) => {
-                    const formatted = e.target.value.replace(/\D/g, "").slice(0, 11);
+                    const formatted = formatPHPhoneInput(e.target.value);
                     setFormData({ ...formData, phoneNumber: formatted });
                   }}
+                  inputMode="numeric"
+                  maxLength={11}
                   placeholder="09XXXXXXXXX"
                   className="pl-10"
                 />
@@ -191,7 +230,7 @@ export default function DriverEditProfile() {
                 id="email"
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value.trim() })}
                 placeholder="your.email@example.com"
               />
             </div>
@@ -201,7 +240,7 @@ export default function DriverEditProfile() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Bike className="h-5 w-5 text-green-600" />
+              <Bike className="h-5 w-5 text-[#4B0F14]" />
               Vehicle Information
             </CardTitle>
           </CardHeader>
@@ -211,13 +250,14 @@ export default function DriverEditProfile() {
               <Input
                 id="plateNumber"
                 value={formData.plateNumber}
-                onChange={(e) =>
-                  setFormData({ ...formData, plateNumber: e.target.value.toUpperCase() })
-                }
+                onChange={(e) => {
+                  const plateNumber = e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 6);
+                  setFormData({ ...formData, plateNumber });
+                }}
                 maxLength={6}
                 placeholder="ABC123"
               />
-              <p className="text-xs text-gray-500">Maximum 6 characters</p>
+              <p className="text-xs text-gray-500">2-6 letters or numbers, no spaces.</p>
             </div>
 
             <div className="space-y-2">

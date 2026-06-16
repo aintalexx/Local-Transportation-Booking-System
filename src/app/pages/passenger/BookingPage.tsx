@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router";
-import { MapPin, Search, X, ArrowLeft, User, Users, Navigation2, Tag, DollarSign, Locate, CreditCard } from "lucide-react";
+import { MapPin, Search, X, ArrowLeft, User, Users, Navigation2, Tag, DollarSign, Locate, CreditCard, Clock, Route, Star } from "lucide-react";
 import { toast } from "sonner";
 import MapView from "../../components/MapView";
 import { useUser } from "../../context/UserContext";
 import { useBooking } from "../../context/BookingContext";
-import { createBooking } from "../../utils/bookingDatabase";
+import { acceptBooking, createBooking, getBooking, updateDriverLocation } from "../../utils/bookingDatabase";
+import { createSupabaseBooking } from "../../utils/supabaseBookings";
+import { estimateRouteDistanceKm, findBestDriver } from "../../utils/rideMatching";
+import { formatPersonName } from "../../utils/nameFormatting";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogPortal,
 } from "../../components/ui/dialog";
@@ -17,6 +20,7 @@ import { Badge } from "../../components/ui/badge";
 const MAROON = "#4B0F14";
 const GOLD = "#D4AF37";
 const CREAM = "#FFF8E7";
+const BOOKING_VEHICLE_TYPE = "Tricycle";
 
 type RideType = "solo" | "shared";
 type PassengerType = "regular" | "student" | "pwd";
@@ -38,27 +42,23 @@ interface PromoCode {
   discount: number;
 }
 
-const DESTINATIONS: Destination[] = [
-  { id: "vmapa",     name: "V. Mapa LRT Station",          area: "Sta. Mesa",  emoji: "🚉", basePrice: 25,  coords: { lat: 14.5992, lng: 121.0083 } },
-  { id: "market",    name: "Sta. Mesa Market",              area: "Sta. Mesa",  emoji: "🏪", basePrice: 20,  coords: { lat: 14.6042, lng: 121.0119 } },
-  { id: "pureza",    name: "Pureza LRT Station",            area: "Sta. Mesa",  emoji: "🚉", basePrice: 30,  coords: { lat: 14.6099, lng: 121.0199 } },
-  { id: "pup",       name: "PUP Main Gate",                 area: "Sta. Mesa",  emoji: "🎓", basePrice: 15,  coords: { lat: 14.5995, lng: 121.0114 } },
-  { id: "blumen",    name: "Blumentritt Station",           area: "Manila",     emoji: "🚉", basePrice: 40,  coords: { lat: 14.6100, lng: 120.9850 } },
-  { id: "nagtahan",  name: "Nagtahan Bridge",               area: "Manila",     emoji: "🌉", basePrice: 35,  coords: { lat: 14.5967, lng: 120.9981 } },
-  { id: "pgh",       name: "Philippine General Hospital",   area: "Manila",     emoji: "🏥", basePrice: 60,  coords: { lat: 14.5768, lng: 121.0166 } },
-  { id: "quiapo",    name: "Quiapo Church",                 area: "Manila",     emoji: "⛪", basePrice: 55,  coords: { lat: 14.5986, lng: 120.9842 } },
-  { id: "divisoria", name: "Divisoria Market",              area: "Manila",     emoji: "🛍️", basePrice: 65,  coords: { lat: 14.6042, lng: 121.0196 } },
-  { id: "sanjuan",   name: "San Juan City Hall",            area: "San Juan",   emoji: "🏛️", basePrice: 45,  coords: { lat: 14.6019, lng: 121.0355 } },
-  { id: "ust",       name: "University of Santo Tomas",     area: "Sampaloc",   emoji: "🏫", basePrice: 50,  coords: { lat: 14.6093, lng: 120.9892 } },
-  { id: "divisoriam",name: "Divisoria (Monumento side)",   area: "Caloocan",   emoji: "🛒", basePrice: 70,  coords: { lat: 14.6200, lng: 121.0000 } },
+const SANTA_MESA_DESTINATIONS: Destination[] = [
+  { id: "vmapa",     name: "V. Mapa LRT Station", area: "Sta. Mesa", emoji: "LRT", basePrice: 25, coords: { lat: 14.5992, lng: 121.0083 } },
+  { id: "market",    name: "Sta. Mesa Market", area: "Sta. Mesa", emoji: "MKT", basePrice: 20, coords: { lat: 14.6042, lng: 121.0119 } },
+  { id: "pureza",    name: "Pureza LRT Station", area: "Sta. Mesa", emoji: "LRT", basePrice: 30, coords: { lat: 14.6099, lng: 121.0199 } },
+  { id: "pup",       name: "PUP Main Gate", area: "Sta. Mesa", emoji: "PUP", basePrice: 15, coords: { lat: 14.5995, lng: 121.0114 } },
+  { id: "smstamesa", name: "SM City Sta. Mesa", area: "Sta. Mesa", emoji: "SM", basePrice: 25, coords: { lat: 14.6048, lng: 121.0190 } },
+  { id: "teresa",    name: "Teresa Street", area: "Sta. Mesa", emoji: "TER", basePrice: 18, coords: { lat: 14.5989, lng: 121.0105 } },
+  { id: "stopshop",  name: "Stop & Shop", area: "Sta. Mesa", emoji: "S&S", basePrice: 20, coords: { lat: 14.6027, lng: 121.0108 } },
+  { id: "mezza",     name: "Mezza Residences", area: "Sta. Mesa", emoji: "MZ", basePrice: 28, coords: { lat: 14.6047, lng: 121.0208 } },
 ];
 
 const AVAILABLE_PROMOS: PromoCode[] = [
   { code: "ARANGKADA",   description: "Welcome to Arangkada! 20% off",        discount: 20 },
   { code: "STAMESARIDE", description: "Sta. Mesa pride! 15% off your ride",   discount: 15 },
-  { code: "PUPSAKAY",    description: "PUP x Arangkada — 12% off",            discount: 12 },
+  { code: "PUPSAKAY",    description: "PUP x Arangkada - 12% off",            discount: 12 },
   { code: "SAKTOLANG",   description: "Sarap ng biyahe! 10% off",             discount: 10 },
-  { code: "MAHAL23",     description: "Love your commute — ₱5 off",           discount: 5  },
+  { code: "MAHAL23",     description: "Love your commute - PHP 5 off",           discount: 5  },
   { code: "FLASH30",     description: "Flash promo! 30% off today only",       discount: 30 },
 ];
 
@@ -96,11 +96,15 @@ export default function BookingPage() {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
 
-  const filtered = DESTINATIONS.filter(d =>
+  const filtered = SANTA_MESA_DESTINATIONS.filter(d =>
     d.name.toLowerCase().includes(search.toLowerCase()) ||
     d.area.toLowerCase().includes(search.toLowerCase())
   );
 
+  const estimatedDistanceKm = selected && pickupCoords
+    ? estimateRouteDistanceKm(pickupCoords, selected.coords)
+    : 3;
+  const driverMatch = pickupCoords ? findBestDriver(pickupCoords, { vehicleType: BOOKING_VEHICLE_TYPE }) : null;
   const finalPrice = selected ? calcFinalPrice(selected.basePrice, rideType, passengerType, appliedPromo) : 0;
 
   const discountBreakdown = () => {
@@ -149,35 +153,80 @@ export default function BookingPage() {
     setShowConfirmDialog(false);
 
     try {
-      const passengerName = `${user.firstName} ${user.middleName} ${user.surname}`.trim();
+      const passengerName = formatPersonName(user, user.username);
+      const discount = discountBreakdown().length > 0 ? {
+        type: [rideType === "shared" ? "Shared" : "", passengerType !== "regular" ? passengerType.toUpperCase() : ""].filter(Boolean).join("+"),
+        amount: Math.round((1 - finalPrice / selected.basePrice) * 100),
+      } : undefined;
+
+      const supabaseBooking = await createSupabaseBooking({
+        passenger: user,
+        pickupLocation: pickupCoords,
+        destination: { ...selected.coords, address: selected.name },
+        distance: estimatedDistanceKm,
+        basePrice: selected.basePrice,
+        finalPrice,
+        paymentMethod: paymentMethod === "epayment" ? "E-Payment" : "Cash",
+        vehicleType: BOOKING_VEHICLE_TYPE,
+        rideType,
+        discount,
+      });
+
+      if (supabaseBooking) {
+        setActiveBooking(supabaseBooking);
+        refreshBooking();
+        toast.success("Booking sent! Waiting for a nearby driver to accept.");
+        navigate("/passenger/ongoing-booking");
+        return;
+      }
+
+      const matchedDriver = findBestDriver(pickupCoords, { vehicleType: BOOKING_VEHICLE_TYPE });
       const booking = createBooking({
         passengerUsername: user.username,
         passengerName,
         passengerPhone: user.phoneNumber,
         pickupLocation: pickupCoords,
         destination: { ...selected.coords, address: selected.name },
-        distance: 3.0,
+        distance: estimatedDistanceKm,
         basePrice: selected.basePrice,
         finalPrice,
         paymentMethod: paymentMethod === "epayment" ? "E-Payment" : "Cash",
-        vehicleType: "Tricycle",
+        vehicleType: BOOKING_VEHICLE_TYPE,
         rideType,
-        discount: discountBreakdown().length > 0 ? {
-          type: [rideType === "shared" ? "Shared" : "", passengerType !== "regular" ? passengerType.toUpperCase() : ""].filter(Boolean).join("+"),
-          amount: Math.round((1 - finalPrice / selected.basePrice) * 100),
-        } : undefined,
+        discount,
       });
 
-      setActiveBooking(booking);
+      let nextBooking = booking;
+      if (matchedDriver) {
+        const assigned = acceptBooking(
+          booking.id,
+          matchedDriver.driver.username,
+          matchedDriver.driver.name,
+          matchedDriver.driver.phone,
+          matchedDriver.driver.vehicleType,
+          matchedDriver.driver.plateNumber
+        );
+
+        if (assigned) {
+          updateDriverLocation(booking.id, matchedDriver.driver.location.lat, matchedDriver.driver.location.lng);
+          nextBooking = getBooking(booking.id) || booking;
+        }
+      }
+
+      setActiveBooking(nextBooking);
       refreshBooking();
-      toast.success("Booking confirmed! Searching for nearby drivers...");
+      if (nextBooking.driverName && matchedDriver) {
+        toast.success(`Driver found: ${nextBooking.driverName} - ${matchedDriver.etaMinutes} min away`);
+      } else {
+        toast.success("Booking confirmed! Searching for nearby drivers...");
+      }
       navigate("/passenger/ongoing-booking");
     } catch {
       toast.error("Booking failed. Please try again.");
     } finally { setBookingLoading(false); }
   };
 
-  /* ─── STEP 1: DESTINATION SELECT ─── */
+  /* --- STEP 1: DESTINATION SELECT --- */
   if (step === "destination") {
     return (
       <div className="h-screen flex flex-col" style={{ background: CREAM }}>
@@ -189,7 +238,7 @@ export default function BookingPage() {
             </button>
             <div>
               <p style={{ color: "rgba(255,248,231,0.65)", fontSize: 12 }}>
-                {rideType === "shared" ? "👥 Shared Ride" : "👤 Solo Ride"}
+                {rideType === "shared" ? "Shared Ride" : "Solo Ride"}
               </p>
               <p style={{ color: "#FFF8E7", fontSize: 17, fontWeight: 800, lineHeight: 1 }}>Pumili ng Destinasyon</p>
             </div>
@@ -224,8 +273,24 @@ export default function BookingPage() {
           </div>
         </div>
 
+        {/* Map preview */}
+        <div className="px-5 py-4" style={{ background: CREAM }}>
+          <div className="overflow-hidden rounded-2xl border bg-white shadow-sm" style={{ borderColor: "rgba(75,15,20,0.08)" }}>
+            <MapView
+              pickup={pickupCoords}
+              destination={selected ? { ...selected.coords, address: selected.name } : null}
+              height="220px"
+              showCurrentLocation={true}
+              onPickupChange={loc => { setPickup(loc.address); setPickupCoords(loc); }}
+            />
+          </div>
+          <p className="mt-2 text-center" style={{ color: "#7a6a5a", fontSize: 11 }}>
+            Tap the map or allow GPS to set your pickup point.
+          </p>
+        </div>
+
         {/* Destination grid */}
-        <div className="flex-1 overflow-auto px-5 pt-4 pb-8">
+        <div className="flex-1 overflow-auto px-5 pt-1 pb-8">
           <p style={{ color: "#7a6a5a", fontSize: 12, fontWeight: 600, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
             Mga Sikat na Destinasyon
           </p>
@@ -247,9 +312,9 @@ export default function BookingPage() {
                     <p style={{ color: "#9a8a7a", fontSize: 12, marginTop: 2 }}>{dest.area}</p>
                   </div>
                   <div className="text-right">
-                    <p style={{ color: MAROON, fontSize: 18, fontWeight: 900 }}>₱{price}</p>
+                    <p style={{ color: MAROON, fontSize: 18, fontWeight: 900 }}>PHP {price}</p>
                     {rideType === "shared" && dest.basePrice !== price && (
-                      <p style={{ color: "#9a8a7a", fontSize: 11, textDecoration: "line-through" }}>₱{dest.basePrice}</p>
+                      <p style={{ color: "#9a8a7a", fontSize: 11, textDecoration: "line-through" }}>PHP {dest.basePrice}</p>
                     )}
                   </div>
                 </button>
@@ -261,12 +326,12 @@ export default function BookingPage() {
     );
   }
 
-  /* ─── STEP 2: PASSENGER TYPE ─── */
+  /* --- STEP 2: PASSENGER TYPE --- */
   if (step === "passenger_type") {
     const types: { key: PassengerType; emoji: string; label: string; sublabel: string; discount: string }[] = [
-      { key: "regular", emoji: "👤", label: "Regular", sublabel: "Walang diskwento", discount: rideType === "shared" ? "-30% (Shared)" : "Walang diskwento" },
-      { key: "student", emoji: "🎓", label: "Estudyante", sublabel: "May valid student ID", discount: rideType === "shared" ? "-40% (Shared+Student)" : "-10% Student" },
-      { key: "pwd",     emoji: "♿", label: "PWD",       sublabel: "May valid PWD ID", discount: rideType === "shared" ? "-40% (Shared+PWD)" : "-10% PWD" },
+      { key: "regular", emoji: "REG", label: "Regular", sublabel: "Walang diskwento", discount: rideType === "shared" ? "-30% (Shared)" : "Walang diskwento" },
+      { key: "student", emoji: "STD", label: "Estudyante", sublabel: "May valid student ID", discount: rideType === "shared" ? "-40% (Shared+Student)" : "-10% Student" },
+      { key: "pwd",     emoji: "PWD", label: "PWD",       sublabel: "May valid PWD ID", discount: rideType === "shared" ? "-40% (Shared+PWD)" : "-10% PWD" },
     ];
 
     return (
@@ -286,8 +351,8 @@ export default function BookingPage() {
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: "rgba(255,248,231,0.1)" }}>
             <span style={{ fontSize: 16 }}>{selected?.emoji}</span>
             <p style={{ color: CREAM, fontSize: 13, fontWeight: 600 }}>{selected?.name}</p>
-            <span style={{ color: "rgba(255,248,231,0.5)", fontSize: 12 }}>·</span>
-            <span style={{ color: GOLD, fontSize: 13, fontWeight: 700 }}>₱{selected?.basePrice}</span>
+            <span style={{ color: "rgba(255,248,231,0.5)", fontSize: 12 }}>-</span>
+            <span style={{ color: GOLD, fontSize: 13, fontWeight: 700 }}>PHP {selected?.basePrice}</span>
           </div>
         </div>
 
@@ -321,10 +386,10 @@ export default function BookingPage() {
                 {/* Price preview */}
                 <div className="text-right">
                   <p style={{ color: MAROON, fontSize: 20, fontWeight: 900 }}>
-                    ₱{selected ? calcFinalPrice(selected.basePrice, rideType, t.key, null) : 0}
+                    PHP {selected ? calcFinalPrice(selected.basePrice, rideType, t.key, null) : 0}
                   </p>
                   {(t.key !== "regular" || rideType === "shared") && (
-                    <p style={{ color: "#9a8a7a", fontSize: 11, textDecoration: "line-through" }}>₱{selected?.basePrice}</p>
+                    <p style={{ color: "#9a8a7a", fontSize: 11, textDecoration: "line-through" }}>PHP {selected?.basePrice}</p>
                   )}
                 </div>
               </button>
@@ -332,7 +397,7 @@ export default function BookingPage() {
           </div>
 
           <p style={{ color: "#9a8a7a", fontSize: 11, marginTop: 12, textAlign: "center" }}>
-            ⚠️ Student at PWD lamang. Hindi pwedeng pagsabayin ang dalawang diskwento.
+            Warning: Student at PWD lamang. Hindi pwedeng pagsabayin ang dalawang diskwento.
           </p>
 
           <button
@@ -340,28 +405,28 @@ export default function BookingPage() {
             className="w-full h-14 rounded-2xl flex items-center justify-center mt-5"
             style={{ background: `linear-gradient(135deg, ${MAROON}, #6E171D)`, boxShadow: "0 6px 20px rgba(75,15,20,0.3)" }}
           >
-            <span style={{ color: GOLD, fontSize: 16, fontWeight: 800 }}>Ituloy →</span>
+            <span style={{ color: GOLD, fontSize: 16, fontWeight: 800 }}>Ituloy -&gt;</span>
           </button>
         </div>
       </div>
     );
   }
 
-  /* ─── STEP 3: CONFIRM BOOKING ─── */
+  /* --- STEP 3: CONFIRM BOOKING --- */
   return (
     <div className="h-screen flex flex-col" style={{ background: CREAM }}>
       {/* Header */}
       <div
-        className="px-5 pt-12 pb-4 flex items-center justify-between"
+        className="flex flex-wrap items-center justify-between gap-3 px-5 pb-4 pt-12"
         style={{ background: MAROON, boxShadow: "0 2px 12px rgba(75,15,20,0.3)" }}
       >
-        <div className="flex items-center gap-3">
-          <button onClick={() => setStep("passenger_type")} className="h-9 w-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,248,231,0.15)" }}>
+        <div className="flex min-w-0 items-center gap-3">
+          <button onClick={() => setStep("passenger_type")} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(255,248,231,0.15)" }}>
             <ArrowLeft size={18} color="#FFF8E7" />
           </button>
-          <p style={{ color: "#FFF8E7", fontSize: 16, fontWeight: 800 }}>I-confirm ang Booking</p>
+          <p className="min-w-0 break-words" style={{ color: "#FFF8E7", fontSize: 16, fontWeight: 800 }}>I-confirm ang Booking</p>
         </div>
-        <button onClick={() => navigate("/passenger")} className="h-9 w-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,248,231,0.15)" }}>
+        <button onClick={() => navigate("/passenger")} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(255,248,231,0.15)" }}>
           <X size={18} color="#FFF8E7" />
         </button>
       </div>
@@ -388,10 +453,10 @@ export default function BookingPage() {
           <button
             onClick={handleUseCurrentLocation}
             disabled={isLoadingLocation}
-            className="w-full flex items-center gap-3 px-4 py-3"
+            className="flex w-full min-w-0 items-center gap-3 px-4 py-3"
           >
-            <Locate size={18} color={MAROON} />
-            <p style={{ color: pickup ? "#1E1E1E" : "#9a8a7a", fontSize: 13, fontWeight: pickup ? 600 : 400, flex: 1, textAlign: "left" }}>
+            <Locate className="shrink-0" size={18} color={MAROON} />
+            <p className="min-w-0 break-words" style={{ color: pickup ? "#1E1E1E" : "#9a8a7a", fontSize: 13, fontWeight: pickup ? 600 : 400, flex: 1, textAlign: "left" }}>
               {isLoadingLocation ? "Hinahanap ang lokasyon..." : pickup || "I-tap para gamitin ang kasalukuyang lokasyon"}
             </p>
           </button>
@@ -402,6 +467,62 @@ export default function BookingPage() {
           )}
         </div>
 
+        {/* Driver matching */}
+        {pickupCoords && (
+          <div className="rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1.5px solid rgba(75,15,20,0.08)" }}>
+            <div className="px-4 pt-3 pb-1">
+              <p style={{ color: "#9a8a7a", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Nearest Driver Match</p>
+            </div>
+            {driverMatch ? (
+              <div className="px-4 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl" style={{ background: "rgba(75,15,20,0.08)" }}>
+                    <Navigation2 size={22} color={MAROON} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words" style={{ color: "#1E1E1E", fontSize: 14, fontWeight: 800 }}>{driverMatch.driver.name}</p>
+                    <p className="break-words" style={{ color: "#7a6a5a", fontSize: 12 }}>
+                      {driverMatch.driver.vehicleType} {driverMatch.driver.plateNumber}
+                    </p>
+                  </div>
+                  <div className="shrink-0 rounded-xl px-3 py-2 text-right" style={{ background: "rgba(46,125,50,0.08)" }}>
+                    <p style={{ color: "#2E7D32", fontSize: 12, fontWeight: 800 }}>{driverMatch.etaMinutes} min</p>
+                    <p style={{ color: "#6B7280", fontSize: 10 }}>ETA</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <div className="min-w-0 rounded-xl p-2" style={{ background: "rgba(75,15,20,0.04)" }}>
+                    <div className="mb-1 flex items-center gap-1">
+                      <Route size={12} color={MAROON} />
+                      <p style={{ color: "#7a6a5a", fontSize: 10 }}>Away</p>
+                    </div>
+                    <p className="break-words" style={{ color: "#1E1E1E", fontSize: 12, fontWeight: 800 }}>{driverMatch.distanceKm.toFixed(1)} km</p>
+                  </div>
+                  <div className="min-w-0 rounded-xl p-2" style={{ background: "rgba(75,15,20,0.04)" }}>
+                    <div className="mb-1 flex items-center gap-1">
+                      <Star size={12} color={MAROON} />
+                      <p style={{ color: "#7a6a5a", fontSize: 10 }}>Rating</p>
+                    </div>
+                    <p className="break-words" style={{ color: "#1E1E1E", fontSize: 12, fontWeight: 800 }}>{driverMatch.driver.rating.toFixed(1)}</p>
+                  </div>
+                  <div className="min-w-0 rounded-xl p-2" style={{ background: "rgba(75,15,20,0.04)" }}>
+                    <div className="mb-1 flex items-center gap-1">
+                      <Clock size={12} color={MAROON} />
+                      <p style={{ color: "#7a6a5a", fontSize: 10 }}>Trips</p>
+                    </div>
+                    <p className="break-words" style={{ color: "#1E1E1E", fontSize: 12, fontWeight: 800 }}>{driverMatch.driver.completedTrips}</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="px-4 py-3">
+                <p style={{ color: "#7a6a5a", fontSize: 13 }}>No available {BOOKING_VEHICLE_TYPE.toLowerCase()} drivers near this pickup yet.</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Booking summary */}
         <div className="rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1.5px solid rgba(75,15,20,0.08)" }}>
           <div className="px-4 pt-3 pb-1">
@@ -409,51 +530,53 @@ export default function BookingPage() {
           </div>
           {[
             { label: "Destinasyon", value: `${selected?.emoji} ${selected?.name}` },
-            { label: "Uri ng Biyahe", value: rideType === "solo" ? "👤 Solo" : "👥 Shared" },
-            { label: "Pasahero", value: passengerType === "regular" ? "👤 Regular" : passengerType === "student" ? "🎓 Estudyante" : "♿ PWD" },
+            { label: "Distansya", value: `${estimatedDistanceKm.toFixed(1)} km` },
+            { label: "Uri ng Biyahe", value: rideType === "solo" ? "Solo" : "Shared" },
+            { label: "Pasahero", value: passengerType === "regular" ? "Regular" : passengerType === "student" ? "Estudyante" : "PWD" },
           ].map((row, i) => (
-            <div key={row.label} className="flex items-center justify-between px-4 py-3" style={{ borderTop: i > 0 ? "1px solid rgba(75,15,20,0.06)" : "none" }}>
+            <div key={row.label} className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 px-4 py-3" style={{ borderTop: i > 0 ? "1px solid rgba(75,15,20,0.06)" : "none" }}>
               <p style={{ color: "#7a6a5a", fontSize: 13 }}>{row.label}</p>
-              <p style={{ color: "#1E1E1E", fontSize: 13, fontWeight: 700 }}>{row.value}</p>
+              <p className="min-w-0 break-words text-right" style={{ color: "#1E1E1E", fontSize: 13, fontWeight: 700 }}>{row.value}</p>
             </div>
           ))}
 
           {/* Price breakdown */}
           <div className="px-4 py-3" style={{ borderTop: "1px solid rgba(75,15,20,0.06)" }}>
-            <div className="flex items-center justify-between mb-2">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <p style={{ color: "#7a6a5a", fontSize: 13 }}>Base Price</p>
-              <p style={{ color: "#1E1E1E", fontSize: 13, fontWeight: 600 }}>₱{selected?.basePrice}</p>
+              <p style={{ color: "#1E1E1E", fontSize: 13, fontWeight: 600 }}>PHP {selected?.basePrice}</p>
             </div>
             {discountBreakdown().map(d => (
-              <div key={d.label} className="flex items-center justify-between mb-1">
+              <div key={d.label} className="mb-1 flex flex-wrap items-center justify-between gap-2">
                 <p style={{ color: "#2E7D32", fontSize: 12 }}>{d.label}</p>
                 <p style={{ color: "#2E7D32", fontSize: 12, fontWeight: 600 }}>{d.amount}</p>
               </div>
             ))}
-            <div className="flex items-center justify-between pt-2" style={{ borderTop: "1px solid rgba(75,15,20,0.1)", marginTop: 4 }}>
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2" style={{ borderTop: "1px solid rgba(75,15,20,0.1)", marginTop: 4 }}>
               <p style={{ color: "#1E1E1E", fontSize: 15, fontWeight: 800 }}>Kabuuang Bayad</p>
-              <p style={{ color: MAROON, fontSize: 22, fontWeight: 900 }}>₱{finalPrice}</p>
+              <p style={{ color: MAROON, fontSize: 22, fontWeight: 900 }}>PHP {finalPrice}</p>
             </div>
           </div>
 
           {/* Promo code */}
           <div className="px-4 pb-4" style={{ borderTop: "1px solid rgba(75,15,20,0.06)" }}>
             {appliedPromo ? (
-              <div className="flex items-center justify-between p-3 rounded-xl mt-3" style={{ background: "rgba(46,125,50,0.08)", border: "1px solid rgba(46,125,50,0.2)" }}>
-                <div className="flex items-center gap-2">
-                  <Tag size={14} color="#2E7D32" />
-                  <p style={{ color: "#2E7D32", fontSize: 13, fontWeight: 700 }}>{appliedPromo.code} — {appliedPromo.discount}% off</p>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl p-3" style={{ background: "rgba(46,125,50,0.08)", border: "1px solid rgba(46,125,50,0.2)" }}>
+                <div className="flex min-w-0 items-center gap-2">
+                  <Tag className="shrink-0" size={14} color="#2E7D32" />
+                  <p className="min-w-0 break-words" style={{ color: "#2E7D32", fontSize: 13, fontWeight: 700 }}>{appliedPromo.code} - {appliedPromo.discount}% off</p>
                 </div>
                 <button onClick={() => setAppliedPromo(null)}><X size={14} color="#C62828" /></button>
               </div>
             ) : showPromoInput ? (
-              <div className="flex gap-2 mt-3">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <input
                   type="text"
                   placeholder="Promo code"
                   value={promoCode}
-                  onChange={e => setPromoCode(e.target.value.toUpperCase())}
-                  className="flex-1 px-3 rounded-xl outline-none"
+                  onChange={e => setPromoCode(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 20))}
+                  maxLength={20}
+                  className="min-w-[150px] flex-1 rounded-xl px-3 outline-none"
                   style={{ height: 40, border: "1.5px solid rgba(75,15,20,0.15)", fontSize: 14, background: "#ffffff" }}
                 />
                 <button onClick={applyPromo} className="px-4 rounded-xl" style={{ background: MAROON, height: 40 }}>
@@ -477,15 +600,15 @@ export default function BookingPage() {
           <div className="px-4 pt-3 pb-1">
             <p style={{ color: "#9a8a7a", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Paraan ng Bayad</p>
           </div>
-          <div className="px-4 pb-3 flex gap-3">
+          <div className="grid grid-cols-1 gap-3 px-4 pb-3 sm:grid-cols-2">
             {([
-              { key: "cash" as PaymentMethod, emoji: "💵", label: "Cash" },
-              { key: "epayment" as PaymentMethod, emoji: "💳", label: "E-Payment" },
+              { key: "cash" as PaymentMethod, emoji: "$", label: "Cash" },
+              { key: "epayment" as PaymentMethod, emoji: "CARD", label: "E-Payment" },
             ]).map(m => (
               <button
                 key={m.key}
                 onClick={() => setPaymentMethod(m.key)}
-                className="flex-1 flex items-center gap-2 p-3 rounded-xl"
+                className="flex min-w-0 items-center gap-2 rounded-xl p-3"
                 style={{
                   background: paymentMethod === m.key ? "rgba(75,15,20,0.06)" : "transparent",
                   border: paymentMethod === m.key ? `2px solid ${MAROON}` : "2px solid rgba(75,15,20,0.1)",
@@ -509,7 +632,7 @@ export default function BookingPage() {
           style={{ background: `linear-gradient(135deg, ${MAROON}, #6E171D)`, boxShadow: "0 6px 20px rgba(75,15,20,0.3)" }}
         >
           <span style={{ color: GOLD, fontSize: 16, fontWeight: 800 }}>
-            {bookingLoading ? "Nag-iimpok..." : `🛺 I-book na — ₱${finalPrice}`}
+            {bookingLoading ? "Nag-iimpok..." : `I-book na - PHP ${finalPrice}`}
           </span>
         </button>
       </div>
@@ -527,13 +650,15 @@ export default function BookingPage() {
               {[
                 { label: "Pickup", value: pickup },
                 { label: "Destinasyon", value: `${selected?.emoji} ${selected?.name}` },
-                { label: "Uri ng Biyahe", value: rideType === "solo" ? "👤 Solo" : "👥 Shared" },
-                { label: "Pasahero", value: passengerType === "regular" ? "Regular" : passengerType === "student" ? "🎓 Estudyante" : "♿ PWD" },
-                { label: "Bayad", value: `₱${finalPrice}`, highlight: true },
+                { label: "Distansya", value: `${estimatedDistanceKm.toFixed(1)} km` },
+                ...(driverMatch ? [{ label: "Driver", value: `${driverMatch.driver.name} - ${driverMatch.etaMinutes} min away` }] : []),
+                { label: "Uri ng Biyahe", value: rideType === "solo" ? "Solo" : "Shared" },
+                { label: "Pasahero", value: passengerType === "regular" ? "Regular" : passengerType === "student" ? "Estudyante" : "PWD" },
+                { label: "Bayad", value: `PHP ${finalPrice}`, highlight: true },
               ].map(row => (
-                <div key={row.label} className="flex justify-between items-center py-2" style={{ borderBottom: "1px solid rgba(75,15,20,0.07)" }}>
+                <div key={row.label} className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 py-2" style={{ borderBottom: "1px solid rgba(75,15,20,0.07)" }}>
                   <span style={{ color: "#7a6a5a", fontSize: 13 }}>{row.label}</span>
-                  <span style={{ color: row.highlight ? MAROON : "#1E1E1E", fontSize: row.highlight ? 18 : 13, fontWeight: row.highlight ? 900 : 600 }}>{row.value}</span>
+                  <span className="min-w-0 break-words text-right" style={{ color: row.highlight ? MAROON : "#1E1E1E", fontSize: row.highlight ? 18 : 13, fontWeight: row.highlight ? 900 : 600 }}>{row.value}</span>
                 </div>
               ))}
               <div className="flex gap-2 pt-2">
@@ -541,7 +666,7 @@ export default function BookingPage() {
                   Bumalik
                 </button>
                 <button onClick={handleConfirm} className="flex-1 h-12 rounded-2xl" style={{ background: `linear-gradient(135deg, ${MAROON}, #6E171D)`, color: GOLD, fontSize: 14, fontWeight: 800, boxShadow: "0 4px 12px rgba(75,15,20,0.3)" }}>
-                  I-confirm ✓
+                  I-confirm
                 </button>
               </div>
             </div>
@@ -551,3 +676,4 @@ export default function BookingPage() {
     </div>
   );
 }
+

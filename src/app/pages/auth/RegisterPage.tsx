@@ -19,12 +19,26 @@ import {
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "../../components/ui/utils";
-import { usernameExists, phoneExists, registerUser } from "../../utils/userDatabase";
-import { useUser } from "../../context/UserContext";
+import { emailExists, usernameExists, phoneExists } from "../../utils/userDatabase";
+import {
+  calculateAge,
+  firstInvalid,
+  formatPHPhoneInput,
+  normalizeSpaces,
+  validateBirthdate,
+  validateEmail,
+  validateName,
+  validatePassword,
+  validatePHPhone,
+  validatePlateNumber,
+  validateUsername,
+} from "../../utils/validators";
+import { signInWithGoogle } from "../../utils/supabaseAuth";
+import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
+import { createDemoOtp } from "../../utils/demoOtp";
 
 export default function RegisterPage() {
   const navigate = useNavigate();
-  const { setUser } = useUser();
   const [step, setStep] = useState<"role" | "details">("role");
   const [role, setRole] = useState<"passenger" | "driver">("passenger");
   const [formData, setFormData] = useState({
@@ -50,22 +64,13 @@ export default function RegisterPage() {
   const [isGuardianConfirmed, setIsGuardianConfirmed] = useState(false);
   const [liabilityAgreed, setLiabilityAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [birthdateInput, setBirthdateInput] = useState("");
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showTermsPopup, setShowTermsPopup] = useState(false);
   const [showPrivacyPopup, setShowPrivacyPopup] = useState(false);
-
-  const calculateAge = (birthdate: Date) => {
-    const today = new Date();
-    let age = today.getFullYear() - birthdate.getFullYear();
-    const monthDiff = today.getMonth() - birthdate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthdate.getDate())) {
-      age--;
-    }
-    return age;
-  };
 
   const isMinor = formData.birthdate ? calculateAge(formData.birthdate) < 18 : false;
 
@@ -88,10 +93,9 @@ export default function RegisterPage() {
       const day   = parseInt(digits.slice(2, 4));
       const year  = parseInt(digits.slice(4, 8));
 
-      if (year >= 1900 && year <= new Date().getFullYear() &&
-          month >= 0 && month <= 11 && day >= 1 && day <= 31) {
+      if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
         const date = new Date(year, month, day);
-        if (date.getMonth() === month && date.getDate() === day) {
+        if (date.getMonth() === month && date.getDate() === day && validateBirthdate(date).valid) {
           setFormData({ ...formData, birthdate: date });
           return;
         }
@@ -101,6 +105,11 @@ export default function RegisterPage() {
   };
 
   const handleCalendarSelect = (date: Date | undefined) => {
+    if (date && !validateBirthdate(date).valid) {
+      toast.error(validateBirthdate(date).message);
+      return;
+    }
+
     setFormData({ ...formData, birthdate: date });
     if (date) {
       setBirthdateInput(format(date, "MM/dd/yyyy"));
@@ -123,18 +132,8 @@ export default function RegisterPage() {
     setBirthdateInput(format(newDate, "MM/dd/yyyy"));
   };
 
-  const formatPhoneNumber = (value: string) => {
-    const digits = value.replace(/\D/g, "");
-    if (digits.startsWith("63")) {
-      return `+${digits.slice(0, 12)}`;
-    } else if (digits.startsWith("0")) {
-      return digits.slice(0, 11);
-    }
-    return digits.slice(0, 10);
-  };
-
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const formatted = formatPhoneNumber(e.target.value);
+    const formatted = formatPHPhoneInput(e.target.value);
     setFormData({ ...formData, phoneNumber: formatted });
   };
 
@@ -142,29 +141,54 @@ export default function RegisterPage() {
     setStep("details");
   };
 
+  const handleGoogleSignup = async () => {
+    if (role === "driver") {
+      toast.info("Driver applicants must complete the full form so admins can verify age, phone number, and license.");
+      return;
+    }
+
+    setGoogleLoading(true);
+    try {
+      await signInWithGoogle("passenger");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Google signup failed. Please try again.";
+      toast.error(message);
+      setGoogleLoading(false);
+    }
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setShowValidationErrors(true);
 
-    // Validate surname and first name
-    if (!formData.surname.trim() || !formData.firstName.trim()) {
-      toast.error("Please enter your surname and first name");
+    const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
+    const normalizedGuardianPhone = formatPHPhoneInput(formData.guardianPhone);
+    const normalizedEmail = formData.email.trim();
+    const normalizedUsername = formData.username.trim();
+    const normalizedPlate = formData.plateNumber.trim().toUpperCase();
+
+    const basicCheck = firstInvalid([
+      validateName(formData.surname, "Surname"),
+      validateName(formData.firstName, "First name"),
+      formData.noMiddleName ? { valid: true, message: "" } : validateName(formData.middleName, "Middle name"),
+      validateBirthdate(formData.birthdate),
+      validatePHPhone(normalizedPhone),
+      validateUsername(normalizedUsername),
+      validateEmail(normalizedEmail),
+      validatePassword(formData.password),
+    ]);
+
+    if (!basicCheck.valid) {
+      toast.error(basicCheck.message);
       return;
     }
 
-    // Validate middle name
-    if (!formData.noMiddleName && !formData.middleName.trim()) {
-      toast.error("Please enter your middle name or check 'No Middle Name'");
+    if (formData.password !== formData.confirmPassword) {
+      toast.error("Passwords do not match");
       return;
     }
 
-    // Validate birthdate
-    if (!formData.birthdate) {
-      toast.error("Please select your birthdate");
-      return;
-    }
-
-    // Validate age and guardian information
+    if (!formData.birthdate) return;
     const age = calculateAge(formData.birthdate);
 
     // Drivers must be 18 or older
@@ -175,17 +199,13 @@ export default function RegisterPage() {
 
     // Passengers under 18 need guardian info
     if (role === "passenger" && age < 18) {
-      if (!formData.guardianName.trim()) {
-        toast.error("Guardian's full name is required for users under 18");
-        return;
-      }
-      if (!formData.guardianPhone.trim()) {
-        toast.error("Guardian's phone number is required for users under 18");
-        return;
-      }
-      const guardianPhoneRegex = /^09\d{9}$/;
-      if (!guardianPhoneRegex.test(formData.guardianPhone)) {
-        toast.error("Please enter a valid guardian phone number (09XXXXXXXXX)");
+      const guardianCheck = firstInvalid([
+        validateName(formData.guardianName, "Guardian's full name"),
+        validatePHPhone(normalizedGuardianPhone, "Guardian phone number"),
+      ]);
+
+      if (!guardianCheck.valid) {
+        toast.error(guardianCheck.message);
         return;
       }
       if (!isGuardianConfirmed) {
@@ -198,55 +218,31 @@ export default function RegisterPage() {
       }
     }
 
-    // Validate phone number
-    const phoneRegex = /^09\d{9}$/;
-    if (!phoneRegex.test(formData.phoneNumber)) {
-      toast.error("Please enter a valid phone number (09XXXXXXXXX)");
-      return;
-    }
-
-    // Validate username
-    if (!formData.username.trim()) {
-      toast.error("Please enter a username");
-      return;
-    }
-    if (formData.username.length < 8 || formData.username.length > 30) {
-      toast.error("Username must be between 8 and 30 characters");
-      return;
-    }
-
     // Check if username already exists
-    if (usernameExists(formData.username)) {
+    if (usernameExists(normalizedUsername)) {
       toast.error("Username already taken. Please choose a different username.");
       return;
     }
 
     // Check if phone number already exists
-    if (phoneExists(formData.phoneNumber)) {
+    if (phoneExists(normalizedPhone)) {
       toast.error("Phone number already registered. Please login or use a different number.");
       return;
     }
 
-    // Validate password
-    if (!formData.password) {
-      toast.error("Please enter a password");
-      return;
-    }
-    if (formData.password.length < 8 || formData.password.length > 30) {
-      toast.error("Password must be between 8 and 30 characters");
-      return;
-    }
-    if (formData.password !== formData.confirmPassword) {
-      toast.error("Passwords do not match");
+    if (emailExists(normalizedEmail)) {
+      toast.error("Email already registered. Please use a different email.");
       return;
     }
 
     // Validate driver-specific fields
     if (role === "driver") {
-      if (!formData.plateNumber.trim()) {
-        toast.error("Please enter your vehicle plate number");
+      const plateCheck = validatePlateNumber(normalizedPlate);
+      if (!plateCheck.valid) {
+        toast.error(plateCheck.message);
         return;
       }
+
       if (!formData.driverLicensePhoto) {
         toast.error("Please upload a photo of your driver's license");
         return;
@@ -265,43 +261,42 @@ export default function RegisterPage() {
       const birthdateString = formData.birthdate ? formData.birthdate.toISOString() : "";
 
       const userData = {
-        username: formData.username,
+        username: normalizedUsername,
         password: formData.password,
-        phoneNumber: formData.phoneNumber,
-        surname: formData.surname,
-        firstName: formData.firstName,
-        middleName: formData.middleName,
-        suffix: formData.suffix,
-        email: formData.email,
+        phoneNumber: normalizedPhone,
+        surname: normalizeSpaces(formData.surname),
+        firstName: normalizeSpaces(formData.firstName),
+        middleName: formData.noMiddleName ? "" : normalizeSpaces(formData.middleName),
+        suffix: normalizeOptionalSuffix(formData.suffix),
+        email: normalizedEmail,
         birthdate: birthdateString,
         role,
-        guardianName: formData.guardianName,
-        guardianPhone: formData.guardianPhone,
+        guardianName: normalizeSpaces(formData.guardianName),
+        guardianPhone: normalizedGuardianPhone,
         rating: 5.0,
         totalTrips: 0,
         totalEarnings: 0,
         vehicleType: role === "driver" ? "Tricycle" : "",
-        plateNumber: role === "driver" ? formData.plateNumber : "",
+        plateNumber: role === "driver" ? normalizedPlate : "",
         driverLicensePhoto: role === "driver" ? (formData.driverLicensePhoto || "") : "",
         vehicleColor: "",
         memberSince: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
         approvalStatus: role === "driver" ? "pending" : "approved",
       };
 
-      const result = registerUser(userData);
-      if (!result.success) {
-        toast.error(result.message);
-        return;
-      }
+      const generatedOtp = createDemoOtp();
+      toast.success(`Demo OTP generated: ${generatedOtp}`, { duration: 10000 });
+      navigate("/otp", {
+        state: {
+          mode: "register",
+          role,
+          phoneNumber: normalizedPhone,
+          userData,
+          generatedOtp,
+        },
+      });
+      return;
 
-      if (role === "driver") {
-        // Don't log driver in — send to pending approval page
-        navigate("/pending-approval");
-      } else {
-        setUser(userData);
-        toast.success("Account created successfully!");
-        navigate("/passenger");
-      }
     } catch (error) {
       toast.error("Registration failed. Please try again.");
     } finally {
@@ -388,6 +383,37 @@ export default function RegisterPage() {
               <Button onClick={handleContinueFromRole} className="w-full mt-6">
                 Continue
               </Button>
+
+              <div className="my-5 flex items-center gap-3">
+                <div className="h-px flex-1 bg-gray-200" />
+                <span className="text-xs font-medium text-gray-500">or</span>
+                <div className="h-px flex-1 bg-gray-200" />
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleGoogleSignup}
+                disabled={googleLoading}
+                className="w-full gap-3"
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-sm font-bold text-[#4B0F14]">
+                  G
+                </span>
+                {googleLoading ? "Opening Google..." : "Continue with Google"}
+              </Button>
+
+              {role === "passenger" && (
+                <p className="mt-2 text-center text-xs text-gray-500">
+                  After Google sign-up, you will add your phone number and verify it with demo OTP.
+                </p>
+              )}
+
+              {role === "driver" && (
+                <p className="mt-2 text-center text-xs text-gray-500">
+                  Driver applicants must use the full form for license and admin approval.
+                </p>
+              )}
 
               <div className="mt-6 text-center">
                 <p className="text-sm text-gray-600">
@@ -496,8 +522,8 @@ export default function RegisterPage() {
               <div className="space-y-2">
                 <Label htmlFor="suffix">Suffix (Optional)</Label>
                 <Select
-                  value={formData.suffix}
-                  onValueChange={(value) => setFormData({ ...formData, suffix: value })}
+                  value={formData.suffix || "none"}
+                  onValueChange={(value) => setFormData({ ...formData, suffix: normalizeOptionalSuffix(value) })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select suffix" />
@@ -581,7 +607,7 @@ export default function RegisterPage() {
                         mode="single"
                         selected={formData.birthdate}
                         onSelect={handleCalendarSelect}
-                        disabled={(date) => date > new Date() || date < new Date("1900-01-01")}
+                        disabled={(date) => !validateBirthdate(date).valid}
                         month={formData.birthdate}
                         onMonthChange={(date) => {
                           if (date) {
@@ -630,9 +656,11 @@ export default function RegisterPage() {
                       placeholder="09XXXXXXXXX"
                       value={formData.guardianPhone}
                       onChange={(e) => {
-                        const formatted = e.target.value.replace(/\D/g, "").slice(0, 11);
+                        const formatted = formatPHPhoneInput(e.target.value);
                         setFormData({ ...formData, guardianPhone: formatted });
                       }}
+                      inputMode="numeric"
+                      maxLength={11}
                       required
                     />
                   </div>
@@ -681,6 +709,8 @@ export default function RegisterPage() {
                     placeholder="09XXXXXXXXX"
                     value={formData.phoneNumber}
                     onChange={handlePhoneChange}
+                    inputMode="numeric"
+                    maxLength={11}
                     className="pl-10"
                     required
                   />
@@ -704,7 +734,7 @@ export default function RegisterPage() {
                   />
                 </div>
                 <p className="text-xs text-gray-500">
-                  8-30 characters, symbols allowed
+                  8-30 characters. Use letters, numbers, dots, underscores, or hyphens.
                 </p>
               </div>
 
@@ -714,10 +744,10 @@ export default function RegisterPage() {
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="Enter password (8-30 characters)"
+                    placeholder="Enter a strong password"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="pr-10"
+                    className="pr-14"
                     required
                     minLength={8}
                     maxLength={30}
@@ -725,13 +755,14 @@ export default function RegisterPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                    className="absolute inset-y-0 right-2 flex !h-full !min-h-0 !w-9 !min-w-0 items-center justify-center p-0 text-gray-400 hover:text-gray-600"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
                 <p className="text-xs text-gray-500">
-                  8-30 characters, symbols allowed
+                  8-30 characters with uppercase, lowercase, number, and special character.
                 </p>
               </div>
 
@@ -744,7 +775,7 @@ export default function RegisterPage() {
                     placeholder="Re-enter password"
                     value={formData.confirmPassword}
                     onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                    className="pr-10"
+                    className="pr-14"
                     required
                     minLength={8}
                     maxLength={30}
@@ -752,7 +783,8 @@ export default function RegisterPage() {
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                    className="absolute inset-y-0 right-2 flex !h-full !min-h-0 !w-9 !min-w-0 items-center justify-center p-0 text-gray-400 hover:text-gray-600"
+                    aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
                   >
                     {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -760,13 +792,14 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email">Email (Optional)</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
                   type="email"
                   placeholder="your.email@example.com"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value.trim() })}
+                  required
                 />
               </div>
 
@@ -782,11 +815,14 @@ export default function RegisterPage() {
                       type="text"
                       placeholder="ABC123"
                       value={formData.plateNumber}
-                      onChange={(e) => setFormData({ ...formData, plateNumber: e.target.value.toUpperCase() })}
+                      onChange={(e) => {
+                        const plateNumber = e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 6);
+                        setFormData({ ...formData, plateNumber });
+                      }}
                       maxLength={6}
                       required
                     />
-                    <p className="text-xs text-gray-500">Maximum 6 characters</p>
+                    <p className="text-xs text-gray-500">2-6 letters or numbers, no spaces.</p>
                   </div>
 
                   <div className="space-y-2">
@@ -823,24 +859,25 @@ export default function RegisterPage() {
 
 
               <div className={cn(
-                "flex items-start space-x-2 p-2 rounded",
-                showValidationErrors && !agreedToTerms && "bg-red-50 border border-red-200"
+                "flex items-start gap-3 rounded-xl border p-3",
+                showValidationErrors && !agreedToTerms
+                  ? "border-red-200 bg-red-50"
+                  : "border-[rgba(75,15,20,0.1)] bg-[rgba(75,15,20,0.03)]"
               )}>
                 <Checkbox
                   id="terms"
                   checked={agreedToTerms}
                   onCheckedChange={(checked) => setAgreedToTerms(checked as boolean)}
-                  className="mt-0.5"
+                  className="mt-1"
                   required
                 />
-                <label
-                  htmlFor="terms"
-                  className="text-sm font-medium leading-snug cursor-pointer"
-                >
-                  <span className="text-red-500">*</span> I agree to the{" "}
+                <div className="min-w-0 flex-1 text-sm font-medium leading-6 text-gray-800">
+                  <label htmlFor="terms" className="cursor-pointer">
+                    <span className="text-red-500">*</span> I agree to the{" "}
+                  </label>
                   <button
                     type="button"
-                    className="text-[#4B0F14] hover:underline font-semibold"
+                    className="inline !h-auto !min-h-0 !min-w-0 p-0 align-baseline text-sm font-semibold leading-6 text-[#4B0F14] hover:underline"
                     onClick={(e) => { e.preventDefault(); setShowTermsPopup(true); }}
                   >
                     Terms &amp; Conditions
@@ -848,12 +885,12 @@ export default function RegisterPage() {
                   and{" "}
                   <button
                     type="button"
-                    className="text-[#4B0F14] hover:underline font-semibold"
+                    className="inline !h-auto !min-h-0 !min-w-0 p-0 align-baseline text-sm font-semibold leading-6 text-[#4B0F14] hover:underline"
                     onClick={(e) => { e.preventDefault(); setShowPrivacyPopup(true); }}
                   >
                     Privacy Policy
                   </button>
-                </label>
+                </div>
               </div>
 
               {/* Terms Popup */}
@@ -905,7 +942,7 @@ export default function RegisterPage() {
                 className="w-full"
                 disabled={loading || (role === "driver" && isMinor)}
               >
-                {loading ? "Creating Account..." : (role === "driver" && isMinor) ? "Must be 18+ to Register as Driver" : "Continue"}
+                {loading ? "Preparing OTP..." : (role === "driver" && isMinor) ? "Must be 18+ to Register as Driver" : "Sign in"}
               </Button>
               <Button
                 type="button"
@@ -916,6 +953,33 @@ export default function RegisterPage() {
                 Back
               </Button>
             </form>
+
+            {role === "passenger" && (
+              <div className="mt-6">
+                <div className="mb-5 flex items-center gap-3">
+                  <div className="h-px flex-1 bg-gray-200" />
+                  <span className="text-xs font-medium text-gray-500">or</span>
+                  <div className="h-px flex-1 bg-gray-200" />
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleGoogleSignup}
+                  disabled={googleLoading}
+                  className="w-full gap-3"
+                >
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-sm font-bold text-[#4B0F14]">
+                    G
+                  </span>
+                  {googleLoading ? "Opening Google..." : "Continue with Google"}
+                </Button>
+
+                <p className="mt-2 text-center text-xs text-gray-500">
+                  Google sign-up continues with phone number and demo OTP verification.
+                </p>
+              </div>
+            )}
 
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600">

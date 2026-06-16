@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar"
 import { Badge } from "../../components/ui/badge";
 import { MapPin, Phone, MessageCircle, AlertCircle, X, Star, Navigation2 } from "lucide-react";
 import { Alert, AlertDescription } from "../../components/ui/alert";
+import { toast } from "sonner";
 
 export default function LiveTracking() {
   const navigate = useNavigate();
@@ -25,38 +26,34 @@ export default function LiveTracking() {
       vehicleColor: "Blue",
     },
     pickup: "PUP Sta. Mesa Campus",
-    destination: "San Juan City Hall",
-    fare: 45,
-    distance: "3.2 km",
+    destination: "SM City Sta. Mesa",
+    fare: 25,
+    distance: "1.8 km",
     eta: "5 mins",
     driverDistance: "800 m",
     currentLocation: "Approaching pickup point",
   };
 
   const handleCancelRide = () => {
-    if (confirm("Are you sure you want to cancel this ride?")) {
-      // TODO: Implement ride cancellation
-      navigate("/passenger");
-    }
+    toast.info("Use the active booking screen to cancel a live booking.");
+    navigate("/passenger/ongoing-booking");
   };
 
   const handleEmergency = () => {
-    if (confirm("This will notify emergency contacts and support. Continue?")) {
-      // TODO: Implement emergency alert
-      alert("Emergency alert sent!");
-    }
+    toast.info("Opening an emergency call. This demo does not send automated alerts.");
+    window.location.href = "tel:911";
   };
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/passenger")}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-white px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <Button variant="ghost" size="icon" className="shrink-0" onClick={() => navigate("/passenger")}>
             <X className="h-5 w-5" />
           </Button>
-          <div>
-            <h1 className="text-lg font-bold">Live Tracking</h1>
+          <div className="min-w-0">
+            <h1 className="truncate text-lg font-bold">Live Tracking</h1>
             <Badge
               className={
                 ride.status === "driver_arriving"
@@ -92,7 +89,7 @@ export default function LiveTracking() {
             <div className="h-12 w-12 bg-[#4B0F14] rounded-full border-4 border-white shadow-lg flex items-center justify-center">
               <Navigation2 className="h-6 w-6 text-white" />
             </div>
-            <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-white px-3 py-1 rounded-lg shadow-lg whitespace-nowrap">
+            <div className="absolute -top-12 left-1/2 max-w-[min(12rem,80vw)] -translate-x-1/2 rounded-lg bg-white px-3 py-1 text-center shadow-lg">
               <p className="text-sm font-semibold">{ride.driver.name}</p>
               <p className="text-xs text-gray-600">{ride.driverDistance} away</p>
             </div>
@@ -121,23 +118,23 @@ export default function LiveTracking() {
       </div>
 
       {/* Bottom Sheet */}
-      <div className="bg-white rounded-t-3xl shadow-xl p-4 space-y-4" style={{ maxHeight: "45vh" }}>
+      <div className="space-y-4 overflow-y-auto rounded-t-3xl bg-white p-4 shadow-xl" style={{ maxHeight: "45vh" }}>
         {/* Driver Info Card */}
         <Card>
           <CardContent className="pt-4">
-            <div className="flex items-center gap-4">
-              <Avatar className="h-16 w-16">
+            <div className="flex items-start gap-4">
+              <Avatar className="h-16 w-16 shrink-0">
                 <AvatarImage src={ride.driver.photo || undefined} />
                 <AvatarFallback className="text-xl">{ride.driver.name.charAt(0)}</AvatarFallback>
               </Avatar>
-              <div className="flex-1">
-                <h3 className="font-bold text-lg">{ride.driver.name}</h3>
-                <div className="flex items-center gap-2 text-sm text-gray-600">
+              <div className="min-w-0 flex-1">
+                <h3 className="break-words text-lg font-bold">{ride.driver.name}</h3>
+                <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
                   <span>{ride.driver.vehicleType}</span>
                   <span>•</span>
                   <span>{ride.driver.plateNumber}</span>
                 </div>
-                <div className="flex items-center gap-3 mt-1">
+                <div className="mt-1 flex flex-wrap items-center gap-3">
                   <div className="flex items-center gap-1">
                     <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
                     <span className="font-semibold">{ride.driver.rating}</span>
@@ -145,7 +142,7 @@ export default function LiveTracking() {
                   <span className="text-sm text-gray-600">{ride.driver.totalTrips} trips</span>
                 </div>
               </div>
-              <div className="flex flex-col gap-2">
+              <div className="flex shrink-0 flex-col gap-2">
                 <Button
                   size="icon"
                   variant="outline"
@@ -170,34 +167,34 @@ export default function LiveTracking() {
             <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mt-1">
               <div className="h-3 w-3 rounded-full bg-green-600"></div>
             </div>
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <p className="text-sm text-gray-600">Pickup</p>
-              <p className="font-semibold">{ride.pickup}</p>
+              <p className="break-words font-semibold">{ride.pickup}</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
             <MapPin className="h-8 w-8 text-red-500 flex-shrink-0 mt-1" />
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <p className="text-sm text-gray-600">Destination</p>
-              <p className="font-semibold">{ride.destination}</p>
+              <p className="break-words font-semibold">{ride.destination}</p>
             </div>
           </div>
         </div>
 
         {/* Fare Info */}
-        <div className="flex justify-between items-center p-4 bg-[rgba(75,15,20,0.05)] rounded-lg">
-          <div>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[rgba(75,15,20,0.05)] p-4">
+          <div className="min-w-0">
             <p className="text-sm text-gray-600">Total Fare</p>
             <p className="text-2xl font-bold text-[#4B0F14]">₱{ride.fare}</p>
           </div>
-          <div className="text-right">
+          <div className="min-w-0 text-left sm:text-right">
             <p className="text-sm text-gray-600">Distance</p>
-            <p className="font-semibold">{ride.distance}</p>
+            <p className="break-words font-semibold">{ride.distance}</p>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Button
             variant="outline"
             className="border-red-500 text-red-500 hover:bg-red-50"
@@ -212,7 +209,7 @@ export default function LiveTracking() {
             onClick={handleEmergency}
           >
             <AlertCircle className="h-4 w-4 mr-2" />
-            Emergency
+            Call 911
           </Button>
         </div>
 
