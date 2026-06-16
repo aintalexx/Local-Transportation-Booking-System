@@ -9,7 +9,7 @@ import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import { Calendar } from "../../components/ui/calendar";
-import { Navigation, Phone, User, Bike, UserCircle, CalendarIcon, Eye, EyeOff, X } from "lucide-react";
+import { Navigation, Phone, User, Bike, UserCircle, CalendarIcon, Eye, EyeOff, X, Camera } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -32,6 +32,8 @@ import {
   validatePHPhone,
   validatePlateNumber,
   validateUsername,
+  validatePHLicenseNumber,
+  formatPHLicenseNumber,
 } from "../../utils/validators";
 import { signInWithGoogle } from "../../utils/supabaseAuth";
 import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
@@ -39,7 +41,7 @@ import { createDemoOtp } from "../../utils/demoOtp";
 
 export default function RegisterPage() {
   const navigate = useNavigate();
-  const [step, setStep] = useState<"role" | "details">("role");
+  const [step, setStep] = useState<"role" | "details" | "driverContact" | "driverVehicle">("role");
   const [role, setRole] = useState<"passenger" | "driver">("passenger");
   const [formData, setFormData] = useState({
     surname: "",
@@ -58,7 +60,12 @@ export default function RegisterPage() {
     // Driver-specific fields
     vehicleType: "tricycle" as "tricycle",
     plateNumber: "",
-    driverLicensePhoto: null as string | null,
+    licenseNumber: "",
+    validIdPhoto: null as string | null,
+    orCrPhoto: null as string | null,
+    clearancePhoto: null as string | null,
+    profilePhoto: null as string | null,
+    vehiclePhoto: null as string | null,
   });
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isGuardianConfirmed, setIsGuardianConfirmed] = useState(false);
@@ -71,12 +78,11 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showTermsPopup, setShowTermsPopup] = useState(false);
   const [showPrivacyPopup, setShowPrivacyPopup] = useState(false);
+  const [zoomModal, setZoomModal] = useState<{ url: string; title: string } | null>(null);
 
   const isMinor = formData.birthdate ? calculateAge(formData.birthdate) < 18 : false;
 
   const handleBirthdateInputChange = (rawValue: string) => {
-    // Work only with digits — strip everything else, then reformat.
-    // This makes backspace always delete the rightmost digit, not a slash.
     const digits = rawValue.replace(/\D/g, "").slice(0, 8);
 
     let formatted = digits;
@@ -138,7 +144,11 @@ export default function RegisterPage() {
   };
 
   const handleContinueFromRole = () => {
-    setStep("details");
+    if (role === "driver") {
+      setStep("driverContact");
+    } else {
+      setStep("details");
+    }
   };
 
   const handleGoogleSignup = async () => {
@@ -157,23 +167,69 @@ export default function RegisterPage() {
     }
   };
 
+  const handleNextToVehicle = () => {
+    setShowValidationErrors(true);
+    const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
+    const normalizedEmail = formData.email.trim();
+
+    const contactCheck = firstInvalid([
+      validateName(formData.surname, "Surname"),
+      validateName(formData.firstName, "First name"),
+      formData.noMiddleName ? { valid: true, message: "" } : validateName(formData.middleName, "Middle name"),
+      validateBirthdate(formData.birthdate),
+      validatePHPhone(normalizedPhone),
+      validateEmail(normalizedEmail),
+      validatePassword(formData.password),
+    ]);
+
+    if (!contactCheck.valid) {
+      toast.error(contactCheck.message);
+      return;
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    if (formData.birthdate && calculateAge(formData.birthdate) < 18) {
+      toast.error("You must be at least 18 years old to register as a driver");
+      return;
+    }
+
+    if (phoneExists(normalizedPhone)) {
+      toast.error("Phone number already registered. Please login or use a different number.");
+      return;
+    }
+
+    if (emailExists(normalizedEmail)) {
+      toast.error("Email already registered. Please use a different email.");
+      return;
+    }
+
+    setStep("driverVehicle");
+    setShowValidationErrors(false);
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setShowValidationErrors(true);
 
     const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
-    const normalizedGuardianPhone = formatPHPhoneInput(formData.guardianPhone);
     const normalizedEmail = formData.email.trim();
-    const normalizedUsername = formData.username.trim();
     const normalizedPlate = formData.plateNumber.trim().toUpperCase();
+    const finalUsername = role === "passenger" 
+      ? formData.username.trim() 
+      : `driver_${normalizedPhone.replace(/\D/g, "")}`;
 
+    // Validate Basic Details
     const basicCheck = firstInvalid([
       validateName(formData.surname, "Surname"),
       validateName(formData.firstName, "First name"),
       formData.noMiddleName ? { valid: true, message: "" } : validateName(formData.middleName, "Middle name"),
       validateBirthdate(formData.birthdate),
       validatePHPhone(normalizedPhone),
-      validateUsername(normalizedUsername),
+      role === "passenger" ? validateUsername(formData.username.trim()) : ok,
       validateEmail(normalizedEmail),
       validatePassword(formData.password),
     ]);
@@ -191,14 +247,13 @@ export default function RegisterPage() {
     if (!formData.birthdate) return;
     const age = calculateAge(formData.birthdate);
 
-    // Drivers must be 18 or older
     if (role === "driver" && age < 18) {
       toast.error("You must be at least 18 years old to register as a driver");
       return;
     }
 
-    // Passengers under 18 need guardian info
     if (role === "passenger" && age < 18) {
+      const normalizedGuardianPhone = formatPHPhoneInput(formData.guardianPhone);
       const guardianCheck = firstInvalid([
         validateName(formData.guardianName, "Guardian's full name"),
         validatePHPhone(normalizedGuardianPhone, "Guardian phone number"),
@@ -218,13 +273,11 @@ export default function RegisterPage() {
       }
     }
 
-    // Check if username already exists
-    if (usernameExists(normalizedUsername)) {
+    if (role === "passenger" && usernameExists(finalUsername)) {
       toast.error("Username already taken. Please choose a different username.");
       return;
     }
 
-    // Check if phone number already exists
     if (phoneExists(normalizedPhone)) {
       toast.error("Phone number already registered. Please login or use a different number.");
       return;
@@ -235,21 +288,42 @@ export default function RegisterPage() {
       return;
     }
 
-    // Validate driver-specific fields
+    // Validate driver-specific details (License format & 5 Photos)
     if (role === "driver") {
+      const licenseCheck = validatePHLicenseNumber(formData.licenseNumber);
+      if (!licenseCheck.valid) {
+        toast.error(licenseCheck.message);
+        return;
+      }
+
       const plateCheck = validatePlateNumber(normalizedPlate);
       if (!plateCheck.valid) {
         toast.error(plateCheck.message);
         return;
       }
 
-      if (!formData.driverLicensePhoto) {
-        toast.error("Please upload a photo of your driver's license");
+      if (!formData.profilePhoto) {
+        toast.error("Driver profile photo is required");
+        return;
+      }
+      if (!formData.validIdPhoto) {
+        toast.error("Valid ID photo is required");
+        return;
+      }
+      if (!formData.orCrPhoto) {
+        toast.error("OR/CR document photo is required");
+        return;
+      }
+      if (!formData.clearancePhoto) {
+        toast.error("Barangay/NBI clearance photo is required");
+        return;
+      }
+      if (!formData.vehiclePhoto) {
+        toast.error("Vehicle/tricycle photo is required");
         return;
       }
     }
 
-    // Validate terms and privacy policy
     if (!agreedToTerms) {
       toast.error("You must accept the Terms and Privacy Policy to continue");
       return;
@@ -261,7 +335,7 @@ export default function RegisterPage() {
       const birthdateString = formData.birthdate ? formData.birthdate.toISOString() : "";
 
       const userData = {
-        username: normalizedUsername,
+        username: finalUsername,
         password: formData.password,
         phoneNumber: normalizedPhone,
         surname: normalizeSpaces(formData.surname),
@@ -271,14 +345,20 @@ export default function RegisterPage() {
         email: normalizedEmail,
         birthdate: birthdateString,
         role,
-        guardianName: normalizeSpaces(formData.guardianName),
-        guardianPhone: normalizedGuardianPhone,
+        guardianName: role === "passenger" ? normalizeSpaces(formData.guardianName) : "",
+        guardianPhone: role === "passenger" ? formatPHPhoneInput(formData.guardianPhone) : "",
         rating: 5.0,
         totalTrips: 0,
         totalEarnings: 0,
         vehicleType: role === "driver" ? "Tricycle" : "",
         plateNumber: role === "driver" ? normalizedPlate : "",
-        driverLicensePhoto: role === "driver" ? (formData.driverLicensePhoto || "") : "",
+        driverLicensePhoto: role === "driver" ? (formData.validIdPhoto || "") : "",
+        licenseNumber: role === "driver" ? formData.licenseNumber.trim().toUpperCase() : "",
+        validIdPhoto: role === "driver" ? (formData.validIdPhoto || "") : "",
+        orCrPhoto: role === "driver" ? (formData.orCrPhoto || "") : "",
+        clearancePhoto: role === "driver" ? (formData.clearancePhoto || "") : "",
+        profilePhoto: role === "driver" ? (formData.profilePhoto || "") : "",
+        vehiclePhoto: role === "driver" ? (formData.vehiclePhoto || "") : "",
         vehicleColor: "",
         memberSince: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
         approvalStatus: role === "driver" ? "pending" : "approved",
@@ -295,8 +375,6 @@ export default function RegisterPage() {
           generatedOtp,
         },
       });
-      return;
-
     } catch (error) {
       toast.error("Registration failed. Please try again.");
     } finally {
@@ -304,6 +382,79 @@ export default function RegisterPage() {
     }
   };
 
+  const handlePhotoUpload = (key: "validIdPhoto" | "orCrPhoto" | "clearancePhoto" | "profilePhoto" | "vehiclePhoto") => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith("image/")) {
+        toast.error("Invalid file. Please upload an image only.");
+        e.target.value = "";
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({ ...prev, [key]: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const renderUploadCard = (
+    label: string, 
+    key: "validIdPhoto" | "orCrPhoto" | "clearancePhoto" | "profilePhoto" | "vehiclePhoto",
+    icon: React.ReactNode
+  ) => {
+    const photo = formData[key];
+    return (
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">{label}</span>
+        {!photo ? (
+          <div className="border-2 border-dashed border-red-200 hover:border-red-300 rounded-xl p-4 bg-red-50/5 text-center flex flex-col items-center justify-center cursor-pointer hover:bg-red-50/15 transition-all relative h-32">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoUpload(key)}
+              className="absolute inset-0 opacity-0 cursor-pointer z-10"
+              required
+            />
+            <div className="w-9 h-9 rounded-full bg-red-50 flex items-center justify-center mb-1.5">
+              {icon}
+            </div>
+            <p className="text-xs font-bold text-gray-800">Upload Image</p>
+            <p className="text-[10px] text-gray-400">Tap to capture</p>
+          </div>
+        ) : (
+          <div className="border border-red-200 rounded-xl p-1 bg-white relative overflow-hidden flex flex-col items-center justify-center shadow-inner h-32">
+            <img
+              src={photo}
+              alt={label}
+              className="w-full h-full object-cover rounded-lg"
+            />
+            <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 flex items-center justify-center gap-2 transition-all rounded-lg">
+              <button
+                type="button"
+                onClick={() => setZoomModal({ url: photo, title: label })}
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-white/95 text-gray-800 hover:bg-red-100 shadow transition-colors"
+                title="View"
+              >
+                <Eye className="w-4 h-4" />
+              </button>
+              <label className="flex items-center justify-center w-8 h-8 rounded-full bg-white/95 text-gray-800 hover:bg-red-100 shadow cursor-pointer transition-colors relative">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoUpload(key)}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                />
+                <Camera className="w-4 h-4" />
+              </label>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // 1. Role Selection Step
   if (step === "role") {
     return (
       <div className="min-h-screen bg-gradient-to-b from-[#FFF8E7] to-white flex items-center justify-center p-4">
@@ -442,6 +593,560 @@ export default function RegisterPage() {
     );
   }
 
+  // 2. Driver Step 1: Contact Details Form
+  if (step === "driverContact") {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#FFF8E7] to-white flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="flex justify-center mb-4">
+              <Navigation className="h-12 w-12 text-[#4B0F14]" />
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900">Driver Sign-Up</h1>
+            <p className="text-gray-600 mt-2">Step 1: Contact Details</p>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Contact Details</CardTitle>
+              <CardDescription>Please enter your contact and account details</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="surname">Surname</Label>
+                  <Input
+                    id="surname"
+                    type="text"
+                    placeholder="Doe"
+                    value={formData.surname}
+                    onChange={(e) => setFormData({ ...formData, surname: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">First Name</Label>
+                  <Input
+                    id="firstName"
+                    type="text"
+                    placeholder="John"
+                    value={formData.firstName}
+                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="middleName">Middle Name</Label>
+                  <Input
+                    id="middleName"
+                    type="text"
+                    placeholder="Middle"
+                    value={formData.middleName}
+                    onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
+                    disabled={formData.noMiddleName}
+                    required={!formData.noMiddleName}
+                  />
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="noMiddleName"
+                      checked={formData.noMiddleName}
+                      onCheckedChange={(checked) => {
+                        setFormData({ ...formData, noMiddleName: checked as boolean, middleName: "" });
+                      }}
+                    />
+                    <label htmlFor="noMiddleName" className="text-sm text-gray-600 cursor-pointer select-none">
+                      No Middle Name
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="suffix">Suffix (Optional)</Label>
+                  <Select
+                    value={formData.suffix || "none"}
+                    onValueChange={(value) => setFormData({ ...formData, suffix: normalizeOptionalSuffix(value) })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select suffix" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="Jr.">Jr.</SelectItem>
+                      <SelectItem value="Sr.">Sr.</SelectItem>
+                      <SelectItem value="II">II</SelectItem>
+                      <SelectItem value="III">III</SelectItem>
+                      <SelectItem value="IV">IV</SelectItem>
+                      <SelectItem value="V">V</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="birthdate">Birthdate</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="text"
+                      placeholder="MM/DD/YYYY"
+                      value={birthdateInput || (formData.birthdate ? format(formData.birthdate, "MM/dd/yyyy") : "")}
+                      onChange={(e) => handleBirthdateInputChange(e.target.value)}
+                      inputMode="numeric"
+                      className="flex-1"
+                    />
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex h-10 items-center justify-center rounded-md border border-input bg-background px-3 hover:bg-accent hover:text-accent-foreground"
+                        >
+                          <CalendarIcon className="h-4 w-4" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <div className="p-3 space-y-2">
+                          <div className="flex gap-2">
+                            <Select
+                              value={formData.birthdate ? formData.birthdate.getMonth().toString() : ""}
+                              onValueChange={handleMonthChange}
+                            >
+                              <SelectTrigger className="w-[140px]">
+                                <SelectValue placeholder="Month" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="0">January</SelectItem>
+                                <SelectItem value="1">February</SelectItem>
+                                <SelectItem value="2">March</SelectItem>
+                                <SelectItem value="3">April</SelectItem>
+                                <SelectItem value="4">May</SelectItem>
+                                <SelectItem value="5">June</SelectItem>
+                                <SelectItem value="6">July</SelectItem>
+                                <SelectItem value="7">August</SelectItem>
+                                <SelectItem value="8">September</SelectItem>
+                                <SelectItem value="9">October</SelectItem>
+                                <SelectItem value="10">November</SelectItem>
+                                <SelectItem value="11">December</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Select
+                              value={formData.birthdate ? formData.birthdate.getFullYear().toString() : ""}
+                              onValueChange={handleYearChange}
+                            >
+                              <SelectTrigger className="w-[100px]">
+                                <SelectValue placeholder="Year" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {Array.from({ length: new Date().getFullYear() - 1900 + 1 }, (_, i) => new Date().getFullYear() - i).map((year) => (
+                                  <SelectItem key={year} value={year.toString()}>
+                                    {year}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <Calendar
+                          mode="single"
+                          selected={formData.birthdate}
+                          onSelect={handleCalendarSelect}
+                          disabled={(date) => !validateBirthdate(date).valid}
+                          month={formData.birthdate}
+                          onMonthChange={(date) => {
+                            if (date) {
+                              setFormData({ ...formData, birthdate: date });
+                              setBirthdateInput(format(date, "MM/dd/yyyy"));
+                            }
+                          }}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="09XXXXXXXXX"
+                      value={formData.phoneNumber}
+                      onChange={handlePhoneChange}
+                      inputMode="numeric"
+                      maxLength={11}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="your.email@example.com"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value.trim() })}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter a strong password"
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      className="pr-14"
+                      required
+                      minLength={8}
+                      maxLength={30}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-2 flex !h-full !min-h-0 !w-9 !min-w-0 items-center justify-center p-0 text-gray-400 hover:text-gray-600"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    8-30 characters with uppercase, lowercase, number, and special character.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirm Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="confirmPassword"
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="Re-enter password"
+                      value={formData.confirmPassword}
+                      onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                      className="pr-14"
+                      required
+                      minLength={8}
+                      maxLength={30}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute inset-y-0 right-2 flex !h-full !min-h-0 !w-9 !min-w-0 items-center justify-center p-0 text-gray-400 hover:text-gray-600"
+                      aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <Button onClick={handleNextToVehicle} className="w-full mt-6">
+                  Next: Vehicle &amp; License
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setStep("role")}
+                  className="w-full"
+                >
+                  Back
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Driver Step 2: Vehicle & License Details (Guideline-based)
+  if (step === "driverVehicle") {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#FFF8E7] to-white flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-6">
+            <div className="flex justify-center mb-4">
+              <Navigation className="h-10 w-10 text-[#4B0F14]" />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900">Activation</h1>
+            <p className="text-xs text-gray-500 mt-1">
+              Authority of drycab is only applicable to Filipino citizens at least 21 years old
+            </p>
+          </div>
+
+          <Card className="border-t-4 border-t-red-500 shadow-xl">
+            <CardHeader className="pb-3">
+              {/* Photo Instructions Title */}
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-sm font-extrabold text-gray-800">Photo Instructions</span>
+                <button
+                  type="button"
+                  onClick={() => toast.info("Guide: Upload a clear, flat photo of your ID. No shadows or glares.")}
+                  className="text-xs font-bold text-red-500 hover:underline"
+                >
+                  View Details &gt;
+                </button>
+              </div>
+
+              {/* Styled Guideline Cards (Expired, Blurry, Glare, Dark) */}
+              <div className="grid grid-cols-4 gap-2">
+                {/* 1. Expired */}
+                <div className="border border-red-200 rounded-lg p-1.5 bg-red-50/20 flex flex-col items-center relative overflow-hidden">
+                  <div className="w-full h-10 bg-white rounded border border-gray-100 flex items-center justify-center relative overflow-hidden">
+                    <span className="absolute text-[6px] font-black text-red-600 border border-red-600 px-0.5 py-0.2 rounded rotate-12 bg-white/95 uppercase tracking-tighter">Expired</span>
+                    <div className="w-6 h-1.5 bg-gray-200 rounded-full mb-0.5" />
+                    <div className="w-8 h-1 bg-gray-100 rounded-full" />
+                  </div>
+                  <span className="mt-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-extrabold">✕</span>
+                  <span className="text-[9px] text-gray-500 font-semibold mt-0.5">Expired</span>
+                </div>
+
+                {/* 2. Blurry */}
+                <div className="border border-red-200 rounded-lg p-1.5 bg-red-50/20 flex flex-col items-center">
+                  <div className="w-full h-10 bg-white rounded border border-gray-100 flex flex-col items-center justify-center blur-[1px]">
+                    <div className="w-6 h-1.5 bg-gray-200 rounded-full mb-0.5" />
+                    <div className="w-8 h-1 bg-gray-100 rounded-full" />
+                  </div>
+                  <span className="mt-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-extrabold">✕</span>
+                  <span className="text-[9px] text-gray-500 font-semibold mt-0.5">Blurry</span>
+                </div>
+
+                {/* 3. Glare */}
+                <div className="border border-red-200 rounded-lg p-1.5 bg-red-50/20 flex flex-col items-center relative overflow-hidden">
+                  <div className="w-full h-10 bg-white rounded border border-gray-100 flex flex-col items-center justify-center relative">
+                    <div className="absolute top-1 left-2 w-4 h-4 bg-white rounded-full blur-[2px] opacity-80" />
+                    <div className="w-6 h-1.5 bg-gray-200 rounded-full mb-0.5" />
+                    <div className="w-8 h-1 bg-gray-100 rounded-full" />
+                  </div>
+                  <span className="mt-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-extrabold">✕</span>
+                  <span className="text-[9px] text-gray-500 font-semibold mt-0.5">With Glare</span>
+                </div>
+
+                {/* 4. Dark */}
+                <div className="border border-red-200 rounded-lg p-1.5 bg-red-50/20 flex flex-col items-center">
+                  <div className="w-full h-10 bg-gray-700 rounded border border-gray-800 flex flex-col items-center justify-center brightness-50">
+                    <div className="w-6 h-1.5 bg-gray-500 rounded-full mb-0.5" />
+                    <div className="w-8 h-1 bg-gray-600 rounded-full" />
+                  </div>
+                  <span className="mt-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-extrabold">✕</span>
+                  <span className="text-[9px] text-gray-500 font-semibold mt-0.5">Dark</span>
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent>
+              <form onSubmit={handleRegister} className="space-y-5">
+                {/* 5 Documents Grid */}
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  {renderUploadCard("Driver Profile Photo", "profilePhoto", <UserCircle className="h-5 w-5 text-red-500" />)}
+                  {renderUploadCard("Valid ID / License", "validIdPhoto", <Camera className="h-5 w-5 text-red-500" />)}
+                  {renderUploadCard("OR/CR Document", "orCrPhoto", <Navigation className="h-5 w-5 text-red-500" />)}
+                  {renderUploadCard("Barangay/NBI Clearance", "clearancePhoto", <User className="h-5 w-5 text-red-500" />)}
+                  <div className="col-span-2">
+                    {renderUploadCard("Vehicle/Tricycle Photo", "vehiclePhoto", <Bike className="h-5 w-5 text-red-500" />)}
+                  </div>
+                </div>
+
+                {/* Zoom Photo Modal */}
+                <Dialog open={!!zoomModal} onOpenChange={(open) => { if (!open) setZoomModal(null); }}>
+                  <DialogContent className="max-w-md p-2 bg-black/95 border-none">
+                    <DialogHeader className="p-2 flex justify-between items-center text-white">
+                      <DialogTitle className="text-sm font-bold text-white">{zoomModal?.title || "Photo Preview"}</DialogTitle>
+                    </DialogHeader>
+                    {zoomModal?.url && (
+                      <img
+                        src={zoomModal.url}
+                        alt="Zoomed Preview"
+                        className="w-full h-auto max-h-[70vh] object-contain rounded-lg"
+                      />
+                    )}
+                  </DialogContent>
+                </Dialog>
+
+                {/* ID / License Number */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="licenseNumber" className="text-xs font-bold text-gray-500 uppercase">Driver's License Number</Label>
+                  <Input
+                    id="licenseNumber"
+                    type="text"
+                    placeholder="L03-YY-XXXXXX"
+                    value={formData.licenseNumber}
+                    onChange={(e) => setFormData({ ...formData, licenseNumber: formatPHLicenseNumber(e.target.value) })}
+                    maxLength={13}
+                    required
+                    className="border-gray-200 focus:border-red-300 rounded-xl"
+                  />
+                  <p className="text-[10px] text-gray-400">Standard Philippine Format: L03-YY-XXXXXX</p>
+                </div>
+
+                {/* Tricycle Plate Number */}
+                <div className="space-y-2 pt-2">
+                  <Label htmlFor="plateNumber" className="text-xs font-bold text-gray-500 uppercase">Tricycle Plate Number</Label>
+                  
+                  {/* Real-time Dynamic Philippine Tricycle Plate Preview Component */}
+                  <div className="flex justify-center py-2">
+                    <div className="w-[180px] h-[100px] border-4 border-gray-900 rounded-2xl bg-white flex flex-col overflow-hidden shadow-lg relative">
+                      {/* Top banner (Green with QR code gap) */}
+                      <div className="h-[26px] flex w-full border-b border-gray-300">
+                        <div className="flex-1 bg-[#007a5e]" />
+                        <div className="w-[42px] bg-white flex items-center justify-center shrink-0 border-l border-r border-gray-200 relative p-0.5">
+                          {/* QR Code grid block */}
+                          <div className="w-full h-full bg-gray-100 flex flex-wrap p-0.5 items-center justify-center gap-0.5 opacity-80">
+                            <div className="w-1.5 h-1.5 bg-black" />
+                            <div className="w-1.5 h-1.5 bg-black" />
+                            <div className="w-1.5 h-1.5 bg-black" />
+                            <div className="w-1.5 h-1.5 bg-black" />
+                            <div className="w-1.5 h-1.5 bg-black" />
+                            <div className="w-1.5 h-1.5 bg-black" />
+                            <div className="w-1.5 h-1.5 bg-black" />
+                            <div className="w-1.5 h-1.5 bg-black" />
+                          </div>
+                        </div>
+                        <div className="flex-1 bg-[#007a5e]" />
+                      </div>
+                      
+                      {/* Plate Code Number */}
+                      <div className="flex-1 flex items-center justify-center p-1 bg-white select-none">
+                        <span className="font-mono text-3xl font-black tracking-wider text-gray-950">
+                          {formData.plateNumber.trim() ? formData.plateNumber.trim().toUpperCase() : "123ABC"}
+                        </span>
+                      </div>
+                      
+                      {/* Mounting Slots at top */}
+                      <div className="absolute top-[8px] left-[22px] w-3 h-1.5 bg-gray-400 rounded-full" />
+                      <div className="absolute top-[8px] right-[22px] w-3 h-1.5 bg-gray-400 rounded-full" />
+                    </div>
+                  </div>
+
+                  <Input
+                    id="plateNumber"
+                    type="text"
+                    placeholder="123ABC"
+                    value={formData.plateNumber}
+                    onChange={(e) => {
+                      const plateNumber = e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 6);
+                      setFormData({ ...formData, plateNumber });
+                    }}
+                    maxLength={6}
+                    required
+                    className="border-gray-200 focus:border-red-300 rounded-xl"
+                  />
+                  <p className="text-xs text-gray-400">Standard tricycle plate format: 2-6 alphanumeric characters.</p>
+                </div>
+
+                {/* Terms Acceptance */}
+                <div className={cn(
+                  "flex items-start gap-3 rounded-xl border p-3",
+                  showValidationErrors && !agreedToTerms
+                    ? "border-red-200 bg-red-50"
+                    : "border-[rgba(75,15,20,0.1)] bg-[rgba(75,15,20,0.03)]"
+                )}>
+                  <Checkbox
+                    id="terms"
+                    checked={agreedToTerms}
+                    onCheckedChange={(checked) => setAgreedToTerms(checked as boolean)}
+                    className="mt-1"
+                    required
+                  />
+                  <div className="min-w-0 flex-1 text-sm font-medium leading-6 text-gray-800">
+                    <label htmlFor="terms" className="cursor-pointer">
+                      <span className="text-red-500">*</span> I agree to the{" "}
+                    </label>
+                    <button
+                      type="button"
+                      className="inline !h-auto !min-h-0 !min-w-0 p-0 align-baseline text-sm font-semibold leading-6 text-[#4B0F14] hover:underline"
+                      onClick={(e) => { e.preventDefault(); setShowTermsPopup(true); }}
+                    >
+                      Terms &amp; Conditions
+                    </button>{" "}
+                    and{" "}
+                    <button
+                      type="button"
+                      className="inline !h-auto !min-h-0 !min-w-0 p-0 align-baseline text-sm font-semibold leading-6 text-[#4B0F14] hover:underline"
+                      onClick={(e) => { e.preventDefault(); setShowPrivacyPopup(true); }}
+                    >
+                      Privacy Policy
+                    </button>
+                  </div>
+                </div>
+
+                {/* Terms Popup */}
+                <Dialog open={showTermsPopup} onOpenChange={setShowTermsPopup}>
+                  <DialogContent className="max-w-sm max-h-[70vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Terms &amp; Conditions</DialogTitle>
+                    </DialogHeader>
+                    <div className="text-sm text-gray-600 space-y-3 leading-relaxed">
+                      <p>By using Arangkada, you agree to use the platform lawfully, treat all users respectfully, and provide accurate information.</p>
+                      <p>Passengers must pay agreed fares and must not damage driver vehicles. Drivers must hold valid licenses, comply with safety standards, and complete accepted rides.</p>
+                      <p>Driver accounts require admin approval before accepting rides. Arangkada may suspend accounts that violate these Terms.</p>
+                      <p>Arangkada is a technology intermediary and is not liable for the conduct of drivers or passengers.</p>
+                      <button
+                        type="button"
+                        className="text-[#4B0F14] hover:underline text-sm font-medium"
+                        onClick={() => { setShowTermsPopup(false); navigate("/terms"); }}
+                      >
+                        Read the full Terms &amp; Conditions →
+                      </button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                {/* Privacy Policy Popup */}
+                <Dialog open={showPrivacyPopup} onOpenChange={setShowPrivacyPopup}>
+                  <DialogContent className="max-w-sm max-h-[70vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Privacy Policy</DialogTitle>
+                    </DialogHeader>
+                    <div className="text-sm text-gray-600 space-y-3 leading-relaxed">
+                      <p>Arangkada collects your name, phone number, location data, and ride history to provide our services.</p>
+                      <p>Your location is shared with your matched driver or passenger only during an active ride. We do not sell your personal data.</p>
+                      <p>Driver documents are used solely for identity verification and admin approval. You may access, correct, or delete your data through the app settings or by contacting us.</p>
+                      <p>We retain ride records for at least 3 years for legal compliance.</p>
+                      <button
+                        type="button"
+                        className="text-[#4B0F14] hover:underline text-sm font-medium"
+                        onClick={() => { setShowPrivacyPopup(false); navigate("/privacy"); }}
+                      >
+                        Read the full Privacy Policy →
+                      </button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                {/* Action Buttons: Confirm is styled red/orange like sample */}
+                <Button
+                  type="submit"
+                  className="w-full bg-[#e14e34] hover:bg-[#c93e27] text-white font-extrabold h-12 rounded-xl transition-all"
+                  disabled={loading}
+                >
+                  {loading ? "Preparing OTP..." : "Confirm"}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setStep("driverContact")}
+                  className="w-full rounded-xl"
+                >
+                  Back to Contact Details
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // 4. Passenger Details Form (Step details)
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#FFF8E7] to-white flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -461,13 +1166,6 @@ export default function RegisterPage() {
             <CardDescription>Fill in your information to continue</CardDescription>
           </CardHeader>
           <CardContent>
-            {role === "driver" && isMinor && (
-              <div className="mb-4 p-4 bg-red-50 border-2 border-red-200 rounded-lg">
-                <p className="text-sm text-red-800 font-semibold">
-                  ⚠️ You must be at least 18 years old to register as a driver. Please change your role to Passenger or verify your birthdate.
-                </p>
-              </div>
-            )}
             <form onSubmit={handleRegister} className="space-y-5">
               {/* Name Fields */}
               <div className="space-y-2">
@@ -513,7 +1211,7 @@ export default function RegisterPage() {
                       setFormData({ ...formData, noMiddleName: checked as boolean, middleName: "" });
                     }}
                   />
-                  <label htmlFor="noMiddleName" className="text-sm text-gray-600">
+                  <label htmlFor="noMiddleName" className="text-sm text-gray-600 cursor-pointer">
                     No Middle Name
                   </label>
                 </div>
@@ -619,20 +1317,15 @@ export default function RegisterPage() {
                     </PopoverContent>
                   </Popover>
                 </div>
-                {formData.birthdate && isMinor && role === "passenger" && (
+                {formData.birthdate && isMinor && (
                   <p className="text-sm text-orange-600">
                     You are under 18. Guardian information is required.
-                  </p>
-                )}
-                {formData.birthdate && isMinor && role === "driver" && (
-                  <p className="text-sm text-red-600 font-semibold">
-                    You must be at least 18 years old to register as a driver.
                   </p>
                 )}
               </div>
 
               {/* Guardian Information for Minors (Passengers only) */}
-              {isMinor && role === "passenger" && (
+              {isMinor && (
                 <div className="space-y-4 p-4 border-2 border-orange-200 rounded-lg bg-orange-50">
                   <h3 className="font-semibold text-orange-900">Guardian Information Required</h3>
 
@@ -803,61 +1496,6 @@ export default function RegisterPage() {
                 />
               </div>
 
-              {/* Driver-specific fields */}
-              {role === "driver" && (
-                <div className="space-y-5 p-5 border-2 border-[rgba(75,15,20,0.2)] rounded-xl bg-[rgba(75,15,20,0.05)]">
-                  <h3 className="font-semibold text-[#4B0F14]">Driver Information</h3>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="plateNumber">Plate Number</Label>
-                    <Input
-                      id="plateNumber"
-                      type="text"
-                      placeholder="ABC123"
-                      value={formData.plateNumber}
-                      onChange={(e) => {
-                        const plateNumber = e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 6);
-                        setFormData({ ...formData, plateNumber });
-                      }}
-                      maxLength={6}
-                      required
-                    />
-                    <p className="text-xs text-gray-500">2-6 letters or numbers, no spaces.</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="driverLicense">Driver's License Photo</Label>
-                    <Input
-                      id="driverLicense"
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setFormData({ ...formData, driverLicensePhoto: reader.result as string });
-                          };
-                          reader.readAsDataURL(file);
-                        }
-                      }}
-                      required
-                    />
-                    {formData.driverLicensePhoto && (
-                      <div className="mt-2">
-                        <img
-                          src={formData.driverLicensePhoto}
-                          alt="Driver's License Preview"
-                          className="max-w-full h-32 object-contain rounded border"
-                        />
-                      </div>
-                    )}
-                    <p className="text-xs text-gray-600">Upload a clear photo of your driver's license</p>
-                  </div>
-                </div>
-              )}
-
-
               <div className={cn(
                 "flex items-start gap-3 rounded-xl border p-3",
                 showValidationErrors && !agreedToTerms
@@ -940,9 +1578,9 @@ export default function RegisterPage() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={loading || (role === "driver" && isMinor)}
+                disabled={loading}
               >
-                {loading ? "Preparing OTP..." : (role === "driver" && isMinor) ? "Must be 18+ to Register as Driver" : "Sign in"}
+                {loading ? "Preparing OTP..." : "Sign in"}
               </Button>
               <Button
                 type="button"
@@ -954,32 +1592,30 @@ export default function RegisterPage() {
               </Button>
             </form>
 
-            {role === "passenger" && (
-              <div className="mt-6">
-                <div className="mb-5 flex items-center gap-3">
-                  <div className="h-px flex-1 bg-gray-200" />
-                  <span className="text-xs font-medium text-gray-500">or</span>
-                  <div className="h-px flex-1 bg-gray-200" />
-                </div>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleGoogleSignup}
-                  disabled={googleLoading}
-                  className="w-full gap-3"
-                >
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-sm font-bold text-[#4B0F14]">
-                    G
-                  </span>
-                  {googleLoading ? "Opening Google..." : "Continue with Google"}
-                </Button>
-
-                <p className="mt-2 text-center text-xs text-gray-500">
-                  Google sign-up continues with phone number and demo OTP verification.
-                </p>
+            <div className="mt-6">
+              <div className="mb-5 flex items-center gap-3">
+                <div className="h-px flex-1 bg-gray-200" />
+                <span className="text-xs font-medium text-gray-500">or</span>
+                <div className="h-px flex-1 bg-gray-200" />
               </div>
-            )}
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleGoogleSignup}
+                disabled={googleLoading}
+                className="w-full gap-3"
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-sm font-bold text-[#4B0F14]">
+                  G
+                </span>
+                {googleLoading ? "Opening Google..." : "Continue with Google"}
+              </Button>
+
+              <p className="mt-2 text-center text-xs text-gray-500">
+                Google sign-up continues with phone number and demo OTP verification.
+              </p>
+            </div>
 
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600">

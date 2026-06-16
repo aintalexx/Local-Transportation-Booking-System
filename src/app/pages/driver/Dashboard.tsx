@@ -59,6 +59,11 @@ export default function DriverDashboard() {
     };
 
     void loadBookings();
+    const interval = setInterval(() => {
+      void loadBookings();
+    }, 2500);
+
+    return () => clearInterval(interval);
   }, [isOnline, currentUser, activeBooking]);
 
   const driver = {
@@ -105,6 +110,8 @@ export default function DriverDashboard() {
     );
 
     if (success) {
+      const acceptedBooking = getDriverActiveBooking(currentUser.username);
+      if (acceptedBooking) setActiveBooking(acceptedBooking);
       toast.success("Ride accepted! Navigate to pickup location.");
       refreshBooking();
       navigate("/driver/active-ride");

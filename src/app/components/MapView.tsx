@@ -12,6 +12,7 @@ interface MapViewProps {
   pickup?: MapLocation | null;
   destination?: MapLocation | null;
   driverLocation?: MapLocation | null;
+  routePoints?: MapLocation[];
   onPickupChange?: (location: { lat: number; lng: number; address: string }) => void;
   onDestinationChange?: (location: { lat: number; lng: number; address: string }) => void;
   height?: string;
@@ -47,6 +48,7 @@ function GoogleMapView({
   pickup,
   destination,
   driverLocation,
+  routePoints,
   onPickupChange,
   onDestinationChange,
   height = "400px",
@@ -151,35 +153,23 @@ function GoogleMapView({
     fallbackLineRef.current?.setMap(null);
     fallbackLineRef.current = null;
 
-    if (!pickup || !destination) return;
+    const routePath = routePoints && routePoints.length >= 2
+      ? routePoints
+      : pickup && destination
+        ? [pickup, destination]
+        : [];
 
-    const googleMaps = window.google;
-    const service = new googleMaps.maps.DirectionsService();
+    if (routePath.length < 2) return;
 
-    service.route(
-      {
-        origin: { lat: pickup.lat, lng: pickup.lng },
-        destination: { lat: destination.lat, lng: destination.lng },
-        travelMode: googleMaps.maps.TravelMode.DRIVING,
-        provideRouteAlternatives: false,
-      },
-      (result: any, status: string) => {
-        if (status === "OK" && result) {
-          directionsRendererRef.current?.setDirections(result);
-          return;
-        }
-
-        fallbackLineRef.current = new googleMaps.maps.Polyline({
-          path: [pickup, destination],
-          geodesic: true,
-          strokeColor: "#0B5ED7",
-          strokeOpacity: 0.85,
-          strokeWeight: 5,
-          map: mapRef.current,
-        });
-      }
-    );
-  }, [isReady, pickup, destination]);
+    fallbackLineRef.current = new window.google.maps.Polyline({
+      path: routePath.map(point => ({ lat: point.lat, lng: point.lng })),
+      geodesic: true,
+      strokeColor: "#0B5ED7",
+      strokeOpacity: 0.85,
+      strokeWeight: 5,
+      map: mapRef.current,
+    });
+  }, [isReady, pickup, destination, routePoints]);
 
   useEffect(() => {
     if (!isReady || !mapRef.current || !showCurrentLocation || !navigator.geolocation || !window.google?.maps) return;
@@ -227,6 +217,7 @@ function GoogleMapView({
           pickup={pickup}
           destination={destination}
           driverLocation={driverLocation}
+          routePoints={routePoints}
           onPickupChange={onPickupChange}
           onDestinationChange={onDestinationChange}
           height={height}
@@ -243,6 +234,7 @@ function LeafletMapView({
   pickup,
   destination,
   driverLocation,
+  routePoints,
   onPickupChange,
   onDestinationChange,
   height = "400px",
@@ -351,18 +343,21 @@ function LeafletMapView({
       routeLineRef.current = null;
     }
 
-    if (pickup && destination) {
+    const routePath = routePoints && routePoints.length >= 2
+      ? routePoints
+      : pickup && destination
+        ? [pickup, destination]
+        : [];
+
+    if (routePath.length >= 2) {
       routeLineRef.current = L.polyline(
-        [
-          [pickup.lat, pickup.lng],
-          [destination.lat, destination.lng],
-        ],
+        routePath.map(point => [point.lat, point.lng] as [number, number]),
         { color: "#0B5ED7", weight: 5, opacity: 0.85 }
       ).addTo(mapRef.current);
     }
 
-    fitLeafletMap(mapRef.current, [pickup, destination, driverLocation].filter(Boolean) as MapLocation[]);
-  }, [isReady, pickup, destination, driverLocation]);
+    fitLeafletMap(mapRef.current, [pickup, destination, driverLocation, ...(routePoints || [])].filter(Boolean) as MapLocation[]);
+  }, [isReady, pickup, destination, driverLocation, routePoints]);
 
   return <div ref={mapContainerRef} style={{ height, width: "100%", borderRadius: "8px" }} />;
 }

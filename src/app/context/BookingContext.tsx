@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { BookingData, getPassengerActiveBooking, getDriverActiveBooking, getPendingBookings } from "../utils/bookingDatabase";
+import { BookingData, getBooking, getPassengerActiveBooking, getDriverActiveBooking, getPendingBookings } from "../utils/bookingDatabase";
 import {
+  getSupabaseBooking,
   getSupabaseDriverActiveBooking,
   getSupabasePassengerActiveBooking,
   getSupabasePendingBookings,
@@ -46,13 +47,25 @@ export function BookingProvider({ children }: { children: ReactNode }) {
       const user = currentUser ? JSON.parse(currentUser) : null;
 
       if (activeBooking && user) {
+        const exactSupabaseBooking = await getSupabaseBooking(activeBooking.id);
+        if (exactSupabaseBooking) {
+          if (!cancelled) setActiveBookingState(exactSupabaseBooking);
+          return;
+        }
+
+        if (activeBooking.status === "ride_completed" || activeBooking.status === "completed" || activeBooking.status === "cancelled") {
+          const updated = getBooking(activeBooking.id) || activeBooking;
+          if (!cancelled) setActiveBookingState(updated);
+          return;
+        }
+
         if (user.role === "passenger") {
           const supabaseBooking = await getSupabasePassengerActiveBooking(user);
-          const updated = supabaseBooking || getPassengerActiveBooking(user.username);
+          const updated = supabaseBooking || getPassengerActiveBooking(user.username) || getBooking(activeBooking.id);
           if (!cancelled) setActiveBookingState(updated);
         } else if (user.role === "driver") {
           const supabaseBooking = await getSupabaseDriverActiveBooking(user);
-          const updated = supabaseBooking || getDriverActiveBooking(user.username);
+          const updated = supabaseBooking || getDriverActiveBooking(user.username) || getBooking(activeBooking.id);
           if (!cancelled) setActiveBookingState(updated);
         }
       }

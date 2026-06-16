@@ -84,13 +84,13 @@ export default function RideHistory() {
             <Card className="bg-white/10 backdrop-blur border-white/20">
               <CardContent className="pt-4">
                 <p className="text-[rgba(255,248,231,0.7)] text-sm">Total Rides</p>
-                <p className="break-words text-2xl font-bold">{rides.filter(r => r.status === "completed").length}</p>
+                <p className="break-words text-2xl font-bold text-white">{rides.filter(r => r.status === "completed").length}</p>
               </CardContent>
             </Card>
             <Card className="bg-white/10 backdrop-blur border-white/20">
               <CardContent className="pt-4">
                 <p className="text-[rgba(255,248,231,0.7)] text-sm">Total Spent</p>
-                <p className="break-words text-2xl font-bold">₱{totalSpent}</p>
+                <p className="break-words text-2xl font-bold text-white">₱{totalSpent}</p>
               </CardContent>
             </Card>
           </div>

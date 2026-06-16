@@ -1,0 +1,68 @@
+.admin-figma-theme {
+  --font-size: 15px;
+  --background: #f6f3ef;
+  --foreground: #1a0a0d;
+  --card: #ffffff;
+  --card-foreground: #1a0a0d;
+  --popover: #ffffff;
+  --popover-foreground: #1a0a0d;
+  --primary: #6b0e1a;
+  --primary-foreground: #ffffff;
+  --secondary: #ede8e2;
+  --secondary-foreground: #1a0a0d;
+  --muted: #ede8e2;
+  --muted-foreground: #7a6468;
+  --accent: #c49a1a;
+  --accent-foreground: #ffffff;
+  --destructive: #c0392b;
+  --destructive-foreground: #ffffff;
+  --border: rgba(107, 14, 26, 0.12);
+  --input: #ede8e2;
+  --input-background: #ede8e2;
+  --switch-background: #d4c5c8;
+  --font-weight-medium: 600;
+  --font-weight-normal: 400;
+  --ring: #c49a1a;
+  --chart-1: #6b0e1a;
+  --chart-2: #c49a1a;
+  --chart-3: #9c2d3b;
+  --chart-4: #e8c547;
+  --chart-5: #4a0810;
+  --radius: 0.625rem;
+  --sidebar: #3e0710;
+  --sidebar-foreground: #faf5ee;
+  --sidebar-primary: #c49a1a;
+  --sidebar-primary-foreground: #3e0710;
+  --sidebar-accent: #5c0a17;
+  --sidebar-accent-foreground: #faf5ee;
+  --sidebar-border: rgba(255, 255, 255, 0.07);
+  --sidebar-ring: #c49a1a;
+  color: var(--foreground);
+  background: var(--background);
+  font-family: "Nunito", sans-serif;
+}
+
+.admin-figma-theme button,
+.admin-figma-theme a,
+.admin-figma-theme [role="button"] {
+  min-height: auto;
+  min-width: auto;
+}
+
+.admin-figma-theme ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.admin-figma-theme ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.admin-figma-theme ::-webkit-scrollbar-thumb {
+  background: rgba(107, 14, 26, 0.2);
+  border-radius: 99px;
+}
+
+.admin-figma-theme ::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 14, 26, 0.35);
+}

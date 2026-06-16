@@ -11,6 +11,7 @@ export type SupabaseProfile = {
   vehicle_type: string | null;
   plate_number: string | null;
   is_online: boolean;
+  approval_status?: "pending" | "approved" | "rejected";
 };
 
 export async function getCurrentSupabaseUserId(): Promise<string | null> {
@@ -40,6 +41,7 @@ export async function syncSupabaseProfile(user: UserData): Promise<SupabaseProfi
         role: user.role,
         vehicle_type: user.vehicleType || null,
         plate_number: user.plateNumber || null,
+        approval_status: user.approvalStatus || (user.role === "driver" ? "pending" : "approved"),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "id" }

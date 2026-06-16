@@ -110,6 +110,7 @@ export default function ActiveRide() {
 
     const success = updateBookingStatus(activeBooking.id, newStatus);
     if (success) {
+      setActiveBooking({ ...activeBooking, status: newStatus });
       refreshBooking();
       const messages = {
         en_route: "Status updated: En route to pickup",
@@ -125,7 +126,7 @@ export default function ActiveRide() {
 
     const supabaseBooking = await updateSupabaseBookingStatus(activeBooking.id, "completed");
     if (supabaseBooking) {
-      toast.success(`Trip completed! You earned â‚±${activeBooking.finalPrice}`);
+      toast.success(`Trip completed! You earned PHP ${activeBooking.finalPrice}`);
       setActiveBooking(null);
       navigate("/driver");
       return;
@@ -133,7 +134,7 @@ export default function ActiveRide() {
 
     const success = updateBookingStatus(activeBooking.id, "completed");
     if (success) {
-      toast.success(`Trip completed! You earned ₱${activeBooking.finalPrice}`);
+      toast.success(`Trip completed! You earned PHP ${activeBooking.finalPrice}`);
       setActiveBooking(null);
       navigate("/driver");
     } else {
@@ -148,6 +149,7 @@ export default function ActiveRide() {
   const getActionButton = () => {
     switch (activeBooking.status) {
       case "accepted":
+      case "driver_found":
         return (
           <Button
             className="w-full whitespace-normal bg-[#4B0F14] hover:bg-[#6E171D]"
@@ -199,6 +201,7 @@ export default function ActiveRide() {
   const getStatusBadge = () => {
     const statusMap = {
       accepted: { text: "Accepted", color: "bg-[#4B0F14]" },
+      driver_found: { text: "Accepted", color: "bg-[#4B0F14]" },
       en_route: { text: "En Route", color: "bg-green-500" },
       arrived: { text: "Arrived", color: "bg-purple-500" },
       in_progress: { text: "In Progress", color: "bg-orange-500" },
@@ -288,7 +291,7 @@ export default function ActiveRide() {
                 <DollarSign className="h-4 w-4 shrink-0 text-green-600" />
                 <p className="text-xs text-gray-600">Fare</p>
               </div>
-              <p className="break-words text-lg font-semibold text-green-600">₱{activeBooking.finalPrice}</p>
+              <p className="break-words text-lg font-semibold text-green-600">PHP {activeBooking.finalPrice}</p>
             </div>
           </div>
 
@@ -311,7 +314,7 @@ export default function ActiveRide() {
             <AlertDialogTitle>Complete Trip?</AlertDialogTitle>
             <AlertDialogDescription>
               Confirm that you have arrived at the destination and the passenger has been dropped off.
-              You will earn ₱{activeBooking.finalPrice} for this trip.
+              You will earn PHP {activeBooking.finalPrice} for this trip.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

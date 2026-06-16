@@ -12,7 +12,7 @@ interface UserData {
   suffix: string;
   email: string;
   birthdate: string;
-  role: "passenger" | "driver";
+  role: "passenger" | "driver" | "admin";
   guardianName?: string;
   guardianPhone?: string;
   rating?: number;

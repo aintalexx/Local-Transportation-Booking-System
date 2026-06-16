@@ -10,6 +10,7 @@ import { useUser } from "../../context/UserContext";
 import { createDemoOtp } from "../../utils/demoOtp";
 import { phoneExists } from "../../utils/userDatabase";
 import { formatPHPhoneInput, validatePHPhone } from "../../utils/validators";
+import { getRoleHomePath } from "../../utils/roleRouting";
 
 export default function GooglePhonePage() {
   const navigate = useNavigate();
@@ -25,7 +26,7 @@ export default function GooglePhonePage() {
 
     const existingPhone = formatPHPhoneInput(user.phoneNumber || "");
     if (validatePHPhone(existingPhone).valid) {
-      navigate(user.role === "driver" ? "/pending-approval" : "/passenger", { replace: true });
+      navigate(getRoleHomePath(user), { replace: true });
     }
   }, [navigate, user]);
 

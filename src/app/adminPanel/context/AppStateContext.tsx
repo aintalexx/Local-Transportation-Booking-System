@@ -1,0 +1,392 @@
+import {
+  createContext, useContext, useState, useCallback, useRef, useEffect,
+  type ReactNode,
+} from "react";
+import { toast } from "sonner";
+import { supabase } from "../../lib/supabase";
+import { getAllUsers } from "../../utils/userDatabase";
+
+// ─── Shared types ─────────────────────────────────────────────────────────────
+export type DriverStatus  = "Active" | "Pending" | "Blocked";
+export type LicenseStatus = "Approved" | "Pending" | "Blocked";
+export type BookingStatus = "Completed" | "Ongoing" | "Cancelled" | "Pending";
+export type NotifType     = "success" | "warning" | "info" | "error";
+
+// Visual flash direction for row highlight
+export type ChangeHint = "success" | "warning" | "error";
+
+export interface Driver {
+  id: string; name: string; photo: string; vehicle: string; plate: string;
+  route: string; rides: number; rating: number; status: DriverStatus;
+  license: LicenseStatus; joined: string; bg: string; phone: string;
+  licenseNumber?: string;
+  driverLicensePhoto?: string;
+  validIdPhoto?: string;
+  orCrPhoto?: string;
+  clearancePhoto?: string;
+  vehiclePhoto?: string;
+  profilePhoto?: string;
+}
+
+export interface Booking {
+  id: string; passenger: string; passengerPhone: string;
+  driver: string; driverPhone: string; vehicle: string;
+  from: string; to: string; fare: string; distance: string;
+  duration: string; status: BookingStatus;
+  booked: string; ended: string; seats: number;
+}
+
+export interface AppNotification {
+  id: number; type: NotifType;
+  title: string; body: string; time: string; read: boolean;
+}
+
+let notifSeq = 0;
+
+// Helper to map Supabase profiles to Driver
+function mapProfileToDriver(p: any): Driver {
+  const localUsers = getAllUsers();
+  const localUser = localUsers.find(u => 
+    (u.supabaseId && u.supabaseId === p.id) ||
+    (u.phoneNumber && p.phone && u.phoneNumber.replace(/\D/g, "") === p.phone.replace(/\D/g, "")) ||
+    (u.username && p.username && u.username.toLowerCase() === p.username.toLowerCase())
+  );
+
+  const initials = p.full_name
+    ? p.full_name.split(/\s+/).map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()
+    : "DR";
+
+  const colors = ["#6B0E1A", "#C49A1A", "#7c3aed", "#15803d", "#b45309", "#0e7490", "#9f1239"];
+  const charCodeSum = (p.full_name || "").split("").reduce((sum: number, char: string) => sum + char.charCodeAt(0), 0);
+  const bg = colors[charCodeSum % colors.length];
+
+  const status: DriverStatus = p.approval_status === "pending"
+    ? "Pending"
+    : p.approval_status === "rejected"
+    ? "Blocked"
+    : "Active";
+
+  const license: LicenseStatus = p.approval_status === "pending"
+    ? "Pending"
+    : p.approval_status === "rejected"
+    ? "Blocked"
+    : "Approved";
+
+  return {
+    id: p.id,
+    name: p.full_name,
+    photo: initials,
+    vehicle: p.vehicle_type || "Tricycle",
+    plate: p.plate_number || "N/A",
+    route: "Sta. Mesa Local Route",
+    rides: 0,
+    rating: 5.0,
+    status,
+    license,
+    joined: new Date(p.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    bg,
+    phone: p.phone || "",
+    licenseNumber: localUser?.licenseNumber || p.license_number || "N/A",
+    driverLicensePhoto: localUser?.driverLicensePhoto || "",
+    validIdPhoto: localUser?.validIdPhoto || localUser?.driverLicensePhoto || "",
+    orCrPhoto: localUser?.orCrPhoto || "",
+    clearancePhoto: localUser?.clearancePhoto || "",
+    vehiclePhoto: localUser?.vehiclePhoto || "",
+    profilePhoto: localUser?.profilePhoto || "",
+  };
+}
+
+// Helper to map Supabase bookings to Booking
+function mapRowToBooking(b: any): Booking {
+  let status: BookingStatus = "Pending";
+  if (b.status === "completed") status = "Completed";
+  else if (b.status === "cancelled") status = "Cancelled";
+  else if (b.status === "pending") status = "Pending";
+  else status = "Ongoing";
+
+  return {
+    id: b.id,
+    passenger: b.passenger_name,
+    passengerPhone: b.passenger_phone || "",
+    driver: b.driver_name || "Searching...",
+    driverPhone: b.driver_phone || "",
+    vehicle: b.driver_plate_number || "—",
+    from: b.pickup_address,
+    to: b.destination_address,
+    fare: `₱${b.final_price}`,
+    distance: `${b.distance_km} km`,
+    duration: "—",
+    status,
+    booked: new Date(b.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) + ", " + new Date(b.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
+    ended: b.completed_at ? new Date(b.completed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) + ", " + new Date(b.completed_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "—",
+    seats: b.ride_type === "shared" ? 2 : 1,
+  };
+}
+
+// ─── Context interface ────────────────────────────────────────────────────────
+interface AppStateContextValue {
+  drivers:       Driver[];
+  bookings:      Booking[];
+  notifications: AppNotification[];
+  recentChanges: Record<string, ChangeHint>;
+
+  pendingDriverCount: number;
+  unreadCount:        number;
+
+  approveDriver(id: string): void;
+  rejectDriver(id: string): void;
+  blockDriver(id: string): void;
+  reinstateDriver(id: string): void;
+  approveBatch(): void;
+
+  cancelBooking(id: string): void;
+
+  markRead(id: number): void;
+  markAllRead(): void;
+}
+
+const AppStateContext = createContext<AppStateContextValue>({} as AppStateContextValue);
+
+export function useAppState() {
+  return useContext(AppStateContext);
+}
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
+export function AppStateProvider({ children }: { children: ReactNode }) {
+  const [drivers,       setDrivers]       = useState<Driver[]>([]);
+  const [bookings,      setBookings]      = useState<Booking[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [recentChanges, setRecentChanges] = useState<Record<string, ChangeHint>>({});
+
+  const clearTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  function flashRow(id: string, hint: ChangeHint) {
+    if (clearTimers.current[id]) clearTimeout(clearTimers.current[id]);
+    setRecentChanges((prev) => ({ ...prev, [id]: hint }));
+    clearTimers.current[id] = setTimeout(() => {
+      setRecentChanges((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }, 2200);
+  }
+
+  function pushNotification(n: Omit<AppNotification, "id" | "read">) {
+    notifSeq += 1;
+    setNotifications((prev) => [{ ...n, id: notifSeq, read: false }, ...prev]);
+  }
+
+  // Fetch initial data and set up real-time subscriptions
+  useEffect(() => {
+    if (!supabase) return;
+
+    async function loadDrivers() {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("role", "driver")
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        setDrivers(data.map(mapProfileToDriver));
+      }
+    }
+
+    async function loadBookings() {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        setBookings(data.map(mapRowToBooking));
+      }
+    }
+
+    loadDrivers();
+    loadBookings();
+
+    const profilesChannel = supabase
+      .channel("admin-profiles-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles", filter: "role=eq.driver" },
+        (payload) => {
+          if (payload.eventType === "INSERT") {
+            const newDriver = mapProfileToDriver(payload.new);
+            setDrivers((prev) => {
+              if (prev.some(d => d.id === newDriver.id)) return prev;
+              return [newDriver, ...prev];
+            });
+            pushNotification({
+              type: "info",
+              title: "New Driver Registration",
+              body: `${newDriver.name} submitted a new driver application.`,
+              time: "Just now",
+            });
+            flashRow(newDriver.id, "success");
+          } else if (payload.eventType === "UPDATE") {
+            const updatedDriver = mapProfileToDriver(payload.new);
+            setDrivers((prev) => prev.map(d => d.id === updatedDriver.id ? updatedDriver : d));
+            flashRow(updatedDriver.id, "success");
+          } else if (payload.eventType === "DELETE") {
+            setDrivers((prev) => prev.filter(d => d.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    const bookingsChannel = supabase
+      .channel("admin-bookings-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "bookings" },
+        (payload) => {
+          if (payload.eventType === "INSERT") {
+            const newBooking = mapRowToBooking(payload.new);
+            setBookings((prev) => {
+              if (prev.some(b => b.id === newBooking.id)) return prev;
+              return [newBooking, ...prev];
+            });
+            pushNotification({
+              type: "success",
+              title: "New Booking Created",
+              body: `${newBooking.passenger} booked a ride to ${newBooking.to}.`,
+              time: "Just now",
+            });
+            flashRow(newBooking.id, "success");
+          } else if (payload.eventType === "UPDATE") {
+            const updatedBooking = mapRowToBooking(payload.new);
+            setBookings((prev) => prev.map(b => b.id === updatedBooking.id ? updatedBooking : b));
+            flashRow(updatedBooking.id, "success");
+          } else if (payload.eventType === "DELETE") {
+            setBookings((prev) => prev.filter(b => b.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(profilesChannel);
+      supabase.removeChannel(bookingsChannel);
+    };
+  }, []);
+
+  // ─── Driver actions ───────────────────────────────────────────────────────
+  const approveDriver = useCallback(async (id: string) => {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("profiles")
+      .update({ approval_status: "approved" })
+      .eq("id", id);
+
+    if (error) {
+      toast.error("Failed to approve driver", { description: error.message });
+    } else {
+      toast.success("Driver approved successfully");
+    }
+  }, []);
+
+  const rejectDriver = useCallback(async (id: string) => {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("profiles")
+      .update({ approval_status: "rejected" })
+      .eq("id", id);
+
+    if (error) {
+      toast.error("Failed to reject driver", { description: error.message });
+    } else {
+      toast.success("Driver application rejected");
+    }
+  }, []);
+
+  const blockDriver = useCallback(async (id: string) => {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("profiles")
+      .update({ approval_status: "rejected" })
+      .eq("id", id);
+
+    if (error) {
+      toast.error("Failed to block driver", { description: error.message });
+    } else {
+      toast.warning("Driver blocked successfully");
+    }
+  }, []);
+
+  const reinstateDriver = useCallback(async (id: string) => {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("profiles")
+      .update({ approval_status: "approved" })
+      .eq("id", id);
+
+    if (error) {
+      toast.error("Failed to reinstate driver", { description: error.message });
+    } else {
+      toast.success("Driver reinstated successfully");
+    }
+  }, []);
+
+  const approveBatch = useCallback(async () => {
+    if (!supabase) return;
+    const pendingIds = drivers.filter(d => d.status === "Pending").map(d => d.id);
+    if (pendingIds.length === 0) {
+      toast.info("No pending drivers to approve.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ approval_status: "approved" })
+      .in("id", pendingIds);
+
+    if (error) {
+      toast.error("Failed to approve drivers in batch", { description: error.message });
+    } else {
+      toast.success(`Approved ${pendingIds.length} drivers`);
+    }
+  }, [drivers]);
+
+  // ─── Booking actions ──────────────────────────────────────────────────────
+  const cancelBooking = useCallback(async (id: string) => {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("bookings")
+      .update({ status: "cancelled" })
+      .eq("id", id);
+
+    if (error) {
+      toast.error("Failed to cancel booking", { description: error.message });
+    } else {
+      toast.success("Booking cancelled successfully");
+    }
+  }, []);
+
+  // ─── Notification actions ─────────────────────────────────────────────────
+  const markRead = useCallback((id: number) => {
+    setNotifications((p) => p.map((n) => n.id === id ? { ...n, read: true } : n));
+  }, []);
+
+  const markAllRead = useCallback(() => {
+    setNotifications((p) => p.map((n) => ({ ...n, read: true })));
+  }, []);
+
+  // ─── Computed ─────────────────────────────────────────────────────────────
+  const pendingDriverCount = drivers.filter((d) => d.status === "Pending").length;
+  const unreadCount        = notifications.filter((n) => !n.read).length;
+
+  return (
+    <AppStateContext.Provider value={{
+      drivers, bookings, notifications, recentChanges,
+      pendingDriverCount, unreadCount,
+      approveDriver, rejectDriver, blockDriver, reinstateDriver, approveBatch,
+      cancelBooking,
+      markRead, markAllRead,
+    }}>
+      {children}
+    </AppStateContext.Provider>
+  );
+}

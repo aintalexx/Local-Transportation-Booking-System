@@ -214,3 +214,36 @@ export function validatePlateNumber(plateNumber: string, required = true): Valid
 
   return ok;
 }
+
+export function validatePHLicenseNumber(licenseNumber: string): ValidationResult {
+  const normalized = licenseNumber.trim().toUpperCase();
+  if (!normalized) {
+    return fail("Driver's license number is required.");
+  }
+  if (!/^[A-Z]\d{2}-\d{2}-\d{6}$/.test(normalized)) {
+    return fail("License number must follow the Philippine format (e.g., N01-24-123456).");
+  }
+  return ok;
+}
+
+export function formatPHLicenseNumber(value: string): string {
+  const clean = value.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  
+  if (clean.length === 0) return "";
+  
+  let firstChar = clean[0];
+  if (!/[A-Z]/.test(firstChar)) {
+    firstChar = ""; 
+  }
+  
+  const rest = clean.slice(1).replace(/[^0-9]/g, ""); 
+  const combined = (firstChar + rest).slice(0, 11); 
+  
+  if (combined.length > 5) {
+    return `${combined.slice(0, 3)}-${combined.slice(3, 5)}-${combined.slice(5)}`;
+  } else if (combined.length > 3) {
+    return `${combined.slice(0, 3)}-${combined.slice(3)}`;
+  }
+  return combined;
+}
+

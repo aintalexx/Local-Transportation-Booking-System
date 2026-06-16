@@ -11,6 +11,7 @@ import {
 } from "../../utils/supabaseAuth";
 import { syncSupabaseProfile } from "../../utils/supabaseProfiles";
 import { formatPHPhoneInput, validatePHPhone } from "../../utils/validators";
+import { getRoleHomePath } from "../../utils/roleRouting";
 
 export default function AuthCallbackPage() {
   const navigate = useNavigate();
@@ -55,7 +56,7 @@ export default function AuthCallbackPage() {
         toast.success("Google account connected successfully!");
 
         const phoneCheck = validatePHPhone(formatPHPhoneInput(appUser.phoneNumber || ""));
-        if (!phoneCheck.valid) {
+        if (appUser.role !== "admin" && !phoneCheck.valid) {
           setMessage("Add your phone number to finish registration...");
           navigate("/auth/phone", { replace: true });
           return;
@@ -64,7 +65,7 @@ export default function AuthCallbackPage() {
         await syncSupabaseProfile(appUser);
         setMessage("Redirecting to your account...");
         window.setTimeout(() => {
-          window.location.replace(appUser.role === "driver" ? "/pending-approval" : "/passenger");
+          window.location.replace(getRoleHomePath(appUser));
         }, 250);
       } catch (error) {
         const rawMessage = error instanceof Error ? error.message : "Google sign in failed.";

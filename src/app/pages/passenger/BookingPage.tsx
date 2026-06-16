@@ -1,173 +1,336 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router";
-import { MapPin, Search, X, ArrowLeft, User, Users, Navigation2, Tag, DollarSign, Locate, CreditCard, Clock, Route, Star } from "lucide-react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import {
+  MapPin, Locate, ArrowLeft, X, Tag, User, Users,
+  Navigation2, Clock, Ruler, CreditCard,
+} from "lucide-react";
 import { toast } from "sonner";
-import MapView from "../../components/MapView";
 import { useUser } from "../../context/UserContext";
 import { useBooking } from "../../context/BookingContext";
-import { acceptBooking, createBooking, getBooking, updateDriverLocation } from "../../utils/bookingDatabase";
+import { createBooking } from "../../utils/bookingDatabase";
 import { createSupabaseBooking } from "../../utils/supabaseBookings";
-import { estimateRouteDistanceKm, findBestDriver } from "../../utils/rideMatching";
 import { formatPersonName } from "../../utils/nameFormatting";
+import { applyRideDiscounts, calculateFare } from "../../utils/fareCalculator";
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogPortal,
+  Dialog, DialogPortal,
 } from "../../components/ui/dialog";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { cn } from "../../components/ui/utils";
-import { Input } from "../../components/ui/input";
-import { Badge } from "../../components/ui/badge";
 
+// ─── Leaflet icon fix ─────────────────────────────────────────────────────────
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
+  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+});
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 const MAROON = "#4B0F14";
-const GOLD = "#D4AF37";
-const CREAM = "#FFF8E7";
-const BOOKING_VEHICLE_TYPE = "Tricycle";
+const GOLD   = "#D4AF37";
+const GREEN  = "#16A34A";
+const DEFAULT_CENTER = { lat: 14.6042, lng: 121.0120 };
 
-type RideType = "solo" | "shared";
+type RideType      = "solo" | "shared";
 type PassengerType = "regular" | "student" | "pwd";
 type PaymentMethod = "cash" | "epayment";
-type BookingStep = "destination" | "passenger_type" | "confirm";
+type PinMode       = "pickup" | "dropoff";
 
-interface Destination {
-  id: string;
-  name: string;
-  area: string;
-  emoji: string;
-  basePrice: number;
-  coords: { lat: number; lng: number };
+interface LatLng { lat: number; lng: number; address: string }
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function makePickupIcon() {
+  return L.divIcon({
+    className: "",
+    html: `<div style="position:relative;display:flex;flex-direction:column;align-items:center;">
+      <div style="width:36px;height:36px;border-radius:50%;background:${GREEN};border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2a7 7 0 0 1 7 7c0 5.25-7 13-7 13S5 14.25 5 9a7 7 0 0 1 7-7z"/></svg>
+      </div>
+      <div style="width:2px;height:10px;background:${GREEN};margin-top:-2px;"></div>
+    </div>`,
+    iconSize: [36, 48],
+    iconAnchor: [18, 48],
+  });
 }
 
-interface PromoCode {
-  code: string;
-  description: string;
-  discount: number;
+function makeDropoffIcon() {
+  return L.divIcon({
+    className: "",
+    html: `<div style="position:relative;display:flex;flex-direction:column;align-items:center;">
+      <div style="width:36px;height:36px;border-radius:50%;background:${MAROON};border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2a7 7 0 0 1 7 7c0 5.25-7 13-7 13S5 14.25 5 9a7 7 0 0 1 7-7z"/></svg>
+      </div>
+      <div style="width:2px;height:10px;background:${MAROON};margin-top:-2px;"></div>
+    </div>`,
+    iconSize: [36, 48],
+    iconAnchor: [18, 48],
+  });
 }
 
-const SANTA_MESA_DESTINATIONS: Destination[] = [
-  { id: "vmapa",     name: "V. Mapa LRT Station", area: "Sta. Mesa", emoji: "LRT", basePrice: 25, coords: { lat: 14.5992, lng: 121.0083 } },
-  { id: "market",    name: "Sta. Mesa Market", area: "Sta. Mesa", emoji: "MKT", basePrice: 20, coords: { lat: 14.6042, lng: 121.0119 } },
-  { id: "pureza",    name: "Pureza LRT Station", area: "Sta. Mesa", emoji: "LRT", basePrice: 30, coords: { lat: 14.6099, lng: 121.0199 } },
-  { id: "pup",       name: "PUP Main Gate", area: "Sta. Mesa", emoji: "PUP", basePrice: 15, coords: { lat: 14.5995, lng: 121.0114 } },
-  { id: "smstamesa", name: "SM City Sta. Mesa", area: "Sta. Mesa", emoji: "SM", basePrice: 25, coords: { lat: 14.6048, lng: 121.0190 } },
-  { id: "teresa",    name: "Teresa Street", area: "Sta. Mesa", emoji: "TER", basePrice: 18, coords: { lat: 14.5989, lng: 121.0105 } },
-  { id: "stopshop",  name: "Stop & Shop", area: "Sta. Mesa", emoji: "S&S", basePrice: 20, coords: { lat: 14.6027, lng: 121.0108 } },
-  { id: "mezza",     name: "Mezza Residences", area: "Sta. Mesa", emoji: "MZ", basePrice: 28, coords: { lat: 14.6047, lng: 121.0208 } },
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+      { headers: { "Accept-Language": "en" } }
+    );
+    const data = await res.json();
+    return data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  } catch {
+    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  }
+}
+
+async function fetchOSRMRoute(from: LatLng, to: LatLng): Promise<{
+  waypoints: [number, number][];
+  distanceKm: number;
+  durationMin: number;
+} | null> {
+  try {
+    const url =
+      `https://router.project-osrm.org/route/v1/driving/` +
+      `${from.lng},${from.lat};${to.lng},${to.lat}` +
+      `?overview=full&geometries=geojson`;
+    const res  = await fetch(url);
+    const data = await res.json();
+    if (data.code !== "Ok" || !data.routes?.[0]) return null;
+    const route = data.routes[0];
+    const coords: [number, number][] = route.geometry.coordinates.map(
+      ([lng, lat]: [number, number]) => [lat, lng]
+    );
+    return {
+      waypoints: coords,
+      distanceKm: route.distance / 1000,
+      durationMin: Math.round(route.duration / 60),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function calcFinalPrice(
+  baseFare: number,
+  rideType: RideType,
+  passengerType: PassengerType,
+  promoDiscount?: number
+) {
+  return applyRideDiscounts(baseFare, { rideType, passengerType, promoDiscount });
+}
+
+const AVAILABLE_PROMOS = [
+  { code: "ARANGKADA",   description: "Welcome to Arangkada! 20% off",       discount: 20 },
+  { code: "STAMESARIDE", description: "Sta. Mesa pride! 15% off your ride",  discount: 15 },
+  { code: "PUPSAKAY",    description: "PUP x Arangkada - 12% off",           discount: 12 },
+  { code: "SAKTOLANG",   description: "Sarap ng biyahe! 10% off",            discount: 10 },
+  { code: "FLASH30",     description: "Flash promo! 30% off today only",     discount: 30 },
 ];
 
-const AVAILABLE_PROMOS: PromoCode[] = [
-  { code: "ARANGKADA",   description: "Welcome to Arangkada! 20% off",        discount: 20 },
-  { code: "STAMESARIDE", description: "Sta. Mesa pride! 15% off your ride",   discount: 15 },
-  { code: "PUPSAKAY",    description: "PUP x Arangkada - 12% off",            discount: 12 },
-  { code: "SAKTOLANG",   description: "Sarap ng biyahe! 10% off",             discount: 10 },
-  { code: "MAHAL23",     description: "Love your commute - PHP 5 off",           discount: 5  },
-  { code: "FLASH30",     description: "Flash promo! 30% off today only",       discount: 30 },
-];
-
-function calcFinalPrice(basePrice: number, rideType: RideType, passengerType: PassengerType, promo: PromoCode | null): number {
-  let price = basePrice;
-  // Shared base discount: 30%
-  if (rideType === "shared") price *= 0.70;
-  // Student or PWD discount: 10%
-  if (passengerType === "student" || passengerType === "pwd") price *= 0.90;
-  // Promo code
-  if (promo) price *= (1 - promo.discount / 100);
-  return Math.round(price);
-}
-
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function BookingPage() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { user } = useUser();
+  const navigate     = useNavigate();
+  const location     = useLocation();
+  const { user }     = useUser();
   const { setActiveBooking, refreshBooking } = useBooking();
 
   const initialRideType = (location.state?.rideType as RideType) || "solo";
 
-  const [step, setStep] = useState<BookingStep>("destination");
-  const [rideType, setRideType] = useState<RideType>(initialRideType);
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Destination | null>(null);
+  // Map refs
+  const mapContainerRef  = useRef<HTMLDivElement>(null);
+  const mapRef           = useRef<L.Map | null>(null);
+  const pickupMarkerRef  = useRef<L.Marker | null>(null);
+  const dropoffMarkerRef = useRef<L.Marker | null>(null);
+  const routeLineRef     = useRef<L.Polyline | null>(null);
+  const gpsMarkerRef     = useRef<L.Marker | null>(null);
+
+  // State
+  const [pinMode, setPinMode]           = useState<PinMode>("pickup");
+  const [pickup,  setPickup]            = useState<LatLng | null>(null);
+  const [dropoff, setDropoff]           = useState<LatLng | null>(null);
+  const [rideType, setRideType]         = useState<RideType>(initialRideType);
   const [passengerType, setPassengerType] = useState<PassengerType>("regular");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
-  const [pickupCoords, setPickupCoords] = useState<{ lat: number; lng: number; address: string } | null>(null);
-  const [pickup, setPickup] = useState("");
-  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
-  const [promoCode, setPromoCode] = useState("");
-  const [appliedPromo, setAppliedPromo] = useState<PromoCode | null>(null);
+  const [promoCode,  setPromoCode]      = useState("");
+  const [appliedPromo, setAppliedPromo] = useState<typeof AVAILABLE_PROMOS[0] | null>(null);
   const [showPromoInput, setShowPromoInput] = useState(false);
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showOptions,   setShowOptions] = useState(false);
+  const [showConfirm,   setShowConfirm] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
+  const [gpsLoading,  setGpsLoading]    = useState(false);
 
-  const filtered = SANTA_MESA_DESTINATIONS.filter(d =>
-    d.name.toLowerCase().includes(search.toLowerCase()) ||
-    d.area.toLowerCase().includes(search.toLowerCase())
-  );
+  // Route data
+  const [routeData, setRouteData] = useState<{
+    distanceKm: number;
+    durationMin: number;
+  } | null>(null);
 
-  const estimatedDistanceKm = selected && pickupCoords
-    ? estimateRouteDistanceKm(pickupCoords, selected.coords)
-    : 3;
-  const driverMatch = pickupCoords ? findBestDriver(pickupCoords, { vehicleType: BOOKING_VEHICLE_TYPE }) : null;
-  const finalPrice = selected ? calcFinalPrice(selected.basePrice, rideType, passengerType, appliedPromo) : 0;
+  const distanceKm  = routeData?.distanceKm ?? 0;
+  const durationMin = routeData?.durationMin ?? 0;
+  const fareEst     = calculateFare(distanceKm);
+  const finalPrice  = calcFinalPrice(fareEst.finalFare, rideType, passengerType, appliedPromo?.discount);
 
-  const discountBreakdown = () => {
-    if (!selected) return [];
-    const lines: { label: string; amount: string }[] = [];
-    if (rideType === "shared") lines.push({ label: "Shared Ride", amount: "-30%" });
-    if (passengerType === "student") lines.push({ label: "Student Discount", amount: "-10%" });
-    if (passengerType === "pwd") lines.push({ label: "PWD Discount", amount: "-10%" });
-    if (appliedPromo) lines.push({ label: `Promo (${appliedPromo.code})`, amount: `-${appliedPromo.discount}%` });
-    return lines;
-  };
+  // ── Map init ────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) return;
 
-  const handleUseCurrentLocation = () => {
-    setIsLoadingLocation(true);
-    if (!navigator.geolocation) { toast.info("Geolocation not supported"); setIsLoadingLocation(false); return; }
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18`);
-          const data = await res.json();
-          const addr = data.display_name || "Current Location";
-          setPickup(addr);
-          setPickupCoords({ lat: latitude, lng: longitude, address: addr });
-          toast.success("Using your current location");
-        } catch {
-          setPickupCoords({ lat: latitude, lng: longitude, address: "Current Location" });
-          setPickup("Current Location");
-        } finally { setIsLoadingLocation(false); }
-      },
-      () => { toast.error("Unable to get location"); setIsLoadingLocation(false); }
+    const map = L.map(mapContainerRef.current, { zoomControl: false }).setView(
+      [DEFAULT_CENTER.lat, DEFAULT_CENTER.lng], 15
     );
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map);
+
+    // Zoom control bottom-right
+    L.control.zoom({ position: "bottomright" }).addTo(map);
+
+    mapRef.current = map;
+
+    // Try auto-detect GPS
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        if (!mapRef.current) return;
+        mapRef.current.setView([latitude, longitude], 16);
+
+        // GPS dot
+        if (gpsMarkerRef.current) gpsMarkerRef.current.remove();
+        gpsMarkerRef.current = L.marker([latitude, longitude], {
+          icon: L.divIcon({
+            className: "",
+            html: `<div style="width:18px;height:18px;border-radius:50%;background:#2563EB;border:3px solid #fff;box-shadow:0 0 0 4px rgba(37,99,235,0.25);"></div>`,
+            iconSize: [18, 18],
+            iconAnchor: [9, 9],
+          }),
+        }).addTo(mapRef.current);
+
+        const addr = await reverseGeocode(latitude, longitude);
+        setPickup({ lat: latitude, lng: longitude, address: addr });
+      }, () => {}, { enableHighAccuracy: true, timeout: 8000 });
+    }
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // ── Map click handler ────────────────────────────────────────────────────────
+  const handleMapClick = useCallback(async (e: L.LeafletMouseEvent) => {
+    const { lat, lng } = e.latlng;
+    const addr = await reverseGeocode(lat, lng);
+    const loc: LatLng = { lat, lng, address: addr };
+
+    if (pinMode === "pickup") {
+      setPickup(loc);
+    } else {
+      setDropoff(loc);
+    }
+  }, [pinMode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.on("click", handleMapClick);
+    return () => { map.off("click", handleMapClick); };
+  }, [handleMapClick]);
+
+  // ── Update pickup marker ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (pickupMarkerRef.current) { pickupMarkerRef.current.remove(); pickupMarkerRef.current = null; }
+    if (!pickup) return;
+    pickupMarkerRef.current = L.marker([pickup.lat, pickup.lng], { icon: makePickupIcon(), zIndexOffset: 100 })
+      .bindPopup(`<b>Pickup</b><br>${pickup.address}`)
+      .addTo(mapRef.current);
+  }, [pickup]);
+
+  // ── Update dropoff marker ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (dropoffMarkerRef.current) { dropoffMarkerRef.current.remove(); dropoffMarkerRef.current = null; }
+    if (!dropoff) return;
+    dropoffMarkerRef.current = L.marker([dropoff.lat, dropoff.lng], { icon: makeDropoffIcon(), zIndexOffset: 100 })
+      .bindPopup(`<b>Dropoff</b><br>${dropoff.address}`)
+      .addTo(mapRef.current);
+  }, [dropoff]);
+
+  // ── Fetch OSRM route when both points set ────────────────────────────────────
+  useEffect(() => {
+    if (!pickup || !dropoff || !mapRef.current) { setRouteData(null); return; }
+
+    if (routeLineRef.current) { routeLineRef.current.remove(); routeLineRef.current = null; }
+
+    fetchOSRMRoute(pickup, dropoff).then((result) => {
+      if (!result || !mapRef.current) return;
+
+      setRouteData({ distanceKm: result.distanceKm, durationMin: result.durationMin });
+
+      routeLineRef.current = L.polyline(result.waypoints, {
+        color: "#1D4ED8",
+        weight: 5,
+        opacity: 0.9,
+      }).addTo(mapRef.current);
+
+      // Fit map to show both pins + route
+      const bounds = L.latLngBounds([
+        [pickup.lat,  pickup.lng],
+        [dropoff.lat, dropoff.lng],
+      ]);
+      mapRef.current.fitBounds(bounds, { padding: [80, 80] });
+    });
+  }, [pickup, dropoff]);
+
+  // ── GPS button ───────────────────────────────────────────────────────────────
+  const handleUseGPS = () => {
+    if (!navigator.geolocation) { toast.error("Geolocation not supported"); return; }
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const { latitude, longitude } = pos.coords;
+      const addr = await reverseGeocode(latitude, longitude);
+      const loc: LatLng = { lat: latitude, lng: longitude, address: addr };
+      setPickup(loc);
+      mapRef.current?.setView([latitude, longitude], 16);
+      toast.success("Pickup set to your current location");
+      setGpsLoading(false);
+    }, () => { toast.error("Could not get your location"); setGpsLoading(false); },
+    { enableHighAccuracy: true, timeout: 10000 });
   };
 
+  // ── Promo ────────────────────────────────────────────────────────────────────
   const applyPromo = () => {
     const promo = AVAILABLE_PROMOS.find(p => p.code === promoCode.toUpperCase());
-    if (promo) { setAppliedPromo(promo); toast.success(`Promo "${promo.code}" applied! ${promo.discount}% off`); setShowPromoInput(false); setPromoCode(""); }
-    else toast.error("Invalid promo code");
+    if (promo) {
+      setAppliedPromo(promo);
+      toast.success(`Promo "${promo.code}" applied! ${promo.discount}% off`);
+      setShowPromoInput(false);
+      setPromoCode("");
+    } else {
+      toast.error("Invalid promo code");
+    }
   };
 
-  const handleConfirm = async () => {
-    if (!user || !selected) { toast.error("Missing booking info"); return; }
-    if (!pickupCoords) { toast.error("Please set your pickup location"); return; }
-
+  // ── Book ─────────────────────────────────────────────────────────────────────
+  const handleBook = async () => {
+    if (!user || !pickup || !dropoff) { toast.error("Please set pickup and drop-off"); return; }
     setBookingLoading(true);
-    setShowConfirmDialog(false);
+    setShowConfirm(false);
 
     try {
       const passengerName = formatPersonName(user, user.username);
-      const discount = discountBreakdown().length > 0 ? {
-        type: [rideType === "shared" ? "Shared" : "", passengerType !== "regular" ? passengerType.toUpperCase() : ""].filter(Boolean).join("+"),
-        amount: Math.round((1 - finalPrice / selected.basePrice) * 100),
-      } : undefined;
+      const discount = appliedPromo
+        ? { type: appliedPromo.code, amount: appliedPromo.discount }
+        : undefined;
 
       const supabaseBooking = await createSupabaseBooking({
         passenger: user,
-        pickupLocation: pickupCoords,
-        destination: { ...selected.coords, address: selected.name },
-        distance: estimatedDistanceKm,
-        basePrice: selected.basePrice,
+        pickupLocation: pickup,
+        destination: { lat: dropoff.lat, lng: dropoff.lng, address: dropoff.address },
+        distance: distanceKm,
+        basePrice: fareEst.finalFare,
         finalPrice,
         paymentMethod: paymentMethod === "epayment" ? "E-Payment" : "Cash",
-        vehicleType: BOOKING_VEHICLE_TYPE,
+        vehicleType: "Tricycle",
         rideType,
         discount,
       });
@@ -175,500 +338,407 @@ export default function BookingPage() {
       if (supabaseBooking) {
         setActiveBooking(supabaseBooking);
         refreshBooking();
-        toast.success("Booking sent! Waiting for a nearby driver to accept.");
+        toast.success("Booking sent! Waiting for a driver to accept.");
         navigate("/passenger/ongoing-booking");
         return;
       }
 
-      const matchedDriver = findBestDriver(pickupCoords, { vehicleType: BOOKING_VEHICLE_TYPE });
       const booking = createBooking({
         passengerUsername: user.username,
         passengerName,
         passengerPhone: user.phoneNumber,
-        pickupLocation: pickupCoords,
-        destination: { ...selected.coords, address: selected.name },
-        distance: estimatedDistanceKm,
-        basePrice: selected.basePrice,
+        pickupLocation: pickup,
+        destination: { lat: dropoff.lat, lng: dropoff.lng, address: dropoff.address },
+        distance: distanceKm,
+        basePrice: fareEst.finalFare,
         finalPrice,
         paymentMethod: paymentMethod === "epayment" ? "E-Payment" : "Cash",
-        vehicleType: BOOKING_VEHICLE_TYPE,
+        vehicleType: "Tricycle",
         rideType,
         discount,
       });
 
-      let nextBooking = booking;
-      if (matchedDriver) {
-        const assigned = acceptBooking(
-          booking.id,
-          matchedDriver.driver.username,
-          matchedDriver.driver.name,
-          matchedDriver.driver.phone,
-          matchedDriver.driver.vehicleType,
-          matchedDriver.driver.plateNumber
-        );
-
-        if (assigned) {
-          updateDriverLocation(booking.id, matchedDriver.driver.location.lat, matchedDriver.driver.location.lng);
-          nextBooking = getBooking(booking.id) || booking;
-        }
-      }
-
-      setActiveBooking(nextBooking);
+      setActiveBooking(booking);
       refreshBooking();
-      if (nextBooking.driverName && matchedDriver) {
-        toast.success(`Driver found: ${nextBooking.driverName} - ${matchedDriver.etaMinutes} min away`);
-      } else {
-        toast.success("Booking confirmed! Searching for nearby drivers...");
-      }
+      toast.success("Booking sent! Waiting for a driver to accept.");
       navigate("/passenger/ongoing-booking");
     } catch {
       toast.error("Booking failed. Please try again.");
-    } finally { setBookingLoading(false); }
+    } finally {
+      setBookingLoading(false);
+    }
   };
 
-  /* --- STEP 1: DESTINATION SELECT --- */
-  if (step === "destination") {
-    return (
-      <div className="h-screen flex flex-col" style={{ background: CREAM }}>
-        {/* Header */}
-        <div className="px-5 pt-12 pb-5" style={{ background: `linear-gradient(160deg, ${MAROON} 0%, #6E171D 100%)` }}>
-          <div className="flex items-center gap-3 mb-4">
-            <button onClick={() => navigate("/passenger")} className="h-9 w-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,248,231,0.15)" }}>
-              <ArrowLeft size={18} color="#FFF8E7" />
-            </button>
-            <div>
-              <p style={{ color: "rgba(255,248,231,0.65)", fontSize: 12 }}>
-                {rideType === "shared" ? "Shared Ride" : "Solo Ride"}
-              </p>
-              <p style={{ color: "#FFF8E7", fontSize: 17, fontWeight: 800, lineHeight: 1 }}>Pumili ng Destinasyon</p>
-            </div>
-          </div>
-
-          {/* Ride type toggle */}
-          <div className="flex gap-2 mb-4">
-            {(["solo", "shared"] as RideType[]).map(rt => (
-              <button key={rt} onClick={() => setRideType(rt)}
-                className="flex-1 py-2 rounded-xl flex items-center justify-center gap-1.5"
-                style={{ background: rideType === rt ? "rgba(212,175,55,0.25)" : "rgba(255,248,231,0.1)", border: rideType === rt ? "1.5px solid rgba(212,175,55,0.5)" : "1.5px solid transparent" }}
-              >
-                {rt === "solo" ? <User size={14} color={rideType === rt ? GOLD : "rgba(255,248,231,0.5)"} /> : <Users size={14} color={rideType === rt ? GOLD : "rgba(255,248,231,0.5)"} />}
-                <span style={{ color: rideType === rt ? GOLD : "rgba(255,248,231,0.5)", fontSize: 13, fontWeight: rideType === rt ? 700 : 500 }}>
-                  {rt === "solo" ? "Solo" : "Shared (-30%)"}
-                </span>
-              </button>
-            ))}
-          </div>
-
-          {/* Search */}
-          <div className="relative">
-            <Search size={16} color="#9a8a7a" className="absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Hanapin ang destinasyon..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 rounded-2xl outline-none"
-              style={{ height: 44, background: "#ffffff", fontSize: 14, color: "#1E1E1E" }}
-            />
-          </div>
-        </div>
-
-        {/* Map preview */}
-        <div className="px-5 py-4" style={{ background: CREAM }}>
-          <div className="overflow-hidden rounded-2xl border bg-white shadow-sm" style={{ borderColor: "rgba(75,15,20,0.08)" }}>
-            <MapView
-              pickup={pickupCoords}
-              destination={selected ? { ...selected.coords, address: selected.name } : null}
-              height="220px"
-              showCurrentLocation={true}
-              onPickupChange={loc => { setPickup(loc.address); setPickupCoords(loc); }}
-            />
-          </div>
-          <p className="mt-2 text-center" style={{ color: "#7a6a5a", fontSize: 11 }}>
-            Tap the map or allow GPS to set your pickup point.
-          </p>
-        </div>
-
-        {/* Destination grid */}
-        <div className="flex-1 overflow-auto px-5 pt-1 pb-8">
-          <p style={{ color: "#7a6a5a", fontSize: 12, fontWeight: 600, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Mga Sikat na Destinasyon
-          </p>
-          <div className="space-y-2.5">
-            {filtered.map(dest => {
-              const price = rideType === "shared" ? Math.round(dest.basePrice * 0.70) : dest.basePrice;
-              return (
-                <button
-                  key={dest.id}
-                  onClick={() => { setSelected(dest); setStep("passenger_type"); }}
-                  className="w-full flex items-center gap-3 p-4 rounded-2xl text-left"
-                  style={{ background: "#ffffff", border: "1.5px solid rgba(75,15,20,0.08)", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}
-                >
-                  <div className="h-12 w-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(75,15,20,0.06)" }}>
-                    <span style={{ fontSize: 22 }}>{dest.emoji}</span>
-                  </div>
-                  <div className="flex-1">
-                    <p style={{ color: "#1E1E1E", fontSize: 14, fontWeight: 700, lineHeight: 1.2 }}>{dest.name}</p>
-                    <p style={{ color: "#9a8a7a", fontSize: 12, marginTop: 2 }}>{dest.area}</p>
-                  </div>
-                  <div className="text-right">
-                    <p style={{ color: MAROON, fontSize: 18, fontWeight: 900 }}>PHP {price}</p>
-                    {rideType === "shared" && dest.basePrice !== price && (
-                      <p style={{ color: "#9a8a7a", fontSize: 11, textDecoration: "line-through" }}>PHP {dest.basePrice}</p>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  /* --- STEP 2: PASSENGER TYPE --- */
-  if (step === "passenger_type") {
-    const types: { key: PassengerType; emoji: string; label: string; sublabel: string; discount: string }[] = [
-      { key: "regular", emoji: "REG", label: "Regular", sublabel: "Walang diskwento", discount: rideType === "shared" ? "-30% (Shared)" : "Walang diskwento" },
-      { key: "student", emoji: "STD", label: "Estudyante", sublabel: "May valid student ID", discount: rideType === "shared" ? "-40% (Shared+Student)" : "-10% Student" },
-      { key: "pwd",     emoji: "PWD", label: "PWD",       sublabel: "May valid PWD ID", discount: rideType === "shared" ? "-40% (Shared+PWD)" : "-10% PWD" },
-    ];
-
-    return (
-      <div className="h-screen flex flex-col" style={{ background: CREAM }}>
-        <div className="px-5 pt-12 pb-6" style={{ background: `linear-gradient(160deg, ${MAROON} 0%, #6E171D 100%)` }}>
-          <div className="flex items-center gap-3 mb-4">
-            <button onClick={() => setStep("destination")} className="h-9 w-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,248,231,0.15)" }}>
-              <ArrowLeft size={18} color="#FFF8E7" />
-            </button>
-            <div>
-              <p style={{ color: "rgba(255,248,231,0.65)", fontSize: 12 }}>Papunta sa {selected?.name}</p>
-              <p style={{ color: "#FFF8E7", fontSize: 17, fontWeight: 800, lineHeight: 1 }}>Sino ka?</p>
-            </div>
-          </div>
-
-          {/* Selected destination pill */}
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: "rgba(255,248,231,0.1)" }}>
-            <span style={{ fontSize: 16 }}>{selected?.emoji}</span>
-            <p style={{ color: CREAM, fontSize: 13, fontWeight: 600 }}>{selected?.name}</p>
-            <span style={{ color: "rgba(255,248,231,0.5)", fontSize: 12 }}>-</span>
-            <span style={{ color: GOLD, fontSize: 13, fontWeight: 700 }}>PHP {selected?.basePrice}</span>
-          </div>
-        </div>
-
-        <div className="flex-1 px-5 pt-5 pb-8">
-          <p style={{ color: "#7a6a5a", fontSize: 13, marginBottom: 16, lineHeight: 1.5 }}>
-            Piliin ang uri ng pasahero para malaman ang iyong diskwento. May ID required sa boarding.
-          </p>
-
-          <div className="space-y-3">
-            {types.map(t => (
-              <button
-                key={t.key}
-                onClick={() => setPassengerType(t.key)}
-                className="w-full flex items-center gap-4 p-4 rounded-2xl text-left"
-                style={{
-                  background: passengerType === t.key ? "rgba(75,15,20,0.06)" : "#ffffff",
-                  border: passengerType === t.key ? `2px solid ${MAROON}` : "2px solid rgba(75,15,20,0.1)",
-                  boxShadow: passengerType === t.key ? "0 4px 16px rgba(75,15,20,0.12)" : "0 1px 4px rgba(0,0,0,0.04)",
-                }}
-              >
-                <div className="h-14 w-14 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: passengerType === t.key ? "rgba(75,15,20,0.1)" : "rgba(75,15,20,0.05)" }}>
-                  <span style={{ fontSize: 28 }}>{t.emoji}</span>
-                </div>
-                <div className="flex-1">
-                  <p style={{ color: "#1E1E1E", fontSize: 15, fontWeight: 800 }}>{t.label}</p>
-                  <p style={{ color: "#9a8a7a", fontSize: 12, marginTop: 2 }}>{t.sublabel}</p>
-                  <p style={{ color: t.key !== "regular" || rideType === "shared" ? "#2E7D32" : "#9a8a7a", fontSize: 12, fontWeight: 600, marginTop: 2 }}>
-                    {t.discount}
-                  </p>
-                </div>
-                {/* Price preview */}
-                <div className="text-right">
-                  <p style={{ color: MAROON, fontSize: 20, fontWeight: 900 }}>
-                    PHP {selected ? calcFinalPrice(selected.basePrice, rideType, t.key, null) : 0}
-                  </p>
-                  {(t.key !== "regular" || rideType === "shared") && (
-                    <p style={{ color: "#9a8a7a", fontSize: 11, textDecoration: "line-through" }}>PHP {selected?.basePrice}</p>
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
-
-          <p style={{ color: "#9a8a7a", fontSize: 11, marginTop: 12, textAlign: "center" }}>
-            Warning: Student at PWD lamang. Hindi pwedeng pagsabayin ang dalawang diskwento.
-          </p>
-
-          <button
-            onClick={() => setStep("confirm")}
-            className="w-full h-14 rounded-2xl flex items-center justify-center mt-5"
-            style={{ background: `linear-gradient(135deg, ${MAROON}, #6E171D)`, boxShadow: "0 6px 20px rgba(75,15,20,0.3)" }}
-          >
-            <span style={{ color: GOLD, fontSize: 16, fontWeight: 800 }}>Ituloy -&gt;</span>
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  /* --- STEP 3: CONFIRM BOOKING --- */
+  // ─────────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="h-screen flex flex-col" style={{ background: CREAM }}>
-      {/* Header */}
-      <div
-        className="flex flex-wrap items-center justify-between gap-3 px-5 pb-4 pt-12"
-        style={{ background: MAROON, boxShadow: "0 2px 12px rgba(75,15,20,0.3)" }}
-      >
-        <div className="flex min-w-0 items-center gap-3">
-          <button onClick={() => setStep("passenger_type")} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(255,248,231,0.15)" }}>
-            <ArrowLeft size={18} color="#FFF8E7" />
-          </button>
-          <p className="min-w-0 break-words" style={{ color: "#FFF8E7", fontSize: 16, fontWeight: 800 }}>I-confirm ang Booking</p>
-        </div>
-        <button onClick={() => navigate("/passenger")} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(255,248,231,0.15)" }}>
-          <X size={18} color="#FFF8E7" />
-        </button>
-      </div>
+    <div className="relative w-full h-screen overflow-hidden" style={{ fontFamily: "'Inter', sans-serif" }}>
 
-      {/* Map */}
-      <div style={{ height: 220 }}>
-        <MapView
-          pickup={pickupCoords}
-          destination={selected ? { ...selected.coords, address: selected.name } : null}
-          height="220px"
-          showCurrentLocation={true}
-          onPickupChange={loc => { setPickup(loc.address); setPickupCoords(loc); }}
-        />
-      </div>
+      {/* ── Full-screen Map ── */}
+      <div ref={mapContainerRef} className="absolute inset-0 z-0" style={{ height: "100%", width: "100%" }} />
 
-      {/* Booking details */}
-      <div className="flex-1 overflow-auto px-5 pt-4 pb-6 space-y-3">
-
-        {/* Pickup location */}
-        <div className="rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1.5px solid rgba(75,15,20,0.08)" }}>
-          <div className="px-4 pt-3 pb-1">
-            <p style={{ color: "#9a8a7a", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Pickup Location</p>
-          </div>
+      {/* ── Top bar ── */}
+      <div className="absolute top-0 left-0 right-0 z-20 px-4 pt-10 pb-3 pointer-events-none"
+        style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, transparent 100%)" }}>
+        <div className="flex items-center gap-3 pointer-events-auto">
           <button
-            onClick={handleUseCurrentLocation}
-            disabled={isLoadingLocation}
-            className="flex w-full min-w-0 items-center gap-3 px-4 py-3"
+            onClick={() => navigate("/passenger")}
+            className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg"
+            style={{ background: "rgba(255,255,255,0.95)" }}
           >
-            <Locate className="shrink-0" size={18} color={MAROON} />
-            <p className="min-w-0 break-words" style={{ color: pickup ? "#1E1E1E" : "#9a8a7a", fontSize: 13, fontWeight: pickup ? 600 : 400, flex: 1, textAlign: "left" }}>
-              {isLoadingLocation ? "Hinahanap ang lokasyon..." : pickup || "I-tap para gamitin ang kasalukuyang lokasyon"}
-            </p>
+            <ArrowLeft size={18} color={MAROON} />
           </button>
-          {!pickup && (
-            <div className="px-4 pb-3">
-              <p style={{ color: "#9a8a7a", fontSize: 11 }}>O i-tap ang mapa para pumili ng pickup point</p>
-            </div>
-          )}
+          <div className="flex-1 px-4 py-2.5 rounded-2xl shadow-lg"
+            style={{ background: "rgba(255,255,255,0.95)" }}>
+            <p className="text-xs font-semibold" style={{ color: "#6b7280" }}>Book a Tricycle</p>
+            <p className="text-sm font-bold" style={{ color: MAROON }}>
+              {rideType === "shared" ? "Shared Ride • -30%" : "Solo Ride"}
+            </p>
+          </div>
+          {/* Ride toggle */}
+          <button
+            onClick={() => setRideType(r => r === "solo" ? "shared" : "solo")}
+            className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg"
+            style={{ background: rideType === "shared" ? MAROON : "rgba(255,255,255,0.95)" }}
+          >
+            {rideType === "shared"
+              ? <Users size={16} color="#fff" />
+              : <User size={16} color={MAROON} />}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Pin mode selector (floating pill) ── */}
+      <div className="absolute z-20 pointer-events-auto"
+        style={{ top: "136px", left: "50%", transform: "translateX(-50%)" }}>
+        <div className="flex rounded-full shadow-lg overflow-hidden border-2"
+          style={{ borderColor: "rgba(255,255,255,0.9)", background: "rgba(255,255,255,0.97)" }}>
+          <button
+            onClick={() => setPinMode("pickup")}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold transition-all"
+            style={{
+              background: pinMode === "pickup" ? GREEN : "transparent",
+              color:      pinMode === "pickup" ? "#fff" : "#374151",
+            }}
+          >
+            <MapPin size={12} />  Pickup
+          </button>
+          <button
+            onClick={() => setPinMode("dropoff")}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold transition-all"
+            style={{
+              background: pinMode === "dropoff" ? MAROON : "transparent",
+              color:      pinMode === "dropoff" ? "#fff"  : "#374151",
+            }}
+          >
+            <MapPin size={12} /> Drop-off
+          </button>
+        </div>
+        <p className="text-center text-[10px] mt-1 font-semibold"
+          style={{ color: "rgba(255,255,255,0.9)", textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>
+          Tap map to pin {pinMode === "pickup" ? "pickup" : "drop-off"} location
+        </p>
+      </div>
+
+      {/* ── GPS button (floating) ── */}
+      <button
+        onClick={handleUseGPS}
+        disabled={gpsLoading}
+        className="absolute z-20 w-12 h-12 rounded-full flex items-center justify-center shadow-xl"
+        style={{ right: 16, bottom: 320, background: "#fff" }}
+      >
+        <Locate size={20} color={gpsLoading ? "#9ca3af" : "#2563EB"} />
+      </button>
+
+      {/* ── Bottom panel ── */}
+      <div
+        className="absolute bottom-0 left-0 right-0 z-20 rounded-t-3xl shadow-2xl"
+        style={{ background: "#fff", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+      >
+        {/* Drag handle */}
+        <div className="flex justify-center pt-2.5 pb-1">
+          <div className="w-10 h-1 rounded-full" style={{ background: "#e5e7eb" }} />
         </div>
 
-        {/* Driver matching */}
-        {pickupCoords && (
-          <div className="rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1.5px solid rgba(75,15,20,0.08)" }}>
-            <div className="px-4 pt-3 pb-1">
-              <p style={{ color: "#9a8a7a", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Nearest Driver Match</p>
+        {/* ── Location inputs ── */}
+        <div className="px-4 pt-1 pb-2 space-y-2">
+          {/* Pickup */}
+          <button
+            onClick={() => setPinMode("pickup")}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-all"
+            style={{
+              background: pinMode === "pickup" ? "rgba(22,163,74,0.06)" : "#f9fafb",
+              border: `2px solid ${pinMode === "pickup" ? GREEN : "#e5e7eb"}`,
+            }}
+          >
+            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: GREEN }}>
+              <MapPin size={14} color="#fff" />
             </div>
-            {driverMatch ? (
-              <div className="px-4 py-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl" style={{ background: "rgba(75,15,20,0.08)" }}>
-                    <Navigation2 size={22} color={MAROON} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="break-words" style={{ color: "#1E1E1E", fontSize: 14, fontWeight: 800 }}>{driverMatch.driver.name}</p>
-                    <p className="break-words" style={{ color: "#7a6a5a", fontSize: 12 }}>
-                      {driverMatch.driver.vehicleType} {driverMatch.driver.plateNumber}
-                    </p>
-                  </div>
-                  <div className="shrink-0 rounded-xl px-3 py-2 text-right" style={{ background: "rgba(46,125,50,0.08)" }}>
-                    <p style={{ color: "#2E7D32", fontSize: 12, fontWeight: 800 }}>{driverMatch.etaMinutes} min</p>
-                    <p style={{ color: "#6B7280", fontSize: 10 }}>ETA</p>
-                  </div>
-                </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#6b7280" }}>Pickup</p>
+              <p className="text-sm font-semibold truncate" style={{ color: pickup ? "#111827" : "#9ca3af" }}>
+                {pickup ? pickup.address : "Tap map or use GPS →"}
+              </p>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleUseGPS(); }}
+              className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: "rgba(37,99,235,0.08)" }}
+            >
+              <Locate size={13} color="#2563EB" />
+            </button>
+          </button>
 
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  <div className="min-w-0 rounded-xl p-2" style={{ background: "rgba(75,15,20,0.04)" }}>
-                    <div className="mb-1 flex items-center gap-1">
-                      <Route size={12} color={MAROON} />
-                      <p style={{ color: "#7a6a5a", fontSize: 10 }}>Away</p>
-                    </div>
-                    <p className="break-words" style={{ color: "#1E1E1E", fontSize: 12, fontWeight: 800 }}>{driverMatch.distanceKm.toFixed(1)} km</p>
-                  </div>
-                  <div className="min-w-0 rounded-xl p-2" style={{ background: "rgba(75,15,20,0.04)" }}>
-                    <div className="mb-1 flex items-center gap-1">
-                      <Star size={12} color={MAROON} />
-                      <p style={{ color: "#7a6a5a", fontSize: 10 }}>Rating</p>
-                    </div>
-                    <p className="break-words" style={{ color: "#1E1E1E", fontSize: 12, fontWeight: 800 }}>{driverMatch.driver.rating.toFixed(1)}</p>
-                  </div>
-                  <div className="min-w-0 rounded-xl p-2" style={{ background: "rgba(75,15,20,0.04)" }}>
-                    <div className="mb-1 flex items-center gap-1">
-                      <Clock size={12} color={MAROON} />
-                      <p style={{ color: "#7a6a5a", fontSize: 10 }}>Trips</p>
-                    </div>
-                    <p className="break-words" style={{ color: "#1E1E1E", fontSize: 12, fontWeight: 800 }}>{driverMatch.driver.completedTrips}</p>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="px-4 py-3">
-                <p style={{ color: "#7a6a5a", fontSize: 13 }}>No available {BOOKING_VEHICLE_TYPE.toLowerCase()} drivers near this pickup yet.</p>
-              </div>
+          {/* Dotted connector */}
+          <div className="flex items-center gap-3 px-4">
+            <div className="w-8 flex flex-col items-center gap-0.5">
+              {[0,1,2].map(i => (
+                <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: "#d1d5db" }} />
+              ))}
+            </div>
+            <div className="flex-1 h-px" style={{ background: "#f3f4f6" }} />
+          </div>
+
+          {/* Drop-off */}
+          <button
+            onClick={() => setPinMode("dropoff")}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-all"
+            style={{
+              background: pinMode === "dropoff" ? "rgba(75,15,20,0.05)" : "#f9fafb",
+              border: `2px solid ${pinMode === "dropoff" ? MAROON : "#e5e7eb"}`,
+            }}
+          >
+            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: MAROON }}>
+              <MapPin size={14} color="#fff" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#6b7280" }}>Drop-off</p>
+              <p className="text-sm font-semibold truncate" style={{ color: dropoff ? "#111827" : "#9ca3af" }}>
+                {dropoff ? dropoff.address : "Tap map to pin destination"}
+              </p>
+            </div>
+            {dropoff && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setDropoff(null); setRouteData(null); }}
+                className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ background: "rgba(75,15,20,0.08)" }}
+              >
+                <X size={13} color={MAROON} />
+              </button>
             )}
+          </button>
+        </div>
+
+        {/* ── Route info strip (only when route loaded) ── */}
+        {routeData && (
+          <div className="mx-4 mb-2 px-4 py-3 rounded-2xl flex items-center gap-4"
+            style={{ background: "rgba(29,78,216,0.05)", border: "1.5px solid rgba(29,78,216,0.12)" }}>
+            <div className="flex items-center gap-1.5">
+              <Ruler size={14} color="#1D4ED8" />
+              <span className="text-sm font-bold" style={{ color: "#1D4ED8" }}>
+                {distanceKm >= 1
+                  ? `${distanceKm.toFixed(2)} km`
+                  : `${Math.round(distanceKm * 1000)} m`}
+              </span>
+            </div>
+            <div className="w-px h-4" style={{ background: "#bfdbfe" }} />
+            <div className="flex items-center gap-1.5">
+              <Clock size={14} color="#1D4ED8" />
+              <span className="text-sm font-bold" style={{ color: "#1D4ED8" }}>{durationMin} mins</span>
+            </div>
+            <div className="w-px h-4" style={{ background: "#bfdbfe" }} />
+            <div className="flex items-center gap-1.5 ml-auto">
+              <Navigation2 size={14} color={MAROON} />
+              <span className="text-sm font-bold" style={{ color: MAROON }}>Via road</span>
+            </div>
           </div>
         )}
 
-        {/* Booking summary */}
-        <div className="rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1.5px solid rgba(75,15,20,0.08)" }}>
-          <div className="px-4 pt-3 pb-1">
-            <p style={{ color: "#9a8a7a", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Buod ng Biyahe</p>
-          </div>
-          {[
-            { label: "Destinasyon", value: `${selected?.emoji} ${selected?.name}` },
-            { label: "Distansya", value: `${estimatedDistanceKm.toFixed(1)} km` },
-            { label: "Uri ng Biyahe", value: rideType === "solo" ? "Solo" : "Shared" },
-            { label: "Pasahero", value: passengerType === "regular" ? "Regular" : passengerType === "student" ? "Estudyante" : "PWD" },
-          ].map((row, i) => (
-            <div key={row.label} className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 px-4 py-3" style={{ borderTop: i > 0 ? "1px solid rgba(75,15,20,0.06)" : "none" }}>
-              <p style={{ color: "#7a6a5a", fontSize: 13 }}>{row.label}</p>
-              <p className="min-w-0 break-words text-right" style={{ color: "#1E1E1E", fontSize: 13, fontWeight: 700 }}>{row.value}</p>
-            </div>
-          ))}
+        {/* ── Options toggle ── */}
+        <button
+          onClick={() => setShowOptions(v => !v)}
+          className="flex items-center gap-2 mx-4 mb-2 text-xs font-bold"
+          style={{ color: "#6b7280" }}
+        >
+          <span>{showOptions ? "▲" : "▼"}</span>
+          Ride options & promo
+        </button>
 
-          {/* Price breakdown */}
-          <div className="px-4 py-3" style={{ borderTop: "1px solid rgba(75,15,20,0.06)" }}>
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <p style={{ color: "#7a6a5a", fontSize: 13 }}>Base Price</p>
-              <p style={{ color: "#1E1E1E", fontSize: 13, fontWeight: 600 }}>PHP {selected?.basePrice}</p>
+        {/* ── Collapsible options ── */}
+        {showOptions && (
+          <div className="px-4 pb-2 space-y-3 animate-in slide-in-from-bottom-2">
+            {/* Ride type */}
+            <div className="flex gap-2">
+              {(["solo", "shared"] as RideType[]).map(rt => (
+                <button key={rt} onClick={() => setRideType(rt)}
+                  className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-1.5 text-sm font-semibold transition-all"
+                  style={{
+                    background: rideType === rt ? MAROON : "#f3f4f6",
+                    color:      rideType === rt ? "#fff"  : "#374151",
+                    border:     rideType === rt ? "none"  : "1.5px solid #e5e7eb",
+                  }}>
+                  {rt === "solo" ? <User size={13} /> : <Users size={13} />}
+                  {rt === "solo" ? "Solo" : "Shared -30%"}
+                </button>
+              ))}
             </div>
-            {discountBreakdown().map(d => (
-              <div key={d.label} className="mb-1 flex flex-wrap items-center justify-between gap-2">
-                <p style={{ color: "#2E7D32", fontSize: 12 }}>{d.label}</p>
-                <p style={{ color: "#2E7D32", fontSize: 12, fontWeight: 600 }}>{d.amount}</p>
-              </div>
-            ))}
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2" style={{ borderTop: "1px solid rgba(75,15,20,0.1)", marginTop: 4 }}>
-              <p style={{ color: "#1E1E1E", fontSize: 15, fontWeight: 800 }}>Kabuuang Bayad</p>
-              <p style={{ color: MAROON, fontSize: 22, fontWeight: 900 }}>PHP {finalPrice}</p>
-            </div>
-          </div>
 
-          {/* Promo code */}
-          <div className="px-4 pb-4" style={{ borderTop: "1px solid rgba(75,15,20,0.06)" }}>
+            {/* Passenger type */}
+            <div className="flex gap-2">
+              {(["regular", "student", "pwd"] as PassengerType[]).map(pt => (
+                <button key={pt} onClick={() => setPassengerType(pt)}
+                  className="flex-1 py-2 rounded-xl text-xs font-bold transition-all"
+                  style={{
+                    background: passengerType === pt ? "rgba(75,15,20,0.1)" : "#f3f4f6",
+                    color:      passengerType === pt ? MAROON : "#6b7280",
+                    border:     passengerType === pt ? `1.5px solid ${MAROON}` : "1.5px solid #e5e7eb",
+                  }}>
+                  {pt === "regular" ? "Regular" : pt === "student" ? "Student -10%" : "PWD -10%"}
+                </button>
+              ))}
+            </div>
+
+            {/* Payment */}
+            <div className="flex gap-2">
+              {([
+                { key: "cash"     as PaymentMethod, label: "Cash",       icon: <span>₱</span> },
+                { key: "epayment" as PaymentMethod, label: "E-Payment",   icon: <CreditCard size={12}/> },
+              ]).map(m => (
+                <button key={m.key} onClick={() => setPaymentMethod(m.key)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all"
+                  style={{
+                    background: paymentMethod === m.key ? "rgba(212,175,55,0.1)" : "#f3f4f6",
+                    color:      paymentMethod === m.key ? "#92650a" : "#6b7280",
+                    border:     paymentMethod === m.key ? `1.5px solid ${GOLD}` : "1.5px solid #e5e7eb",
+                  }}>
+                  {m.icon} {m.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Promo */}
             {appliedPromo ? (
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl p-3" style={{ background: "rgba(46,125,50,0.08)", border: "1px solid rgba(46,125,50,0.2)" }}>
-                <div className="flex min-w-0 items-center gap-2">
-                  <Tag className="shrink-0" size={14} color="#2E7D32" />
-                  <p className="min-w-0 break-words" style={{ color: "#2E7D32", fontSize: 13, fontWeight: 700 }}>{appliedPromo.code} - {appliedPromo.discount}% off</p>
+              <div className="flex items-center justify-between px-3 py-2 rounded-xl"
+                style={{ background: "rgba(22,163,74,0.07)", border: "1px solid rgba(22,163,74,0.2)" }}>
+                <div className="flex items-center gap-2">
+                  <Tag size={13} color={GREEN} />
+                  <span className="text-xs font-bold" style={{ color: GREEN }}>
+                    {appliedPromo.code} — {appliedPromo.discount}% off
+                  </span>
                 </div>
-                <button onClick={() => setAppliedPromo(null)}><X size={14} color="#C62828" /></button>
+                <button onClick={() => setAppliedPromo(null)}>
+                  <X size={13} color="#ef4444" />
+                </button>
               </div>
             ) : showPromoInput ? (
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="flex gap-2">
                 <input
                   type="text"
                   placeholder="Promo code"
                   value={promoCode}
                   onChange={e => setPromoCode(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 20))}
-                  maxLength={20}
-                  className="min-w-[150px] flex-1 rounded-xl px-3 outline-none"
-                  style={{ height: 40, border: "1.5px solid rgba(75,15,20,0.15)", fontSize: 14, background: "#ffffff" }}
+                  className="flex-1 px-3 rounded-xl outline-none text-sm"
+                  style={{ height: 40, border: `1.5px solid ${MAROON}`, background: "#fff" }}
                 />
-                <button onClick={applyPromo} className="px-4 rounded-xl" style={{ background: MAROON, height: 40 }}>
-                  <span style={{ color: GOLD, fontSize: 13, fontWeight: 700 }}>Apply</span>
-                </button>
-                <button onClick={() => setShowPromoInput(false)} className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(75,15,20,0.08)" }}>
-                  <X size={14} color={MAROON} />
+                <button onClick={applyPromo} className="px-4 rounded-xl text-sm font-bold"
+                  style={{ background: MAROON, color: GOLD, height: 40 }}>Apply</button>
+                <button onClick={() => setShowPromoInput(false)}
+                  className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ background: "#f3f4f6" }}>
+                  <X size={13} color="#6b7280" />
                 </button>
               </div>
             ) : (
-              <button onClick={() => setShowPromoInput(true)} className="flex items-center gap-2 mt-3">
-                <Tag size={14} color={MAROON} />
-                <span style={{ color: MAROON, fontSize: 13, fontWeight: 600 }}>Magdagdag ng promo code</span>
+              <button onClick={() => setShowPromoInput(true)}
+                className="flex items-center gap-2 text-xs font-semibold"
+                style={{ color: MAROON }}>
+                <Tag size={12} /> Add promo code
               </button>
             )}
           </div>
-        </div>
+        )}
 
-        {/* Payment method */}
-        <div className="rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1.5px solid rgba(75,15,20,0.08)" }}>
-          <div className="px-4 pt-3 pb-1">
-            <p style={{ color: "#9a8a7a", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Paraan ng Bayad</p>
+        {/* ── Fare estimate + Book ── */}
+        <div className="px-4 pt-2 pb-5 flex items-center gap-3">
+          <div className="flex-1">
+            <p className="text-xs font-semibold" style={{ color: "#6b7280" }}>Fare Estimate</p>
+            <p className="text-2xl font-black" style={{ color: MAROON }}>
+              ₱{dropoff && distanceKm > 0 ? finalPrice : "—"}
+            </p>
+            {appliedPromo && dropoff && (
+              <p className="text-xs" style={{ color: GREEN }}>
+                incl. {appliedPromo.discount}% off
+              </p>
+            )}
           </div>
-          <div className="grid grid-cols-1 gap-3 px-4 pb-3 sm:grid-cols-2">
-            {([
-              { key: "cash" as PaymentMethod, emoji: "$", label: "Cash" },
-              { key: "epayment" as PaymentMethod, emoji: "CARD", label: "E-Payment" },
-            ]).map(m => (
-              <button
-                key={m.key}
-                onClick={() => setPaymentMethod(m.key)}
-                className="flex min-w-0 items-center gap-2 rounded-xl p-3"
-                style={{
-                  background: paymentMethod === m.key ? "rgba(75,15,20,0.06)" : "transparent",
-                  border: paymentMethod === m.key ? `2px solid ${MAROON}` : "2px solid rgba(75,15,20,0.1)",
-                }}
-              >
-                <span style={{ fontSize: 18 }}>{m.emoji}</span>
-                <span style={{ color: paymentMethod === m.key ? MAROON : "#7a6a5a", fontSize: 13, fontWeight: paymentMethod === m.key ? 700 : 500 }}>{m.label}</span>
-              </button>
-            ))}
-          </div>
+          <button
+            onClick={() => {
+              if (!pickup) { toast.error("Please set your pickup location"); return; }
+              if (!dropoff) { toast.error("Please set your drop-off location"); return; }
+              setShowConfirm(true);
+            }}
+            disabled={bookingLoading}
+            className="flex-1 h-14 rounded-2xl flex items-center justify-center font-bold text-base shadow-lg transition-opacity"
+            style={{
+              background: `linear-gradient(135deg, ${MAROON}, #6E171D)`,
+              color: GOLD,
+              opacity: bookingLoading ? 0.7 : 1,
+              boxShadow: "0 6px 20px rgba(75,15,20,0.35)",
+            }}
+          >
+            {bookingLoading ? "Booking…" : "Book Now"}
+          </button>
         </div>
-
-        {/* Book button */}
-        <button
-          onClick={() => {
-            if (!pickupCoords) { toast.error("Piliin muna ang iyong pickup location"); return; }
-            setShowConfirmDialog(true);
-          }}
-          disabled={bookingLoading}
-          className="w-full h-14 rounded-2xl flex items-center justify-center"
-          style={{ background: `linear-gradient(135deg, ${MAROON}, #6E171D)`, boxShadow: "0 6px 20px rgba(75,15,20,0.3)" }}
-        >
-          <span style={{ color: GOLD, fontSize: 16, fontWeight: 800 }}>
-            {bookingLoading ? "Nag-iimpok..." : `I-book na - PHP ${finalPrice}`}
-          </span>
-        </button>
       </div>
 
-      {/* Confirm dialog */}
-      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+      {/* ── Confirm Dialog ── */}
+      <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
         <DialogPortal>
-          <DialogPrimitive.Overlay className="fixed inset-0 z-[9998] bg-black/40 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <DialogPrimitive.Overlay className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
           <DialogPrimitive.Content className="fixed top-[50%] left-[50%] z-[9999] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] rounded-3xl bg-white p-6 shadow-2xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95">
-            <DialogHeader>
-              <DialogPrimitive.Title style={{ color: MAROON, fontSize: 18, fontWeight: 800 }}>Kumpirmahin ang Booking</DialogPrimitive.Title>
-              <DialogPrimitive.Description style={{ color: "#7a6a5a", fontSize: 13 }}>I-review ang detalye ng iyong biyahe</DialogPrimitive.Description>
-            </DialogHeader>
-            <div className="space-y-3 mt-4">
+            <DialogPrimitive.Title className="text-lg font-black mb-1" style={{ color: MAROON }}>
+              Confirm Booking
+            </DialogPrimitive.Title>
+            <DialogPrimitive.Description className="text-sm mb-4" style={{ color: "#6b7280" }}>
+              Review your ride details before confirming.
+            </DialogPrimitive.Description>
+
+            <div className="space-y-2 mb-4">
               {[
-                { label: "Pickup", value: pickup },
-                { label: "Destinasyon", value: `${selected?.emoji} ${selected?.name}` },
-                { label: "Distansya", value: `${estimatedDistanceKm.toFixed(1)} km` },
-                ...(driverMatch ? [{ label: "Driver", value: `${driverMatch.driver.name} - ${driverMatch.etaMinutes} min away` }] : []),
-                { label: "Uri ng Biyahe", value: rideType === "solo" ? "Solo" : "Shared" },
-                { label: "Pasahero", value: passengerType === "regular" ? "Regular" : passengerType === "student" ? "Estudyante" : "PWD" },
-                { label: "Bayad", value: `PHP ${finalPrice}`, highlight: true },
-              ].map(row => (
-                <div key={row.label} className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 py-2" style={{ borderBottom: "1px solid rgba(75,15,20,0.07)" }}>
-                  <span style={{ color: "#7a6a5a", fontSize: 13 }}>{row.label}</span>
-                  <span className="min-w-0 break-words text-right" style={{ color: row.highlight ? MAROON : "#1E1E1E", fontSize: row.highlight ? 18 : 13, fontWeight: row.highlight ? 900 : 600 }}>{row.value}</span>
+                { label: "Pickup",    value: pickup?.address     ?? "—" },
+                { label: "Drop-off",  value: dropoff?.address    ?? "—" },
+                { label: "Distance",  value: distanceKm >= 1 ? `${distanceKm.toFixed(2)} km` : `${Math.round(distanceKm * 1000)} m` },
+                { label: "Duration",  value: `${durationMin} mins` },
+                { label: "Ride",      value: rideType === "solo" ? "Solo" : "Shared" },
+                { label: "Passenger", value: passengerType === "regular" ? "Regular" : passengerType === "student" ? "Student" : "PWD" },
+                { label: "Payment",   value: paymentMethod === "cash" ? "Cash" : "E-Payment" },
+              ].map((row) => (
+                <div key={row.label} className="flex items-start justify-between gap-3 py-1.5"
+                  style={{ borderBottom: "1px solid #f3f4f6" }}>
+                  <span className="text-sm" style={{ color: "#6b7280", flexShrink: 0 }}>{row.label}</span>
+                  <span className="text-sm font-semibold text-right min-w-0 break-words" style={{ color: "#111827" }}>{row.value}</span>
                 </div>
               ))}
-              <div className="flex gap-2 pt-2">
-                <button onClick={() => setShowConfirmDialog(false)} className="flex-1 h-12 rounded-2xl" style={{ background: "rgba(75,15,20,0.07)", color: MAROON, fontSize: 14, fontWeight: 700 }}>
-                  Bumalik
-                </button>
-                <button onClick={handleConfirm} className="flex-1 h-12 rounded-2xl" style={{ background: `linear-gradient(135deg, ${MAROON}, #6E171D)`, color: GOLD, fontSize: 14, fontWeight: 800, boxShadow: "0 4px 12px rgba(75,15,20,0.3)" }}>
-                  I-confirm
-                </button>
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-base font-bold" style={{ color: "#111827" }}>Total Fare</span>
+                <span className="text-2xl font-black" style={{ color: MAROON }}>₱{finalPrice}</span>
               </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setShowConfirm(false)}
+                className="flex-1 h-12 rounded-2xl font-bold text-sm"
+                style={{ background: "#f3f4f6", color: MAROON }}>
+                Back
+              </button>
+              <button onClick={handleBook}
+                className="flex-1 h-12 rounded-2xl font-bold text-sm shadow-lg"
+                style={{ background: `linear-gradient(135deg, ${MAROON}, #6E171D)`, color: GOLD, boxShadow: "0 4px 12px rgba(75,15,20,0.3)" }}>
+                Confirm →
+              </button>
             </div>
           </DialogPrimitive.Content>
         </DialogPortal>
@@ -676,4 +746,3 @@ export default function BookingPage() {
     </div>
   );
 }
-

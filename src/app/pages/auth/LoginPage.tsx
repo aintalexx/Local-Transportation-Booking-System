@@ -6,6 +6,7 @@ import { useUser } from "../../context/UserContext";
 import { authenticateUser, findUser } from "../../utils/userDatabase";
 import { formatPHPhoneInput } from "../../utils/validators";
 import { signInWithEmailPassword, signInWithGoogle } from "../../utils/supabaseAuth";
+import { getRoleHomePath } from "../../utils/roleRouting";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -30,7 +31,7 @@ export default function LoginPage() {
         if (supabaseUser) {
           setUser(supabaseUser);
           toast.success("Login successful!");
-          navigate(supabaseUser.role === "driver" ? "/driver" : "/passenger");
+          navigate(getRoleHomePath(supabaseUser));
           return;
         }
       }
@@ -54,7 +55,7 @@ export default function LoginPage() {
       }
       setUser(user);
       toast.success("Login successful!");
-      navigate(user.role === "driver" ? "/driver" : "/passenger");
+      navigate(getRoleHomePath(user));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Login failed. Please try again.";
       toast.error(message);

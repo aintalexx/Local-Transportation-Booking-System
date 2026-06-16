@@ -7,6 +7,7 @@ create table if not exists public.profiles (
   vehicle_type text,
   plate_number text,
   is_online boolean not null default false,
+  approval_status text not null default 'approved' check (approval_status in ('pending', 'approved', 'rejected')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -61,7 +62,8 @@ begin
     phone,
     role,
     vehicle_type,
-    plate_number
+    plate_number,
+    approval_status
   )
   values (
     new.id,
@@ -70,7 +72,11 @@ begin
     nullif(new.raw_user_meta_data ->> 'phone', ''),
     coalesce(nullif(new.raw_user_meta_data ->> 'role', ''), 'passenger'),
     nullif(new.raw_user_meta_data ->> 'vehicle_type', ''),
-    nullif(new.raw_user_meta_data ->> 'plate_number', '')
+    nullif(new.raw_user_meta_data ->> 'plate_number', ''),
+    coalesce(
+      nullif(new.raw_user_meta_data ->> 'approval_status', ''),
+      case when (new.raw_user_meta_data ->> 'role') = 'driver' then 'pending' else 'approved' end
+    )
   )
   on conflict (id) do update set
     username = excluded.username,
@@ -79,6 +85,7 @@ begin
     role = excluded.role,
     vehicle_type = excluded.vehicle_type,
     plate_number = excluded.plate_number,
+    approval_status = excluded.approval_status,
     updated_at = now();
 
   return new;
@@ -174,6 +181,7 @@ do $$
 begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
     alter publication supabase_realtime add table public.bookings;
+    alter publication supabase_realtime add table public.profiles;
   end if;
 exception
   when duplicate_object then null;

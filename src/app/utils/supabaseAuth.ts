@@ -6,9 +6,10 @@ import { formatPersonName, normalizeDisplayName, normalizeOptionalSuffix } from 
 
 const GOOGLE_ROLE_KEY = "arangkada_google_signup_role";
 
-type AppRole = "passenger" | "driver";
+type AppRole = UserData["role"];
+type PublicSignupRole = Extract<AppRole, "passenger" | "driver">;
 
-export async function signInWithGoogle(role: AppRole = "passenger") {
+export async function signInWithGoogle(role: PublicSignupRole = "passenger") {
   if (!supabase) {
     throw new Error(getSupabaseConfigMessage());
   }
@@ -30,7 +31,7 @@ export async function signInWithGoogle(role: AppRole = "passenger") {
   }
 }
 
-export function getPendingGoogleRole(): AppRole {
+export function getPendingGoogleRole(): PublicSignupRole {
   const pendingRole = sessionStorage.getItem(GOOGLE_ROLE_KEY);
   return pendingRole === "driver" ? "driver" : "passenger";
 }
@@ -39,7 +40,7 @@ export function clearPendingGoogleRole() {
   sessionStorage.removeItem(GOOGLE_ROLE_KEY);
 }
 
-export function createLocalUserFromGoogle(supabaseUser: SupabaseUser, role: AppRole): UserData {
+export function createLocalUserFromGoogle(supabaseUser: SupabaseUser, role: PublicSignupRole): UserData {
   const email = supabaseUser.email?.trim().toLowerCase() || "";
   const metadata = supabaseUser.user_metadata || {};
   const fullName = normalizeDisplayName(metadata.full_name || metadata.name || email.split("@")[0] || "Google User");
@@ -179,7 +180,7 @@ export async function createLocalUserFromSupabaseUser(supabaseUser: SupabaseUser
     driverLicensePhoto: existingUser?.driverLicensePhoto || "",
     vehicleColor: existingUser?.vehicleColor || "",
     memberSince: existingUser?.memberSince || new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
-    approvalStatus: existingUser?.approvalStatus || (role === "driver" ? "approved" : "approved"),
+    approvalStatus: profile?.approval_status || existingUser?.approvalStatus || (role === "driver" ? "pending" : "approved"),
     profilePhoto: existingUser?.profilePhoto || String(metadata.avatar_url || metadata.picture || ""),
   };
 

@@ -33,7 +33,7 @@ export interface BookingData {
   paymentMethod: string;
   vehicleType: string;
   rideType?: "solo" | "shared";
-  status: "pending" | "accepted" | "en_route" | "arrived" | "in_progress" | "completed" | "cancelled";
+  status: BookingStatus;
   createdAt: string;
   acceptedAt?: string;
   completedAt?: string;
@@ -43,7 +43,39 @@ export interface BookingData {
   };
 }
 
+export type BookingStatus =
+  | "idle"
+  | "selecting_location"
+  | "route_preview"
+  | "finding_driver"
+  | "driver_found"
+  | "driver_to_pickup"
+  | "driver_arrived"
+  | "ride_started"
+  | "ride_ongoing"
+  | "ride_completed"
+  | "pending"
+  | "accepted"
+  | "en_route"
+  | "arrived"
+  | "in_progress"
+  | "completed"
+  | "cancelled";
+
 const BOOKINGS_KEY = "ridestamesa_bookings";
+const ACTIVE_BOOKING_STATUSES: BookingStatus[] = [
+  "pending",
+  "finding_driver",
+  "accepted",
+  "driver_found",
+  "en_route",
+  "driver_to_pickup",
+  "arrived",
+  "driver_arrived",
+  "ride_started",
+  "in_progress",
+  "ride_ongoing",
+];
 
 // Get all bookings from database
 export function getAllBookings(): BookingData[] {
@@ -111,7 +143,7 @@ export function getPassengerActiveBooking(username: string): BookingData | null 
   const bookings = getAllBookings();
   return bookings.find(
     b => b.passengerUsername === username &&
-    ["pending", "accepted", "en_route", "arrived", "in_progress"].includes(b.status)
+    ACTIVE_BOOKING_STATUSES.includes(b.status)
   ) || null;
 }
 
@@ -120,7 +152,7 @@ export function getDriverActiveBooking(username: string): BookingData | null {
   const bookings = getAllBookings();
   return bookings.find(
     b => b.driverUsername === username &&
-    ["accepted", "en_route", "arrived", "in_progress"].includes(b.status)
+    ["accepted", "driver_found", "en_route", "driver_to_pickup", "arrived", "driver_arrived", "ride_started", "in_progress", "ride_ongoing"].includes(b.status)
   ) || null;
 }
 
@@ -128,7 +160,7 @@ export function getDriverActiveBooking(username: string): BookingData | null {
 export function getPendingBookings(vehicleType?: string): BookingData[] {
   const bookings = getAllBookings();
   return bookings.filter(b => {
-    const isPending = b.status === "pending";
+    const isPending = b.status === "pending" || b.status === "finding_driver";
     if (vehicleType) {
       return isPending && b.vehicleType.toLowerCase() === vehicleType.toLowerCase();
     }
@@ -147,8 +179,8 @@ export function acceptBooking(bookingId: string, driverUsername: string, driverN
       return false;
     }
 
-    if (bookings[bookingIndex].status !== "pending") {
-      console.error("Booking is not pending:", bookingId);
+    if (!["pending", "finding_driver"].includes(bookings[bookingIndex].status)) {
+      console.error("Booking is not waiting for a driver:", bookingId);
       return false;
     }
 
@@ -186,7 +218,7 @@ export function updateBookingStatus(bookingId: string, status: BookingData["stat
     bookings[bookingIndex] = {
       ...bookings[bookingIndex],
       status,
-      ...(status === "completed" && { completedAt: new Date().toISOString() }),
+      ...((status === "completed" || status === "ride_completed") && { completedAt: new Date().toISOString() }),
     };
 
     saveAllBookings(bookings);
@@ -195,6 +227,31 @@ export function updateBookingStatus(bookingId: string, status: BookingData["stat
   } catch (error) {
     console.error("Error updating booking status:", error);
     return false;
+  }
+}
+
+// Update any booking fields used by the demo booking algorithm.
+export function updateBooking(bookingId: string, updates: Partial<BookingData>): BookingData | null {
+  try {
+    const bookings = getAllBookings();
+    const bookingIndex = bookings.findIndex(b => b.id === bookingId);
+
+    if (bookingIndex === -1) {
+      console.error("Booking not found:", bookingId);
+      return null;
+    }
+
+    bookings[bookingIndex] = {
+      ...bookings[bookingIndex],
+      ...updates,
+      ...((updates.status === "completed" || updates.status === "ride_completed") && { completedAt: new Date().toISOString() }),
+    };
+
+    saveAllBookings(bookings);
+    return bookings[bookingIndex];
+  } catch (error) {
+    console.error("Error updating booking:", error);
+    return null;
   }
 }
 
@@ -248,9 +305,9 @@ export function getBookingStats() {
   const bookings = getAllBookings();
   return {
     total: bookings.length,
-    pending: bookings.filter(b => b.status === "pending").length,
-    active: bookings.filter(b => ["accepted", "en_route", "arrived", "in_progress"].includes(b.status)).length,
-    completed: bookings.filter(b => b.status === "completed").length,
+    pending: bookings.filter(b => b.status === "pending" || b.status === "finding_driver").length,
+    active: bookings.filter(b => ACTIVE_BOOKING_STATUSES.includes(b.status)).length,
+    completed: bookings.filter(b => b.status === "completed" || b.status === "ride_completed").length,
     cancelled: bookings.filter(b => b.status === "cancelled").length,
   };
 }

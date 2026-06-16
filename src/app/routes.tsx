@@ -28,13 +28,7 @@ import DriverProfile from "./pages/driver/Profile";
 import DriverEditProfile from "./pages/driver/EditProfile";
 
 // Admin pages
-import AdminLayout from "./pages/admin/AdminLayout";
-import AdminDashboard from "./pages/admin/Dashboard";
-import DriverManagement from "./pages/admin/DriverManagement";
-import BookingMonitoring from "./pages/admin/BookingMonitoring";
-import LiveMapMonitoring from "./pages/admin/LiveMapMonitoring";
-import Analytics from "./pages/admin/Analytics";
-import AdminSettings from "./pages/admin/Settings";
+import AdminPanelApp from "./adminPanel/App";
 
 // Shared pages
 import RatingPage from "./pages/shared/RatingPage";
@@ -100,16 +94,8 @@ export const router = createBrowserRouter([
     ],
   },
   {
-    path: "/admin",
-    Component: AdminLayout,
-    children: [
-      { index: true, Component: AdminDashboard },
-      { path: "drivers", Component: DriverManagement },
-      { path: "bookings", Component: BookingMonitoring },
-      { path: "live-map", Component: LiveMapMonitoring },
-      { path: "analytics", Component: Analytics },
-      { path: "settings", Component: AdminSettings },
-    ],
+    path: "/admin/*",
+    Component: AdminPanelApp,
   },
   {
     path: "/rating/:rideId",

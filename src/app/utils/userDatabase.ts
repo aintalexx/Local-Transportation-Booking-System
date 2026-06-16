@@ -16,7 +16,7 @@ export interface UserData {
   suffix: string;
   email: string;
   birthdate: string;
-  role: "passenger" | "driver";
+  role: "passenger" | "driver" | "admin";
   guardianName?: string;
   guardianPhone?: string;
   rating?: number;
@@ -25,6 +25,11 @@ export interface UserData {
   vehicleType?: string;
   plateNumber?: string;
   driverLicensePhoto?: string;
+  licenseNumber?: string;
+  orCrPhoto?: string;
+  validIdPhoto?: string;
+  clearancePhoto?: string;
+  vehiclePhoto?: string;
   vehicleColor?: string;
   memberSince?: string;
   approvalStatus?: "pending" | "approved" | "rejected";

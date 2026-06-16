@@ -2,4 +2,5 @@
 @import './tailwind.css';
 @import './theme.css';
 @import './globals.css';
+@import './admin-panel.css';
 @import 'leaflet/dist/leaflet.css';

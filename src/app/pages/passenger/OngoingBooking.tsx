@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
@@ -15,6 +15,8 @@ import {
   AlertCircle,
   CheckCircle2,
   Truck,
+  Route,
+  Star,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
@@ -22,6 +24,8 @@ import { useBooking } from "../../context/BookingContext";
 import { cancelBooking } from "../../utils/bookingDatabase";
 import { subscribeToSupabaseBooking, updateSupabaseBookingStatus } from "../../utils/supabaseBookings";
 import { subscribeToDriverLocation, type RealtimeDriverLocation } from "../../utils/realtimeTracking";
+import { DEMO_DRIVERS, estimateRouteDistanceKm, estimateTravelMinutes, type LatLngPoint } from "../../utils/rideMatching";
+import { createRoutePoints, getBookingFlowStatus } from "../../utils/routeSimulation";
 import MapView from "../../components/MapView";
 import {
   AlertDialog,
@@ -41,6 +45,40 @@ export default function OngoingBooking() {
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [liveDriverLocation, setLiveDriverLocation] = useState<RealtimeDriverLocation | null>(null);
 
+  const flowStatus = getBookingFlowStatus(activeBooking?.status);
+  const routeProgress = getStatusProgress(flowStatus);
+  const assignedDriver = activeBooking?.driverUsername
+    ? DEMO_DRIVERS.find(driver => driver.username === activeBooking.driverUsername)
+    : null;
+  const displayDriverLocation = liveDriverLocation || activeBooking?.currentDriverLocation || null;
+
+  const routePoints = useMemo(() => {
+    if (!activeBooking) return [];
+
+    if (
+      ["driver_found", "driver_to_pickup", "driver_arrived"].includes(flowStatus) &&
+      displayDriverLocation
+    ) {
+      return createRoutePoints(displayDriverLocation, activeBooking.pickupLocation, 24);
+    }
+
+    if (["ride_started", "ride_ongoing", "ride_completed"].includes(flowStatus)) {
+      return createRoutePoints(activeBooking.pickupLocation, activeBooking.destination, 24);
+    }
+
+    return createRoutePoints(activeBooking.pickupLocation, activeBooking.destination, 24);
+  }, [activeBooking, displayDriverLocation, flowStatus]);
+
+  const etaToPickup = activeBooking && displayDriverLocation
+    ? estimateTravelMinutes(
+        estimateRouteDistanceKm(displayDriverLocation, activeBooking.pickupLocation),
+        assignedDriver?.averageSpeedKph || 18
+      )
+    : null;
+  const tripEta = activeBooking
+    ? estimateTravelMinutes(activeBooking.distance, assignedDriver?.averageSpeedKph || 18)
+    : null;
+
   useEffect(() => {
     if (!user) {
       navigate("/login");
@@ -52,17 +90,12 @@ export default function OngoingBooking() {
       return;
     }
 
-    // Redirect if booking is completed or cancelled
-    if (activeBooking.status === "completed") {
-      toast.success("Ride completed! Thank you for using Arangkada.");
-      setActiveBooking(null);
-      navigate("/passenger");
-    } else if (activeBooking.status === "cancelled") {
+    if (flowStatus === "cancelled") {
       toast.info("Booking was cancelled");
       setActiveBooking(null);
       navigate("/passenger");
     }
-  }, [user, activeBooking, navigate, setActiveBooking]);
+  }, [user, activeBooking, flowStatus, navigate, setActiveBooking]);
 
   const handleCancelBooking = async () => {
     if (!activeBooking) return;
@@ -85,6 +118,11 @@ export default function OngoingBooking() {
     }
   };
 
+  const handleDone = () => {
+    setActiveBooking(null);
+    navigate("/passenger");
+  };
+
   useEffect(() => {
     if (!activeBooking?.id) {
       setLiveDriverLocation(null);
@@ -104,43 +142,55 @@ export default function OngoingBooking() {
   }, [activeBooking?.id, setActiveBooking]);
 
   const getStatusInfo = () => {
-    if (!activeBooking) return { text: "Loading...", color: "gray", icon: Clock };
-
-    switch (activeBooking.status) {
-      case "pending":
+    switch (flowStatus) {
+      case "finding_driver":
         return {
-          text: "Searching for driver",
-          description: "We're finding the nearest available driver for you...",
+          text: "Waiting for driver",
+          description: "Your booking request is open for online drivers to accept.",
           color: "blue",
           icon: AlertCircle,
         };
-      case "accepted":
+      case "driver_found":
         return {
-          text: "Driver accepted",
-          description: "Your driver is on the way to pick you up",
+          text: "Driver found",
+          description: "Preparing the route from driver to pickup",
           color: "green",
           icon: CheckCircle2,
         };
-      case "en_route":
+      case "driver_to_pickup":
         return {
-          text: "Driver en route",
-          description: "Your driver is heading to your pickup location",
+          text: "Driver is on the way",
+          description: etaToPickup ? `Estimated arrival: ${etaToPickup} mins` : "Driver is heading to your pickup point",
           color: "green",
           icon: Truck,
         };
-      case "arrived":
+      case "driver_arrived":
         return {
           text: "Driver arrived",
-          description: "Your driver has arrived at the pickup location",
+          description: "Your driver is at the pickup location",
           color: "purple",
           icon: MapPin,
         };
-      case "in_progress":
+      case "ride_started":
         return {
-          text: "Trip in progress",
-          description: "Enjoy your ride!",
+          text: "Ride started",
+          description: "Starting passenger trip navigation",
           color: "indigo",
           icon: Navigation,
+        };
+      case "ride_ongoing":
+        return {
+          text: "Trip in progress",
+          description: tripEta ? `Estimated trip time: ${tripEta} mins` : "Enjoy your ride!",
+          color: "indigo",
+          icon: Navigation,
+        };
+      case "ride_completed":
+        return {
+          text: "Ride completed",
+          description: "You have arrived at your destination",
+          color: "green",
+          icon: CheckCircle2,
         };
       default:
         return {
@@ -166,6 +216,7 @@ export default function OngoingBooking() {
     gray: { border: "border-gray-500", bg: "bg-gray-100", text: "text-gray-600" },
   };
   const statusStyle = statusStyles[statusInfo.color] || statusStyles.gray;
+  const canCancel = ["finding_driver", "driver_found", "driver_to_pickup"].includes(flowStatus);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
@@ -175,9 +226,11 @@ export default function OngoingBooking() {
           <Button variant="ghost" size="icon" className="shrink-0" onClick={() => navigate("/passenger")}>
             <X className="h-5 w-5" />
           </Button>
-          <h1 className="truncate text-xl font-bold">Ongoing Booking</h1>
+          <h1 className="truncate text-xl font-bold">
+            {flowStatus === "ride_completed" ? "Ride Completed" : "Ongoing Booking"}
+          </h1>
         </div>
-        {activeBooking.status === "pending" && (
+        {canCancel && (
           <Button
             variant="outline"
             size="sm"
@@ -194,7 +247,8 @@ export default function OngoingBooking() {
         <MapView
           pickup={activeBooking.pickupLocation}
           destination={activeBooking.destination}
-          driverLocation={liveDriverLocation || activeBooking.currentDriverLocation}
+          driverLocation={displayDriverLocation}
+          routePoints={routePoints}
           height="100%"
           showCurrentLocation={false}
         />
@@ -210,6 +264,14 @@ export default function OngoingBooking() {
                 <div className="min-w-0 flex-1">
                   <h3 className="font-semibold text-gray-900">{statusInfo.text}</h3>
                   <p className="text-sm text-gray-600">{statusInfo.description}</p>
+                  {flowStatus !== "finding_driver" && flowStatus !== "ride_completed" && (
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-200">
+                      <div
+                        className="h-full rounded-full bg-[#4B0F14] transition-all"
+                        style={{ width: `${routeProgress}%` }}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -218,95 +280,94 @@ export default function OngoingBooking() {
       </div>
 
       {/* Bottom Sheet */}
-      <div className="bg-white rounded-t-3xl shadow-2xl p-4 max-h-[50vh] overflow-y-auto">
-        {/* Driver Info (when assigned) */}
-        {activeBooking.driverName && (
-          <Card className="mb-4 border-2 border-green-200">
-            <CardContent className="p-4">
-              <div className="mb-3 flex items-start gap-4">
-                <Avatar className="h-14 w-14 shrink-0">
-                  <AvatarFallback className="bg-green-100 text-green-600 text-xl">
-                    {activeBooking.driverName.charAt(0)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <h3 className="break-words text-lg font-bold">{activeBooking.driverName}</h3>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary">{activeBooking.driverVehicleType}</Badge>
-                    {activeBooking.driverPlateNumber && (
-                      <span className="text-sm text-gray-600">{activeBooking.driverPlateNumber}</span>
+      <div className="bg-white rounded-t-3xl shadow-2xl p-4 max-h-[54vh] overflow-y-auto">
+        {flowStatus === "ride_completed" ? (
+          <RideCompletedCard
+            pickup={activeBooking.pickupLocation}
+            destination={activeBooking.destination}
+            driverName={activeBooking.driverName || "Assigned Driver"}
+            distance={activeBooking.distance}
+            duration={tripEta || estimateTravelMinutes(activeBooking.distance)}
+            fare={activeBooking.finalPrice}
+            onDone={handleDone}
+          />
+        ) : (
+          <>
+            {/* Driver Info */}
+            {activeBooking.driverName ? (
+              <Card className="mb-4 border-2 border-green-200">
+                <CardContent className="p-4">
+                  <div className="mb-3 flex items-start gap-4">
+                    <Avatar className="h-14 w-14 shrink-0">
+                      <AvatarFallback className="bg-green-100 text-green-600 text-xl">
+                        {activeBooking.driverName.charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="break-words text-lg font-bold">{activeBooking.driverName}</h3>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary">{activeBooking.driverVehicleType}</Badge>
+                        {activeBooking.driverPlateNumber && (
+                          <span className="text-sm text-gray-600">{activeBooking.driverPlateNumber}</span>
+                        )}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-600">
+                        {assignedDriver && (
+                          <>
+                            <span className="inline-flex items-center gap-1">
+                              <Star className="h-3.5 w-3.5 text-yellow-500" />
+                              {assignedDriver.rating.toFixed(1)}
+                            </span>
+                            <span>{assignedDriver.completedTrips} trips</span>
+                          </>
+                        )}
+                        {etaToPickup && flowStatus !== "ride_ongoing" && (
+                          <span>{etaToPickup} min ETA</span>
+                        )}
+                      </div>
+                    </div>
+                    {activeBooking.driverPhone && (
+                      <a className="shrink-0" href={`tel:${activeBooking.driverPhone}`}>
+                        <Button size="icon" variant="outline" className="rounded-full">
+                          <Phone className="h-5 w-5" />
+                        </Button>
+                      </a>
                     )}
                   </div>
-                </div>
-                <a className="shrink-0" href={`tel:${activeBooking.driverPhone}`}>
-                  <Button size="icon" variant="outline" className="rounded-full">
-                    <Phone className="h-5 w-5" />
-                  </Button>
-                </a>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Trip Details */}
-        <div className="space-y-3">
-          <h3 className="font-semibold text-gray-900">Trip Details</h3>
-
-          <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-            <MapPin className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs text-gray-600">Pickup</p>
-              <p className="break-words text-sm font-medium">{activeBooking.pickupLocation.address}</p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-            <MapPin className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs text-gray-600">Destination</p>
-              <p className="break-words text-sm font-medium">{activeBooking.destination.address}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="min-w-0 rounded-lg bg-gray-50 p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <Bike className="h-4 w-4 shrink-0 text-gray-600" />
-                <p className="text-xs text-gray-600">Vehicle</p>
-              </div>
-              <p className="break-words text-sm font-semibold">{activeBooking.vehicleType}</p>
-            </div>
-
-            <div className="min-w-0 rounded-lg bg-gray-50 p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <Navigation className="h-4 w-4 shrink-0 text-gray-600" />
-                <p className="text-xs text-gray-600">Distance</p>
-              </div>
-              <p className="break-words text-sm font-semibold">{activeBooking.distance.toFixed(1)} km</p>
-            </div>
-
-            <div className="min-w-0 rounded-lg bg-green-50 p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <DollarSign className="h-4 w-4 shrink-0 text-green-600" />
-                <p className="text-xs text-gray-600">Fare</p>
-              </div>
-              <p className="break-words text-sm font-semibold text-green-600">₱{activeBooking.finalPrice}</p>
-            </div>
-          </div>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span className="text-gray-600">Payment Method</span>
-              <span className="font-semibold">{activeBooking.paymentMethod}</span>
-            </div>
-            {activeBooking.discount && (
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm">
-                <span className="text-gray-600">Discount Applied</span>
-                <Badge variant="secondary">{activeBooking.discount.type} (-{activeBooking.discount.amount}%)</Badge>
-              </div>
+                  {flowStatus === "driver_arrived" && (
+                    <div className="rounded-xl bg-purple-50 px-3 py-2 text-sm font-medium text-purple-700">
+                      Waiting for the driver to start the trip.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="mb-4 border-2 border-blue-100">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 animate-pulse rounded-full bg-blue-100" />
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Finding your driver...</h3>
+                      <p className="text-sm text-gray-600">Your request is visible to online drivers.</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             )}
-          </div>
-        </div>
+
+            {/* Trip Details */}
+            <TripDetails
+              pickup={activeBooking.pickupLocation}
+              destination={activeBooking.destination}
+              vehicleType={activeBooking.vehicleType}
+              distance={activeBooking.distance}
+              duration={tripEta || estimateTravelMinutes(activeBooking.distance)}
+              fare={activeBooking.finalPrice}
+              paymentMethod={activeBooking.paymentMethod}
+              discount={activeBooking.discount}
+            />
+          </>
+        )}
       </div>
 
       {/* Cancel Confirmation Dialog */}
@@ -331,4 +392,160 @@ export default function OngoingBooking() {
       </AlertDialog>
     </div>
   );
+}
+
+function TripDetails({
+  pickup,
+  destination,
+  vehicleType,
+  distance,
+  duration,
+  fare,
+  paymentMethod,
+  discount,
+}: {
+  pickup: LatLngPoint;
+  destination: LatLngPoint;
+  vehicleType: string;
+  distance: number;
+  duration: number;
+  fare: number;
+  paymentMethod: string;
+  discount?: { type: string; amount: number };
+}) {
+  return (
+    <div className="space-y-3">
+      <h3 className="font-semibold text-gray-900">Trip Details</h3>
+
+      <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
+        <MapPin className="h-5 w-5 shrink-0 text-green-600 mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-gray-600">Pickup</p>
+          <p className="break-words text-sm font-medium">{pickup.address}</p>
+        </div>
+      </div>
+
+      <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
+        <MapPin className="h-5 w-5 shrink-0 text-red-600 mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-gray-600">Destination</p>
+          <p className="break-words text-sm font-medium">{destination.address}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+        <InfoBox icon={<Bike className="h-4 w-4 text-gray-600" />} label="Vehicle" value={vehicleType} />
+        <InfoBox icon={<Navigation className="h-4 w-4 text-gray-600" />} label="Distance" value={`${distance.toFixed(1)} km`} />
+        <InfoBox icon={<Clock className="h-4 w-4 text-gray-600" />} label="ETA" value={`${duration} mins`} />
+        <InfoBox icon={<DollarSign className="h-4 w-4 text-green-600" />} label="Fare" value={`PHP ${fare}`} strong />
+      </div>
+
+      <div className="rounded-lg bg-gray-50 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+          <span className="text-gray-600">Payment Method</span>
+          <span className="font-semibold">{paymentMethod}</span>
+        </div>
+        {discount && (
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm">
+            <span className="text-gray-600">Discount Applied</span>
+            <Badge variant="secondary">{discount.type} (-{discount.amount}%)</Badge>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RideCompletedCard({
+  pickup,
+  destination,
+  driverName,
+  distance,
+  duration,
+  fare,
+  onDone,
+}: {
+  pickup: LatLngPoint;
+  destination: LatLngPoint;
+  driverName: string;
+  distance: number;
+  duration: number;
+  fare: number;
+  onDone: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl bg-green-50 p-4 text-center">
+        <CheckCircle2 className="mx-auto mb-2 h-10 w-10 text-green-600" />
+        <h2 className="text-xl font-bold text-gray-900">You arrived safely</h2>
+        <p className="text-sm text-gray-600">Thank you for riding with Arangkada.</p>
+      </div>
+
+      <TripDetails
+        pickup={pickup}
+        destination={destination}
+        vehicleType="Tricycle"
+        distance={distance}
+        duration={duration}
+        fare={fare}
+        paymentMethod="Cash"
+      />
+
+      <div className="rounded-lg bg-gray-50 p-3">
+        <div className="flex items-center gap-2 text-sm text-gray-700">
+          <Route className="h-4 w-4 text-[#4B0F14]" />
+          <span>Driver: <strong>{driverName}</strong></span>
+        </div>
+      </div>
+
+      <Button className="w-full bg-[#4B0F14] hover:bg-[#3a0c10]" onClick={onDone}>
+        Done
+      </Button>
+    </div>
+  );
+}
+
+function InfoBox({
+  icon,
+  label,
+  value,
+  strong = false,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  strong?: boolean;
+}) {
+  return (
+    <div className={strong ? "min-w-0 rounded-lg bg-green-50 p-3" : "min-w-0 rounded-lg bg-gray-50 p-3"}>
+      <div className="mb-1 flex items-center gap-2">
+        {icon}
+        <p className="text-xs text-gray-600">{label}</p>
+      </div>
+      <p className={strong ? "break-words text-sm font-semibold text-green-600" : "break-words text-sm font-semibold"}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function getStatusProgress(status: ReturnType<typeof getBookingFlowStatus>): number {
+  switch (status) {
+    case "finding_driver":
+      return 8;
+    case "driver_found":
+      return 18;
+    case "driver_to_pickup":
+      return 42;
+    case "driver_arrived":
+      return 55;
+    case "ride_started":
+      return 68;
+    case "ride_ongoing":
+      return 82;
+    case "ride_completed":
+      return 100;
+    default:
+      return 0;
+  }
 }
