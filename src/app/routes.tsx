@@ -5,6 +5,8 @@ import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
 import OTPPage from "./pages/auth/OTPPage";
+import ForgotPasswordPage from "./pages/auth/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/auth/ResetPasswordPage";
 import PendingApproval from "./pages/auth/PendingApproval";
 import AuthCallbackPage from "./pages/auth/AuthCallbackPage";
 import GooglePhonePage from "./pages/auth/GooglePhonePage";
@@ -93,6 +95,8 @@ export const router = createBrowserRouter([
       { path: "login", Component: LoginPage },
       { path: "register", Component: RegisterPage },
       { path: "otp", Component: OTPPage },
+      { path: "forgot-password", Component: ForgotPasswordPage },
+      { path: "reset-password", Component: ResetPasswordPage },
       { path: "pending-approval", Component: PendingApproval },
       { path: "auth/callback", Component: AuthCallbackPage },
       { path: "auth/phone", Component: GooglePhonePage },

@@ -43,8 +43,9 @@ export function Login({ onLogin }: LoginProps) {
     }
 
     // Accept demo credentials or any well-formed email + password ≥ 6 chars
-    const validEmail = email.trim().toLowerCase() === DEMO_EMAIL.toLowerCase() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-    const validPass  = password === DEMO_PASSWORD || password.length >= 6;
+    // Legacy demo admin login now requires the exact displayed credentials.
+    const validEmail = email.trim().toLowerCase() === DEMO_EMAIL.toLowerCase();
+    const validPass  = password === DEMO_PASSWORD;
 
     if (!validEmail || !validPass) {
       setError("Invalid credentials. Use the demo account shown below.");

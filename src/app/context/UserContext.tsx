@@ -35,11 +35,25 @@ interface UserContextType {
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
+function sanitizeSessionUser(userData: UserData): UserData {
+  return {
+    ...userData,
+    password: "",
+  };
+}
+
 export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<UserData | null>(() => {
     try {
       const currentUser = localStorage.getItem("current_user");
-      return currentUser ? JSON.parse(currentUser) : null;
+      if (!currentUser) return null;
+
+      const parsedUser = JSON.parse(currentUser) as UserData;
+      const sanitizedUser = sanitizeSessionUser(parsedUser);
+      if (parsedUser.password) {
+        localStorage.setItem("current_user", JSON.stringify(sanitizedUser));
+      }
+      return sanitizedUser;
     } catch {
       localStorage.removeItem("current_user");
       return null;
@@ -50,7 +64,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setUserState(userData);
     if (userData) {
       // Store current logged-in user
-      localStorage.setItem("current_user", JSON.stringify(userData));
+      localStorage.setItem("current_user", JSON.stringify(sanitizeSessionUser(userData)));
       console.log("Current user set:", userData.username);
     } else {
       localStorage.removeItem("current_user");

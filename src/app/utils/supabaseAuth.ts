@@ -141,6 +141,56 @@ export async function signInWithEmailPassword(identifier: string, password: stri
   return createLocalUserFromSupabaseUser(data.user);
 }
 
+export async function requestSupabasePasswordReset(email: string): Promise<void> {
+  if (!supabase) {
+    throw new Error(getSupabaseConfigMessage());
+  }
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+    redirectTo: `${window.location.origin}/reset-password`,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function prepareSupabasePasswordRecovery(url: string): Promise<void> {
+  if (!supabase) {
+    throw new Error(getSupabaseConfigMessage());
+  }
+
+  const recoveryUrl = new URL(url);
+  const code = recoveryUrl.searchParams.get("code");
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) throw new Error(error.message);
+    return;
+  }
+
+  const hash = new URLSearchParams(recoveryUrl.hash.replace(/^#/, ""));
+  const accessToken = hash.get("access_token");
+  const refreshToken = hash.get("refresh_token");
+  if (accessToken && refreshToken) {
+    const { error } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+    if (error) throw new Error(error.message);
+  }
+}
+
+export async function updateSupabasePassword(nextPassword: string): Promise<void> {
+  if (!supabase) {
+    throw new Error(getSupabaseConfigMessage());
+  }
+
+  const { error } = await supabase.auth.updateUser({ password: nextPassword });
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export async function createLocalUserFromSupabaseUser(supabaseUser: SupabaseUser, fallbackRole: AppRole = "passenger"): Promise<UserData> {
   const email = supabaseUser.email?.trim().toLowerCase() || "";
   const metadata = supabaseUser.user_metadata || {};

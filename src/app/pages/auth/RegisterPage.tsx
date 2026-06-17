@@ -330,19 +330,6 @@ export default function RegisterPage() {
       return;
     }
 
-    if (role === "driver") {
-      if (
-        !formData.validIdPhoto ||
-        !formData.orCrPhoto ||
-        !formData.clearancePhoto ||
-        !formData.profilePhoto ||
-        !formData.vehiclePhoto
-      ) {
-        toast.error("Please upload all required document photos to continue.");
-        return;
-      }
-    }
-
     setLoading(true);
 
     try {

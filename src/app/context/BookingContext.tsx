@@ -16,6 +16,50 @@ interface BookingContextType {
 
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
 
+function getBookingCreatedTime(booking: BookingData): number {
+  const value = new Date(booking.createdAt || 0).getTime();
+  return Number.isFinite(value) ? value : 0;
+}
+
+function getPendingBookingKey(booking: BookingData): string {
+  const passengerKey = [
+    booking.passengerUsername,
+    booking.passengerPhone,
+    booking.passengerName,
+  ]
+    .filter(Boolean)
+    .join("|")
+    .trim()
+    .toLowerCase();
+
+  return passengerKey || booking.id;
+}
+
+function dedupePendingBookings(bookings: BookingData[]): BookingData[] {
+  const latestByPassenger = new Map<string, BookingData>();
+
+  [...bookings]
+    .sort((a, b) => getBookingCreatedTime(b) - getBookingCreatedTime(a))
+    .forEach((booking) => {
+      const key = getPendingBookingKey(booking);
+      const existing = latestByPassenger.get(key);
+
+      if (!existing) {
+        latestByPassenger.set(key, booking);
+        return;
+      }
+
+      const bookingLooksSupabase = booking.id.includes("-");
+      const existingLooksLocal = !existing.id.includes("-");
+      if (bookingLooksSupabase && existingLooksLocal) {
+        latestByPassenger.set(key, booking);
+      }
+    });
+
+  return Array.from(latestByPassenger.values())
+    .sort((a, b) => getBookingCreatedTime(b) - getBookingCreatedTime(a));
+}
+
 export function BookingProvider({ children }: { children: ReactNode }) {
   const [activeBooking, setActiveBookingState] = useState<BookingData | null>(null);
   const [pendingBookings, setPendingBookings] = useState<BookingData[]>([]);
@@ -44,7 +88,12 @@ export function BookingProvider({ children }: { children: ReactNode }) {
 
     const refreshData = async () => {
       const currentUser = localStorage.getItem("current_user");
-      const user = currentUser ? JSON.parse(currentUser) : null;
+      let user = null;
+      try {
+        user = currentUser ? JSON.parse(currentUser) : null;
+      } catch {
+        localStorage.removeItem("current_user");
+      }
 
       if (activeBooking && user) {
         const exactSupabaseBooking = await getSupabaseBooking(activeBooking.id);
@@ -72,7 +121,7 @@ export function BookingProvider({ children }: { children: ReactNode }) {
 
       const supabasePending = await getSupabasePendingBookings();
       const localPending = getPendingBookings();
-      if (!cancelled) setPendingBookings([...supabasePending, ...localPending]);
+      if (!cancelled) setPendingBookings(dedupePendingBookings([...supabasePending, ...localPending]));
     };
 
     void refreshData();

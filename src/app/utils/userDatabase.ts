@@ -38,6 +38,13 @@ export interface UserData {
 
 const USERS_KEY = "ridestamesa_users";
 
+function sanitizeSessionUser(user: UserData): UserData {
+  return {
+    ...user,
+    password: "",
+  };
+}
+
 // Get all users from database
 export function getAllUsers(): UserData[] {
   try {
@@ -177,6 +184,46 @@ export function authenticateUser(usernameOrPhone: string, password: string): Use
 }
 
 // Update user data (upsert — adds user if not found)
+export function resetLocalUserPassword(identifier: string, nextPassword: string): { success: boolean; message: string } {
+  try {
+    const passwordCheck = validatePassword(nextPassword);
+    if (!passwordCheck.valid) {
+      return { success: false, message: passwordCheck.message };
+    }
+
+    const users = getAllUsers();
+    const normalizedPhone = formatPHPhoneInput(identifier);
+    const normalizedLower = identifier.trim().toLowerCase();
+    const userIndex = users.findIndex(
+      user =>
+        user.username.toLowerCase() === normalizedLower ||
+        user.email?.trim().toLowerCase() === normalizedLower ||
+        formatPHPhoneInput(user.phoneNumber) === normalizedPhone
+    );
+
+    if (userIndex === -1) {
+      return { success: false, message: "Account not found." };
+    }
+
+    users[userIndex] = {
+      ...users[userIndex],
+      password: nextPassword,
+    };
+    saveAllUsers(users);
+
+    const currentUserJson = localStorage.getItem("current_user");
+    const currentUser = currentUserJson ? JSON.parse(currentUserJson) : null;
+    if (currentUser && currentUser.username === users[userIndex].username) {
+      localStorage.setItem("current_user", JSON.stringify(sanitizeSessionUser(users[userIndex])));
+    }
+
+    return { success: true, message: "Password reset successfully." };
+  } catch (error) {
+    console.error("Error resetting password:", error);
+    return { success: false, message: "Password reset failed." };
+  }
+}
+
 export function updateUser(identifier: string, updatedData: Partial<UserData>): boolean {
   try {
     const users = getAllUsers();
@@ -220,7 +267,11 @@ export function updateUser(identifier: string, updatedData: Partial<UserData>): 
     const currentUser = currentUserJson ? JSON.parse(currentUserJson) : null;
     if (currentUser && (currentUser.username === actualUsername || currentUser.supabaseId === identifier)) {
       localStorage.setItem("current_user", JSON.stringify(
-        userIndex === -1 ? { ...normalizedData, username: actualUsername } : { ...users[userIndex === -1 ? users.length - 1 : userIndex] }
+        sanitizeSessionUser(
+          userIndex === -1
+            ? { ...normalizedData, username: actualUsername } as UserData
+            : { ...users[userIndex === -1 ? users.length - 1 : userIndex] }
+        )
       ));
     }
 

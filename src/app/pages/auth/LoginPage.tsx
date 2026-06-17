@@ -165,6 +165,16 @@ export default function LoginPage() {
                 {showPassword ? <EyeOff size={18} color="#9a8a7a" /> : <Eye size={18} color="#9a8a7a" />}
               </button>
             </div>
+            <div className="mt-2 text-right">
+              <button
+                type="button"
+                onClick={() => navigate("/forgot-password")}
+                className="text-sm font-bold"
+                style={{ color: "#4B0F14" }}
+              >
+                Forgot password?
+              </button>
+            </div>
           </div>
 
           {/* Login button */}

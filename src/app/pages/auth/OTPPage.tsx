@@ -12,6 +12,7 @@ import { signUpWithEmailPassword } from "../../utils/supabaseAuth";
 import { syncSupabaseProfile } from "../../utils/supabaseProfiles";
 
 type OtpMode = "login" | "register" | "google-phone";
+const DEMO_OTP_EXPIRY_MS = DEMO_OTP_RESEND_SECONDS * 1000;
 
 type OtpRouteState = {
   phoneNumber?: string;
@@ -66,6 +67,7 @@ export default function OTPPage() {
 
   const [otp, setOtp] = useState("");
   const [currentOtp, setCurrentOtp] = useState(state.generatedOtp || createDemoOtp());
+  const [otpCreatedAt, setOtpCreatedAt] = useState(Date.now());
   const [loading, setLoading] = useState(false);
   const [resendTimer, setResendTimer] = useState(DEMO_OTP_RESEND_SECONDS);
   const [canResend, setCanResend] = useState(false);
@@ -144,7 +146,13 @@ export default function OTPPage() {
       return;
     }
 
-    await syncSupabaseProfile(verifiedUser);
+    try {
+      await syncSupabaseProfile(verifiedUser);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Supabase profile sync failed.";
+      toast.info(`Phone saved locally. Supabase sync needs attention: ${message}`, { duration: 6000 });
+    }
+
     setUser(verifiedUser);
     toast.success("Phone number verified successfully!");
     navigate(verifiedUser.role === "driver" ? "/pending-approval" : "/passenger", { replace: true });
@@ -162,6 +170,14 @@ export default function OTPPage() {
 
     try {
       await new Promise(resolve => window.setTimeout(resolve, 700));
+
+      if (Date.now() - otpCreatedAt > DEMO_OTP_EXPIRY_MS) {
+        toast.error("OTP expired. Please generate a new demo code.");
+        setOtp("");
+        setCanResend(true);
+        setResendTimer(0);
+        return;
+      }
 
       if (otp !== currentOtp) {
         toast.error("Invalid OTP. Please try again.");
@@ -187,6 +203,7 @@ export default function OTPPage() {
 
     const nextOtp = createDemoOtp();
     setCurrentOtp(nextOtp);
+    setOtpCreatedAt(Date.now());
     setOtp("");
     setResendTimer(DEMO_OTP_RESEND_SECONDS);
     setCanResend(false);
