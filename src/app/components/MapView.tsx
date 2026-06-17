@@ -63,6 +63,8 @@ function GoogleMapView({
   const currentLocationMarkerRef = useRef<any>(null);
   const directionsRendererRef = useRef<any>(null);
   const fallbackLineRef = useRef<any>(null);
+  const googleResizeTimerRef = useRef<number | null>(null);
+  const googleResizeHandlerRef = useRef<(() => void) | null>(null);
   const hasCenteredOnGpsRef = useRef(false);
   const autoPickupSetRef = useRef(false);
   const [isReady, setIsReady] = useState(false);
@@ -95,6 +97,22 @@ function GoogleMapView({
         });
         directionsRendererRef.current.setMap(mapRef.current);
 
+        const refreshMapSize = () => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              if (!mapRef.current || !window.google?.maps) return;
+              const center = pickup || driverLocation || destination || DEFAULT_CENTER;
+              mapRef.current.setCenter(center);
+              window.google.maps.event.trigger(mapRef.current, "resize");
+            });
+          });
+        };
+
+        googleResizeHandlerRef.current = refreshMapSize;
+        refreshMapSize();
+        googleResizeTimerRef.current = window.setTimeout(refreshMapSize, 180);
+        window.addEventListener("resize", refreshMapSize);
+
         setIsReady(true);
       })
       .catch((error) => {
@@ -104,6 +122,14 @@ function GoogleMapView({
 
     return () => {
       cancelled = true;
+      if (googleResizeTimerRef.current) {
+        window.clearTimeout(googleResizeTimerRef.current);
+        googleResizeTimerRef.current = null;
+      }
+      if (googleResizeHandlerRef.current) {
+        window.removeEventListener("resize", googleResizeHandlerRef.current);
+        googleResizeHandlerRef.current = null;
+      }
       clearGoogleMarker(pickupMarkerRef);
       clearGoogleMarker(destinationMarkerRef);
       clearGoogleMarker(driverMarkerRef);
@@ -247,6 +273,8 @@ function LeafletMapView({
   const driverMarkerRef = useRef<L.Marker | null>(null);
   const currentLocationMarkerRef = useRef<L.Marker | null>(null);
   const routeLineRef = useRef<L.Polyline | null>(null);
+  const leafletResizeTimerRef = useRef<number | null>(null);
+  const leafletResizeHandlerRef = useRef<(() => void) | null>(null);
   const autoPickupSetRef = useRef(false);
   const hasCenteredOnGpsRef = useRef(false);
   const [isReady, setIsReady] = useState(false);
@@ -262,9 +290,30 @@ function LeafletMapView({
       maxZoom: 19,
     }).addTo(map);
 
+    const refreshMapSize = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          map.invalidateSize();
+        });
+      });
+    };
+
+    leafletResizeHandlerRef.current = refreshMapSize;
+    refreshMapSize();
+    leafletResizeTimerRef.current = window.setTimeout(refreshMapSize, 180);
+    window.addEventListener("resize", refreshMapSize);
+
     setIsReady(true);
 
     return () => {
+      if (leafletResizeTimerRef.current) {
+        window.clearTimeout(leafletResizeTimerRef.current);
+        leafletResizeTimerRef.current = null;
+      }
+      if (leafletResizeHandlerRef.current) {
+        window.removeEventListener("resize", leafletResizeHandlerRef.current);
+        leafletResizeHandlerRef.current = null;
+      }
       map.remove();
       mapRef.current = null;
       setIsReady(false);

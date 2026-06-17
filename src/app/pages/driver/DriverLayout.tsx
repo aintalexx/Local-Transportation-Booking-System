@@ -19,9 +19,9 @@ export default function DriverLayout() {
   };
 
   return (
-    <div className="flex h-full min-h-full flex-col bg-gray-50">
-      <main className="flex-1 overflow-auto scroll-smooth">
-        <div style={{ paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>
+    <div className="flex h-full min-h-0 flex-col bg-gray-50">
+      <main className="min-h-0 flex-1 overflow-auto scroll-smooth">
+        <div className="h-full min-h-full" style={{ paddingBottom: "calc(24px + env(safe-area-inset-bottom, 0px))" }}>
           <Outlet />
         </div>
       </main>

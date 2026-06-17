@@ -22,10 +22,10 @@ export default function PassengerLayout() {
   };
 
   return (
-    <div className="flex h-full min-h-full flex-col bg-gray-50">
+    <div className="flex h-full min-h-0 flex-col bg-gray-50">
       {/* Main Content */}
-      <main className="flex-1 overflow-auto scroll-smooth">
-        <div style={{ paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>
+      <main className="min-h-0 flex-1 overflow-auto scroll-smooth">
+        <div className="h-full min-h-full" style={{ paddingBottom: location.pathname !== "/passenger/finding-driver" ? "calc(24px + env(safe-area-inset-bottom, 0px))" : 0 }}>
           <Outlet />
         </div>
       </main>

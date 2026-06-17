@@ -186,6 +186,18 @@ export default function BookingPage() {
 
     mapRef.current = map;
 
+    const refreshMapSize = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          map.invalidateSize();
+        });
+      });
+    };
+
+    refreshMapSize();
+    const resizeTimer = window.setTimeout(refreshMapSize, 180);
+    window.addEventListener("resize", refreshMapSize);
+
     // Try auto-detect GPS
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(async (pos) => {
@@ -210,6 +222,8 @@ export default function BookingPage() {
     }
 
     return () => {
+      window.clearTimeout(resizeTimer);
+      window.removeEventListener("resize", refreshMapSize);
       map.remove();
       mapRef.current = null;
     };
@@ -382,7 +396,7 @@ export default function BookingPage() {
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="relative w-full h-screen overflow-hidden" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="relative h-full min-h-full w-full overflow-hidden" style={{ fontFamily: "'Inter', sans-serif" }}>
 
       {/* ── Full-screen Map ── */}
       <div ref={mapContainerRef} className="absolute inset-0 z-0" style={{ height: "100%", width: "100%" }} />

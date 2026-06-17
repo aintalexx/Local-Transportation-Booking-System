@@ -249,7 +249,7 @@ export default function ActiveRide() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="flex h-full min-h-0 flex-col bg-gray-50">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-white px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
@@ -262,7 +262,7 @@ export default function ActiveRide() {
       </div>
 
       {/* Map */}
-      <div className="flex-1 relative">
+      <div className="relative min-h-0 flex-1">
         <MapView
           pickup={activeBooking.pickupLocation}
           destination={activeBooking.destination}
