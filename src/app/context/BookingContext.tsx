@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { BookingData, getBooking, getPassengerActiveBooking, getDriverActiveBooking, getPendingBookings } from "../utils/bookingDatabase";
 import {
   getSupabaseBooking,
@@ -65,13 +65,13 @@ export function BookingProvider({ children }: { children: ReactNode }) {
   const [pendingBookings, setPendingBookings] = useState<BookingData[]>([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  const refreshBooking = () => {
+  const refreshBooking = useCallback(() => {
     setRefreshTrigger(prev => prev + 1);
-  };
+  }, []);
 
-  const setActiveBooking = (booking: BookingData | null) => {
+  const setActiveBooking = useCallback((booking: BookingData | null) => {
     setActiveBookingState(booking);
-  };
+  }, []);
 
   // Poll for booking updates every 2 seconds
   useEffect(() => {
