@@ -12,6 +12,7 @@ import GooglePhonePage from "./pages/auth/GooglePhonePage";
 import PassengerLayout from "./pages/passenger/PassengerLayout";
 import PassengerDashboard from "./pages/passenger/Dashboard";
 import BookingPage from "./pages/passenger/BookingPage";
+import FindingDriverPage from "./pages/passenger/FindingDriverPage";
 import OngoingBooking from "./pages/passenger/OngoingBooking";
 import LiveTracking from "./pages/passenger/LiveTracking";
 import PassengerChat from "./pages/passenger/Chat";
@@ -113,6 +114,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: PassengerDashboard },
       { path: "book", Component: BookingPage },
+      { path: "finding-driver", Component: FindingDriverPage },
       { path: "ongoing-booking", Component: OngoingBooking },
       { path: "tracking/:rideId", Component: LiveTracking },
       { path: "chat/:rideId", Component: PassengerChat },

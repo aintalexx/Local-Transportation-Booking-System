@@ -339,7 +339,7 @@ export default function BookingPage() {
         setActiveBooking(supabaseBooking);
         refreshBooking();
         toast.success("Booking sent! Waiting for a driver to accept.");
-        navigate("/passenger/ongoing-booking");
+        navigate("/passenger/finding-driver");
         return;
       }
 
@@ -361,7 +361,7 @@ export default function BookingPage() {
       setActiveBooking(booking);
       refreshBooking();
       toast.success("Booking sent! Waiting for a driver to accept.");
-      navigate("/passenger/ongoing-booking");
+      navigate("/passenger/finding-driver");
     } catch {
       toast.error("Booking failed. Please try again.");
     } finally {

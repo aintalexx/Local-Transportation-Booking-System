@@ -8,6 +8,7 @@ import {
   MapPin,
   Navigation,
   Phone,
+  MessageCircle,
   X,
   Clock,
   DollarSign,
@@ -326,13 +327,24 @@ export default function OngoingBooking() {
                         )}
                       </div>
                     </div>
-                    {activeBooking.driverPhone && (
-                      <a className="shrink-0" href={`tel:${activeBooking.driverPhone}`}>
-                        <Button size="icon" variant="outline" className="rounded-full">
-                          <Phone className="h-5 w-5" />
-                        </Button>
-                      </a>
-                    )}
+                    <div className="flex shrink-0 gap-2">
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="rounded-full"
+                        onClick={() => navigate(`/passenger/chat/${activeBooking.id}`)}
+                        aria-label="Open ride chat"
+                      >
+                        <MessageCircle className="h-5 w-5" />
+                      </Button>
+                      {activeBooking.driverPhone && (
+                        <a href={`tel:${activeBooking.driverPhone}`}>
+                          <Button size="icon" variant="outline" className="rounded-full" aria-label="Call driver">
+                            <Phone className="h-5 w-5" />
+                          </Button>
+                        </a>
+                      )}
+                    </div>
                   </div>
                   {flowStatus === "driver_arrived" && (
                     <div className="rounded-xl bg-purple-50 px-3 py-2 text-sm font-medium text-purple-700">

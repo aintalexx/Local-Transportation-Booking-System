@@ -30,9 +30,7 @@ import {
   validateName,
   validatePassword,
   validatePHPhone,
-  validatePlateNumber,
   validateUsername,
-  validatePHLicenseNumber,
   formatPHLicenseNumber,
 } from "../../utils/validators";
 import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
@@ -270,41 +268,8 @@ export default function RegisterPage() {
       return;
     }
 
-    // Validate driver-specific details (License format & 5 Photos)
-    if (role === "driver") {
-      const licenseCheck = validatePHLicenseNumber(formData.licenseNumber);
-      if (!licenseCheck.valid) {
-        toast.error(licenseCheck.message);
-        return;
-      }
-
-      const plateCheck = validatePlateNumber(normalizedPlate);
-      if (!plateCheck.valid) {
-        toast.error(plateCheck.message);
-        return;
-      }
-
-      if (!formData.profilePhoto) {
-        toast.error("Driver profile photo is required");
-        return;
-      }
-      if (!formData.validIdPhoto) {
-        toast.error("Valid ID photo is required");
-        return;
-      }
-      if (!formData.orCrPhoto) {
-        toast.error("OR/CR document photo is required");
-        return;
-      }
-      if (!formData.clearancePhoto) {
-        toast.error("Barangay/NBI clearance photo is required");
-        return;
-      }
-      if (!formData.vehiclePhoto) {
-        toast.error("Vehicle/tricycle photo is required");
-        return;
-      }
-    }
+    // Driver documents are collected for admin review, but registration should
+    // still submit the application even if a document needs follow-up.
 
     if (!agreedToTerms) {
       toast.error("You must accept the Terms and Privacy Policy to continue");
@@ -936,10 +901,9 @@ export default function RegisterPage() {
                     value={formData.licenseNumber}
                     onChange={(e) => setFormData({ ...formData, licenseNumber: formatPHLicenseNumber(e.target.value) })}
                     maxLength={13}
-                    required
                     className="border-gray-200 focus:border-red-300 rounded-xl"
                   />
-                  <p className="text-[10px] text-gray-400">Standard Philippine Format: L03-YY-XXXXXX</p>
+                  <p className="text-[10px] text-gray-400">Optional for now. Admin can verify or request corrections during approval.</p>
                 </div>
 
                 {/* Tricycle Plate Number */}
@@ -991,10 +955,9 @@ export default function RegisterPage() {
                       setFormData({ ...formData, plateNumber });
                     }}
                     maxLength={6}
-                    required
                     className="border-gray-200 focus:border-red-300 rounded-xl"
                   />
-                  <p className="text-xs text-gray-400">Standard tricycle plate format: 2-6 alphanumeric characters.</p>
+                  <p className="text-xs text-gray-400">Optional for now. Admin can confirm the plate during approval.</p>
                 </div>
 
                 {/* Terms Acceptance */}
@@ -1083,7 +1046,7 @@ export default function RegisterPage() {
                   className="w-full bg-[#e14e34] hover:bg-[#c93e27] text-white font-extrabold h-12 rounded-xl transition-all"
                   disabled={loading}
                 >
-                  {loading ? "Preparing OTP..." : "Confirm"}
+                  {loading ? "Preparing OTP..." : "Submit for Admin Approval"}
                 </Button>
 
                 <Button

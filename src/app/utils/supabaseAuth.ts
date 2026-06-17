@@ -98,6 +98,7 @@ export async function signUpWithEmailPassword(userData: UserData): Promise<UserD
         role: userData.role,
         vehicle_type: userData.vehicleType || "",
         plate_number: userData.plateNumber || "",
+        approval_status: userData.approvalStatus || (userData.role === "driver" ? "pending" : "approved"),
       },
     },
   });

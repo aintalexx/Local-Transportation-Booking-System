@@ -8,6 +8,7 @@ import {
   MapPin,
   Navigation,
   Phone,
+  MessageCircle,
   X,
   CheckCircle2,
   Truck,
@@ -254,11 +255,22 @@ export default function ActiveRide() {
                 <h3 className="break-words text-lg font-bold">{activeBooking.passengerName}</h3>
                 <p className="break-words text-sm text-gray-600">{activeBooking.passengerPhone}</p>
               </div>
-              <a className="shrink-0" href={`tel:${activeBooking.passengerPhone}`}>
-                <Button size="icon" variant="outline" className="rounded-full">
-                  <Phone className="h-5 w-5" />
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="rounded-full"
+                  onClick={() => navigate(`/driver/chat/${activeBooking.id}`)}
+                  aria-label="Open ride chat"
+                >
+                  <MessageCircle className="h-5 w-5" />
                 </Button>
-              </a>
+                <a href={`tel:${activeBooking.passengerPhone}`}>
+                  <Button size="icon" variant="outline" className="rounded-full" aria-label="Call passenger">
+                    <Phone className="h-5 w-5" />
+                  </Button>
+                </a>
+              </div>
             </div>
           </CardContent>
         </Card>
