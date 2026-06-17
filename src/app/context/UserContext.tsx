@@ -23,6 +23,7 @@ interface UserData {
   driverLicensePhoto?: string;
   vehicleColor?: string;
   memberSince?: string;
+  approvalStatus?: "pending" | "approved" | "rejected";
   profilePhoto?: string;
 }
 
@@ -36,9 +37,13 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<UserData | null>(() => {
-    // Load current logged-in user from localStorage on initial render
-    const currentUser = localStorage.getItem("current_user");
-    return currentUser ? JSON.parse(currentUser) : null;
+    try {
+      const currentUser = localStorage.getItem("current_user");
+      return currentUser ? JSON.parse(currentUser) : null;
+    } catch {
+      localStorage.removeItem("current_user");
+      return null;
+    }
   });
 
   const setUser = useCallback((userData: UserData | null) => {

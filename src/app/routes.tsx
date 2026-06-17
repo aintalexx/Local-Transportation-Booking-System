@@ -1,4 +1,5 @@
 import { createBrowserRouter } from "react-router";
+import ProtectedRoute from "./components/ProtectedRoute";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
@@ -37,6 +38,46 @@ import TermsAndConditions from "./pages/shared/TermsAndConditions";
 import PrivacyPolicy from "./pages/shared/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
 
+function ProtectedPassengerLayout() {
+  return (
+    <ProtectedRoute allowedRoles={["passenger"]}>
+      <PassengerLayout />
+    </ProtectedRoute>
+  );
+}
+
+function ProtectedDriverLayout() {
+  return (
+    <ProtectedRoute allowedRoles={["driver"]}>
+      <DriverLayout />
+    </ProtectedRoute>
+  );
+}
+
+function ProtectedAdminPanelApp() {
+  return (
+    <ProtectedRoute allowedRoles={["admin"]}>
+      <AdminPanelApp />
+    </ProtectedRoute>
+  );
+}
+
+function ProtectedRatingPage() {
+  return (
+    <ProtectedRoute>
+      <RatingPage />
+    </ProtectedRoute>
+  );
+}
+
+function ProtectedSupportPage() {
+  return (
+    <ProtectedRoute>
+      <SupportPage />
+    </ProtectedRoute>
+  );
+}
+
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -68,7 +109,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/passenger",
-    Component: PassengerLayout,
+    Component: ProtectedPassengerLayout,
     children: [
       { index: true, Component: PassengerDashboard },
       { path: "book", Component: BookingPage },
@@ -83,7 +124,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/driver",
-    Component: DriverLayout,
+    Component: ProtectedDriverLayout,
     children: [
       { index: true, Component: DriverDashboard },
       { path: "active-ride", Component: ActiveRide },
@@ -95,15 +136,15 @@ export const router = createBrowserRouter([
   },
   {
     path: "/admin/*",
-    Component: AdminPanelApp,
+    Component: ProtectedAdminPanelApp,
   },
   {
     path: "/rating/:rideId",
-    Component: RatingPage,
+    Component: ProtectedRatingPage,
   },
   {
     path: "/support",
-    Component: SupportPage,
+    Component: ProtectedSupportPage,
   },
   {
     path: "/terms",
