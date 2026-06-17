@@ -409,7 +409,9 @@ export default function RegisterPage() {
         },
       });
     } catch (error) {
-      toast.error("Registration failed. Please try again.");
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error("Registration error:", error);
+      toast.error(msg || "Registration failed. Please try again.");
     } finally {
       setLoading(false);
     }
