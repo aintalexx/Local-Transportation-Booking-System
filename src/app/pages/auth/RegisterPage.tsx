@@ -19,7 +19,7 @@ import {
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "../../components/ui/utils";
-import { emailExists, usernameExists, phoneExists, registerUser, type UserData } from "../../utils/userDatabase";
+import { emailExists, usernameExists, phoneExists, registerUser, getAllUsers, updateUser, type UserData } from "../../utils/userDatabase";
 import {
   calculateAge,
   firstInvalid,
@@ -234,15 +234,7 @@ export default function RegisterPage() {
       return;
     }
 
-    if (phoneExists(normalizedPhone)) {
-      toast.error("Phone number already registered. Please login or use a different number.");
-      return;
-    }
-
-    if (emailExists(normalizedEmail)) {
-      toast.error("Email already registered. Please use a different email.");
-      return;
-    }
+    // Drivers may re-submit — duplicate phone/email is handled at final submission (upsert)
 
     setStep("driverVehicle");
     setShowValidationErrors(false);
@@ -315,12 +307,14 @@ export default function RegisterPage() {
       return;
     }
 
-    if (phoneExists(normalizedPhone)) {
+    // For passengers: block duplicate phone/email. For drivers: allow re-submission
+    // (their existing record will be updated with new document photos)
+    if (role === "passenger" && phoneExists(normalizedPhone)) {
       toast.error("Phone number already registered. Please login or use a different number.");
       return;
     }
 
-    if (emailExists(normalizedEmail)) {
+    if (role === "passenger" && emailExists(normalizedEmail)) {
       toast.error("Email already registered. Please use a different email.");
       return;
     }
@@ -367,10 +361,28 @@ export default function RegisterPage() {
       };
 
       if (role === "driver") {
-        const result = registerUser(userData);
-        if (!result.success) {
-          toast.error(result.message);
-          return;
+        // Check if driver already has a local account (re-registration after a failed Supabase sync)
+        const existingLocalDriver = getAllUsers().find(
+          u => u.username === finalUsername ||
+               (u.email && u.email.trim().toLowerCase() === normalizedEmail) ||
+               (u.phoneNumber && u.phoneNumber.replace(/\D/g, "") === normalizedPhone.replace(/\D/g, ""))
+        );
+
+        if (existingLocalDriver) {
+          // Update the existing record with the latest form data (documents, etc.)
+          updateUser(existingLocalDriver.username, {
+            ...userData,
+            username: existingLocalDriver.username,
+            supabaseId: existingLocalDriver.supabaseId,
+            approvalStatus: existingLocalDriver.approvalStatus || "pending",
+            memberSince: existingLocalDriver.memberSince,
+          });
+        } else {
+          const result = registerUser(userData);
+          if (!result.success) {
+            toast.error(result.message);
+            return;
+          }
         }
 
         try {
