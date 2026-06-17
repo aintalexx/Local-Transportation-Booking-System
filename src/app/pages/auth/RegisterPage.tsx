@@ -19,7 +19,7 @@ import {
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "../../components/ui/utils";
-import { emailExists, usernameExists, phoneExists } from "../../utils/userDatabase";
+import { emailExists, usernameExists, phoneExists, registerUser, type UserData } from "../../utils/userDatabase";
 import {
   calculateAge,
   firstInvalid,
@@ -35,6 +35,50 @@ import {
 } from "../../utils/validators";
 import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
 import { createDemoOtp } from "../../utils/demoOtp";
+import { signUpWithEmailPassword } from "../../utils/supabaseAuth";
+
+const MAX_DRIVER_UPLOAD_SIZE = 900;
+const DRIVER_UPLOAD_QUALITY = 0.72;
+
+async function compressImageFile(file: File): Promise<string> {
+  const originalDataUrl = await readFileAsDataUrl(file);
+
+  try {
+    const image = await loadImage(originalDataUrl);
+    const scale = Math.min(1, MAX_DRIVER_UPLOAD_SIZE / Math.max(image.width, image.height));
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext("2d");
+    if (!context) return originalDataUrl;
+
+    context.drawImage(image, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", DRIVER_UPLOAD_QUALITY);
+  } catch {
+    return originalDataUrl;
+  }
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
+}
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -77,13 +121,6 @@ export default function RegisterPage() {
   const [zoomModal, setZoomModal] = useState<{ url: string; title: string } | null>(null);
 
   const isMinor = formData.birthdate ? calculateAge(formData.birthdate) < 18 : false;
-  const driverDocumentFields = [
-    { key: "profilePhoto", label: "Driver Profile Photo" },
-    { key: "validIdPhoto", label: "Valid ID / License" },
-    { key: "orCrPhoto", label: "OR/CR Document" },
-    { key: "clearancePhoto", label: "Barangay/NBI Clearance" },
-    { key: "vehiclePhoto", label: "Vehicle/Tricycle Photo" },
-  ] as const;
 
   const handleBirthdateInputChange = (rawValue: string) => {
     const digits = rawValue.replace(/\D/g, "").slice(0, 8);
@@ -275,14 +312,6 @@ export default function RegisterPage() {
       return;
     }
 
-    if (role === "driver") {
-      const missingDocument = driverDocumentFields.find((document) => !formData[document.key]);
-      if (missingDocument) {
-        toast.error(`Please upload ${missingDocument.label} for admin review.`);
-        return;
-      }
-    }
-
     if (!agreedToTerms) {
       toast.error("You must accept the Terms and Privacy Policy to continue");
       return;
@@ -293,7 +322,7 @@ export default function RegisterPage() {
     try {
       const birthdateString = formData.birthdate ? formData.birthdate.toISOString() : "";
 
-      const userData = {
+      const userData: UserData = {
         username: finalUsername,
         password: formData.password,
         phoneNumber: normalizedPhone,
@@ -323,6 +352,25 @@ export default function RegisterPage() {
         approvalStatus: role === "driver" ? "pending" : "approved",
       };
 
+      if (role === "driver") {
+        const result = registerUser(userData);
+        if (!result.success) {
+          toast.error(result.message);
+          return;
+        }
+
+        try {
+          await signUpWithEmailPassword(userData);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Supabase account creation failed.";
+          toast.info(`Application saved locally. Supabase sync needs attention: ${message}`, { duration: 6000 });
+        }
+
+        toast.success("Driver application submitted for admin approval.");
+        navigate("/pending-approval", { replace: true });
+        return;
+      }
+
       const generatedOtp = createDemoOtp();
       toast.success(`Demo OTP generated: ${generatedOtp}`, { duration: 10000 });
       navigate("/otp", {
@@ -341,7 +389,7 @@ export default function RegisterPage() {
     }
   };
 
-  const handlePhotoUpload = (key: "validIdPhoto" | "orCrPhoto" | "clearancePhoto" | "profilePhoto" | "vehiclePhoto") => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = (key: "validIdPhoto" | "orCrPhoto" | "clearancePhoto" | "profilePhoto" | "vehiclePhoto") => async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (!file.type.startsWith("image/")) {
@@ -349,11 +397,13 @@ export default function RegisterPage() {
         e.target.value = "";
         return;
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, [key]: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressedImage = await compressImageFile(file);
+        setFormData(prev => ({ ...prev, [key]: compressedImage }));
+      } catch {
+        toast.error("Unable to read this image. Please try another photo.");
+        e.target.value = "";
+      }
     }
   };
 
@@ -363,19 +413,11 @@ export default function RegisterPage() {
     icon: React.ReactNode
   ) => {
     const photo = formData[key];
-    const isMissing = showValidationErrors && role === "driver" && !photo;
     return (
       <div className="flex flex-col gap-1.5">
-        <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-          {label} <span className="text-red-500">*</span>
-        </span>
+        <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">{label}</span>
         {!photo ? (
-          <div className={cn(
-            "border-2 border-dashed rounded-xl p-4 text-center flex flex-col items-center justify-center cursor-pointer transition-all relative h-32",
-            isMissing
-              ? "border-red-500 bg-red-50"
-              : "border-red-200 hover:border-red-300 bg-red-50/5 hover:bg-red-50/15"
-          )}>
+          <div className="border-2 border-dashed border-red-200 hover:border-red-300 rounded-xl p-4 bg-red-50/5 text-center flex flex-col items-center justify-center cursor-pointer hover:bg-red-50/15 transition-all relative h-32">
             <input
               type="file"
               accept="image/*"
@@ -387,9 +429,6 @@ export default function RegisterPage() {
             </div>
             <p className="text-xs font-bold text-gray-800">Upload Image</p>
             <p className="text-[10px] text-gray-400">Tap to capture</p>
-            {isMissing && (
-              <p className="mt-1 text-[10px] font-semibold text-red-600">Required</p>
-            )}
           </div>
         ) : (
           <div className="border border-red-200 rounded-xl p-1 bg-white relative overflow-hidden flex flex-col items-center justify-center shadow-inner h-32">
