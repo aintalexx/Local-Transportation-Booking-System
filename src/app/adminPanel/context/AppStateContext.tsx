@@ -12,10 +12,23 @@ function isUUID(id: string): boolean {
 }
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
-export type DriverStatus  = "Active" | "Pending" | "Blocked";
+export type DriverStatus  = "Active" | "Pending" | "Blocked" | "Archived";
 export type LicenseStatus = "Approved" | "Pending" | "Blocked";
 export type BookingStatus = "Completed" | "Ongoing" | "Cancelled" | "Pending";
 export type NotifType     = "success" | "warning" | "info" | "error";
+
+const ARCHIVED_KEY = "ridestamesa_archived_drivers";
+
+function getArchivedDrivers(): Driver[] {
+  try {
+    const raw = localStorage.getItem(ARCHIVED_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveArchivedDrivers(list: Driver[]): void {
+  try { localStorage.setItem(ARCHIVED_KEY, JSON.stringify(list)); } catch {}
+}
 
 // Visual flash direction for row highlight
 export type ChangeHint = "success" | "warning" | "error";
@@ -180,10 +193,11 @@ function mapRowToBooking(b: any): Booking {
 
 // ─── Context interface ────────────────────────────────────────────────────────
 interface AppStateContextValue {
-  drivers:       Driver[];
-  bookings:      Booking[];
-  notifications: AppNotification[];
-  recentChanges: Record<string, ChangeHint>;
+  drivers:        Driver[];
+  archivedDrivers: Driver[];
+  bookings:       Booking[];
+  notifications:  AppNotification[];
+  recentChanges:  Record<string, ChangeHint>;
 
   pendingDriverCount: number;
   unreadCount:        number;
@@ -193,6 +207,8 @@ interface AppStateContextValue {
   blockDriver(id: string): void;
   reinstateDriver(id: string): void;
   approveBatch(): void;
+  archiveDriver(id: string): void;
+  restoreDriver(id: string): void;
 
   cancelBooking(id: string): void;
 
@@ -208,10 +224,11 @@ export function useAppState() {
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  const [drivers,       setDrivers]       = useState<Driver[]>([]);
-  const [bookings,      setBookings]      = useState<Booking[]>([]);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [recentChanges, setRecentChanges] = useState<Record<string, ChangeHint>>({});
+  const [drivers,          setDrivers]          = useState<Driver[]>([]);
+  const [archivedDrivers,  setArchivedDrivers]  = useState<Driver[]>(getArchivedDrivers);
+  const [bookings,         setBookings]         = useState<Booking[]>([]);
+  const [notifications,    setNotifications]    = useState<AppNotification[]>([]);
+  const [recentChanges,    setRecentChanges]    = useState<Record<string, ChangeHint>>({});
 
   const clearTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -496,6 +513,70 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     toast.success(`Approved ${pendingDrivers.length} driver${pendingDrivers.length > 1 ? "s" : ""}`);
   }, [drivers]);
 
+  // ─── Archive actions ──────────────────────────────────────────────────────
+  const archiveDriver = useCallback(async (id: string) => {
+    // Find the driver in active list
+    const driver = drivers.find(d => d.id === id);
+    if (!driver) return;
+
+    const archived: Driver = { ...driver, status: "Archived" as DriverStatus };
+    const updated = [...archivedDrivers, archived];
+    setArchivedDrivers(updated);
+    saveArchivedDrivers(updated);
+
+    // Remove from active drivers
+    setDrivers(prev => prev.filter(d => d.id !== id));
+
+    // Update localStorage for local-only drivers
+    if (!isUUID(id)) {
+      updateUser(id, { approvalStatus: "rejected" }); // mark as rejected so they don't re-appear
+    } else if (supabase) {
+      // For Supabase drivers, mark as archived/rejected
+      await supabase.from("profiles").update({ approval_status: "rejected" }).eq("id", id);
+    }
+
+    toast.success(`${driver.name} has been archived.`);
+    pushNotification({
+      type: "warning",
+      title: "Driver Archived",
+      body: `${driver.name} was moved to the archive.`,
+      time: "Just now",
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drivers, archivedDrivers]);
+
+  const restoreDriver = useCallback(async (id: string) => {
+    const driver = archivedDrivers.find(d => d.id === id);
+    if (!driver) return;
+
+    const restored: Driver = { ...driver, status: "Active" as DriverStatus, license: "Approved" as LicenseStatus };
+
+    // Remove from archive
+    const updatedArchive = archivedDrivers.filter(d => d.id !== id);
+    setArchivedDrivers(updatedArchive);
+    saveArchivedDrivers(updatedArchive);
+
+    // Add back to active drivers
+    setDrivers(prev => [restored, ...prev]);
+    flashRow(id, "success");
+
+    // Update storage
+    if (!isUUID(id)) {
+      updateUser(id, { approvalStatus: "approved" });
+    } else if (supabase) {
+      await supabase.from("profiles").update({ approval_status: "approved" }).eq("id", id);
+    }
+
+    toast.success(`${driver.name} has been restored.`);
+    pushNotification({
+      type: "success",
+      title: "Driver Restored",
+      body: `${driver.name} was restored from the archive.`,
+      time: "Just now",
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [archivedDrivers]);
+
   // ─── Booking actions ──────────────────────────────────────────────────────
   const cancelBooking = useCallback(async (id: string) => {
     if (!supabase) return;
@@ -526,9 +607,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppStateContext.Provider value={{
-      drivers, bookings, notifications, recentChanges,
+      drivers, archivedDrivers, bookings, notifications, recentChanges,
       pendingDriverCount, unreadCount,
       approveDriver, rejectDriver, blockDriver, reinstateDriver, approveBatch,
+      archiveDriver, restoreDriver,
       cancelBooking,
       markRead, markAllRead,
     }}>

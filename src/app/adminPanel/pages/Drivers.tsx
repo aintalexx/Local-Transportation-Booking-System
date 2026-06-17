@@ -4,7 +4,7 @@ import {
   UserCheck, Star, Download,
   CheckCircle, XCircle, ShieldOff, MapPin,
   User, FileText, Car, Phone as PhoneIcon, Calendar,
-  Hash, IdCard, ClipboardList,
+  Hash, IdCard, ClipboardList, Archive,
 } from "lucide-react";
 import { useNavigate } from "../context/NavigationContext";
 import { useAppState } from "../context/AppStateContext";
@@ -39,6 +39,7 @@ function DriverDetailModal({
   onBlock,
   onReinstate,
   onNavigateMap,
+  onArchive,
 }: {
   driver: Driver;
   onClose: () => void;
@@ -47,10 +48,11 @@ function DriverDetailModal({
   onBlock: () => void;
   onReinstate: () => void;
   onNavigateMap: () => void;
+  onArchive: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
   const [zoomDoc, setZoomDoc] = useState<{ url: string; title: string } | null>(null);
-  const [confirming, setConfirming] = useState<"block" | "reject" | null>(null);
+  const [confirming, setConfirming] = useState<"block" | "reject" | "archive" | null>(null);
 
   const docs = [
     { label: "Profile Photo",           photo: driver.profilePhoto,                                    icon: <User size={16} /> },
@@ -77,10 +79,11 @@ function DriverDetailModal({
     { label: "Driver ID",       value: driver.id,                                icon: <Hash size={13} /> },
   ];
 
-  function handleAction(action: "block" | "reject") {
+  function handleAction(action: "block" | "reject" | "archive") {
     if (confirming === action) {
-      if (action === "block") onBlock();
-      if (action === "reject") onReject();
+      if (action === "block")   onBlock();
+      if (action === "reject")  onReject();
+      if (action === "archive") { onArchive(); onClose(); }
       setConfirming(null);
     } else {
       setConfirming(action);
@@ -308,14 +311,8 @@ function DriverDetailModal({
                 {confirming === "reject" ? (
                   <div className="flex items-center gap-2 px-3 py-2 bg-rose-50 border border-rose-200 rounded-lg">
                     <span className="text-xs font-semibold text-rose-700">Reject this application?</span>
-                    <button
-                      onClick={() => handleAction("reject")}
-                      className="px-2.5 py-1 rounded-md bg-rose-600 text-white text-xs font-bold hover:bg-rose-700"
-                    >Confirm</button>
-                    <button
-                      onClick={() => setConfirming(null)}
-                      className="px-2.5 py-1 rounded-md border border-rose-300 text-rose-700 text-xs font-bold hover:bg-rose-100"
-                    >Cancel</button>
+                    <button onClick={() => handleAction("reject")} className="px-2.5 py-1 rounded-md bg-rose-600 text-white text-xs font-bold hover:bg-rose-700">Confirm</button>
+                    <button onClick={() => setConfirming(null)} className="px-2.5 py-1 rounded-md border border-rose-300 text-rose-700 text-xs font-bold hover:bg-rose-100">Cancel</button>
                   </div>
                 ) : (
                   <button
@@ -334,14 +331,8 @@ function DriverDetailModal({
                 {confirming === "block" ? (
                   <div className="flex items-center gap-2 px-3 py-2 bg-rose-50 border border-rose-200 rounded-lg">
                     <span className="text-xs font-semibold text-rose-700">Block this driver?</span>
-                    <button
-                      onClick={() => handleAction("block")}
-                      className="px-2.5 py-1 rounded-md bg-rose-600 text-white text-xs font-bold hover:bg-rose-700"
-                    >Confirm</button>
-                    <button
-                      onClick={() => setConfirming(null)}
-                      className="px-2.5 py-1 rounded-md border border-rose-300 text-rose-700 text-xs font-bold hover:bg-rose-100"
-                    >Cancel</button>
+                    <button onClick={() => handleAction("block")} className="px-2.5 py-1 rounded-md bg-rose-600 text-white text-xs font-bold hover:bg-rose-700">Confirm</button>
+                    <button onClick={() => setConfirming(null)} className="px-2.5 py-1 rounded-md border border-rose-300 text-rose-700 text-xs font-bold hover:bg-rose-100">Cancel</button>
                   </div>
                 ) : (
                   <button onClick={() => handleAction("block")} className={`${BTN_SECONDARY} gap-2`}>
@@ -361,6 +352,22 @@ function DriverDetailModal({
                 style={{ background: "#15803d" }}
               >
                 <CheckCircle size={14} /> Reinstate Driver
+              </button>
+            )}
+
+            {/* Archive — available for all statuses */}
+            {confirming === "archive" ? (
+              <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg">
+                <span className="text-xs font-semibold text-gray-700">Move to Archives?</span>
+                <button onClick={() => handleAction("archive")} className="px-2.5 py-1 rounded-md bg-gray-700 text-white text-xs font-bold hover:bg-gray-800">Confirm</button>
+                <button onClick={() => setConfirming(null)} className="px-2.5 py-1 rounded-md border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-100">Cancel</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => handleAction("archive")}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <Archive size={13} /> Archive Driver
               </button>
             )}
 
@@ -405,6 +412,7 @@ export function Drivers() {
   const {
     drivers, recentChanges,
     approveDriver, rejectDriver, blockDriver, reinstateDriver, approveBatch,
+    archiveDriver,
     pendingDriverCount,
   } = useAppState();
 
@@ -693,6 +701,7 @@ export function Drivers() {
           onBlock={() => { blockDriver(modalDriver.id); closeModal(); }}
           onReinstate={() => { reinstateDriver(modalDriver.id); closeModal(); }}
           onNavigateMap={() => { navigate("map"); closeModal(); }}
+          onArchive={() => { archiveDriver(modalDriver.id); closeModal(); }}
         />
       )}
     </div>

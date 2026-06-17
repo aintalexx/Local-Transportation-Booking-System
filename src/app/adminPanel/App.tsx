@@ -5,6 +5,7 @@ import {
   LayoutDashboard, Users, BookOpen, Map, BarChart3,
   Settings as SettingsIcon, LogOut, ChevronRight, Menu, X,
   Car, Shield, Bell, CheckCircle, AlertTriangle, Info, XCircle,
+  Archive,
 } from "lucide-react";
 import { useUser } from "../context/UserContext";
 import { NavigationContext, type PageKey } from "./context/NavigationContext";
@@ -15,6 +16,7 @@ import { Bookings }  from "./pages/Bookings";
 import { LiveMap }   from "./pages/LiveMap";
 import { Analytics } from "./pages/Analytics";
 import { Settings }  from "./pages/Settings";
+import { Archives }  from "./pages/Archives";
 
 const MAROON        = "#3E0710";
 const MAROON_ACCENT = "#6B0E1A";
@@ -22,29 +24,32 @@ const GOLD          = "#C49A1A";
 
 const PAGE_PATHS: Record<PageKey, string> = {
   overview: "/admin",
-  drivers: "/admin/drivers",
+  drivers:  "/admin/drivers",
   bookings: "/admin/bookings",
-  map: "/admin/live-map",
-  analytics: "/admin/analytics",
+  map:      "/admin/live-map",
+  analytics:"/admin/analytics",
   settings: "/admin/settings",
+  archives: "/admin/archives",
 };
 
 function getPageFromPath(pathname: string): PageKey {
-  if (pathname.startsWith("/admin/drivers")) return "drivers";
+  if (pathname.startsWith("/admin/drivers"))  return "drivers";
   if (pathname.startsWith("/admin/bookings")) return "bookings";
   if (pathname.startsWith("/admin/live-map")) return "map";
-  if (pathname.startsWith("/admin/analytics")) return "analytics";
+  if (pathname.startsWith("/admin/analytics"))return "analytics";
   if (pathname.startsWith("/admin/settings")) return "settings";
+  if (pathname.startsWith("/admin/archives")) return "archives";
   return "overview";
 }
 
 const PAGE_TITLES: Record<PageKey, string> = {
-  overview: "Dashboard Overview",
-  drivers:  "Driver Management",
-  bookings: "Booking Monitoring",
-  map:      "Live Map Monitoring",
-  analytics:"Analytics & Reports",
-  settings: "Settings",
+  overview:  "Dashboard Overview",
+  drivers:   "Driver Management",
+  bookings:  "Booking Monitoring",
+  map:       "Live Map Monitoring",
+  analytics: "Analytics & Reports",
+  settings:  "Settings",
+  archives:  "Archives",
 };
 
 const NOTIF_ICON: Record<string, any> = {
@@ -66,8 +71,10 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
   const routerNavigate = useRouterNavigate();
   const {
     notifications, pendingDriverCount, unreadCount,
+    archivedDrivers,
     markRead, markAllRead,
   } = useAppState();
+  const archivedCount = archivedDrivers.length;
 
   const [page,         setPage]         = useState<PageKey>(() => getPageFromPath(location.pathname));
   const [transitioning,setTransitioning]= useState(false);
@@ -112,11 +119,12 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
   }, [notifOpen]);
 
   const navItems: { key: PageKey; label: string; icon: any }[] = [
-    { key: "overview",  label: "Overview",   icon: LayoutDashboard },
-    { key: "drivers",   label: "Drivers",    icon: Users },
-    { key: "bookings",  label: "Bookings",   icon: BookOpen },
-    { key: "map",       label: "Live Map",   icon: Map },
-    { key: "analytics", label: "Analytics",  icon: BarChart3 },
+    { key: "overview",  label: "Overview",  icon: LayoutDashboard },
+    { key: "drivers",   label: "Drivers",   icon: Users },
+    { key: "bookings",  label: "Bookings",  icon: BookOpen },
+    { key: "map",       label: "Live Map",  icon: Map },
+    { key: "analytics", label: "Analytics", icon: BarChart3 },
+    { key: "archives",  label: "Archives",  icon: Archive },
   ];
 
   const pageMap: Record<PageKey, () => React.ReactNode> = {
@@ -126,6 +134,7 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
     map:       () => <LiveMap   />,
     analytics: () => <Analytics />,
     settings:  () => <Settings  />,
+    archives:  () => <Archives  />,
   };
 
   return (
@@ -172,8 +181,11 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
             )}
             {navItems.map(({ key, label, icon: Icon }) => {
               const active = page === key;
-              // Live badge: pending count on Drivers, unread on nothing else
-              const liveBadge = key === "drivers" ? pendingDriverCount : 0;
+              // Live badge: pending count on Drivers, archived count on Archives
+              const liveBadge =
+                key === "drivers"  ? pendingDriverCount :
+                key === "archives" ? archivedCount :
+                0;
               return (
                 <button
                   key={key}

@@ -1,6 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react";
 
-export type PageKey = "overview" | "drivers" | "bookings" | "map" | "analytics" | "settings";
+export type PageKey = "overview" | "drivers" | "bookings" | "map" | "analytics" | "settings" | "archives";
 
 interface NavigationContextValue {
   page: PageKey;
