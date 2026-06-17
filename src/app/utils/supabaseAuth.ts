@@ -162,7 +162,8 @@ export async function createLocalUserFromSupabaseUser(supabaseUser: SupabaseUser
   const firstName = existingUser?.firstName || nameParts[0] || "User";
   const surname = existingUser?.surname || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : "");
   const middleName = existingUser?.middleName || (nameParts.length > 2 ? nameParts.slice(1, -1).join(" ") : "");
-  const role = (profile?.role || existingUser?.role || metadata.role || fallbackRole) as AppRole;
+  const isAdminEmail = email === "admin@arangkada.ph";
+  const role = isAdminEmail ? "admin" : (profile?.role || existingUser?.role || metadata.role || fallbackRole) as AppRole;
 
   const userData: UserData = {
     supabaseId: supabaseUser.id,

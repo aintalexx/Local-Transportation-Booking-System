@@ -177,10 +177,12 @@ export function authenticateUser(usernameOrPhone: string, password: string): Use
 }
 
 // Update user data (upsert — adds user if not found)
-export function updateUser(username: string, updatedData: Partial<UserData>): boolean {
+export function updateUser(identifier: string, updatedData: Partial<UserData>): boolean {
   try {
     const users = getAllUsers();
-    const userIndex = users.findIndex(u => u.username === username);
+    const userIndex = users.findIndex(u => u.username === identifier || u.supabaseId === identifier);
+    const actualUsername = userIndex !== -1 ? users[userIndex].username : (updatedData.username || identifier);
+
     const normalizedData = {
       ...updatedData,
       ...(updatedData.phoneNumber && { phoneNumber: formatPHPhoneInput(updatedData.phoneNumber) }),
@@ -191,7 +193,7 @@ export function updateUser(username: string, updatedData: Partial<UserData>): bo
 
     if (normalizedData.phoneNumber) {
       const phoneCheck = validatePHPhone(normalizedData.phoneNumber);
-      if (!phoneCheck.valid || phoneExists(normalizedData.phoneNumber, username)) {
+      if (!phoneCheck.valid || phoneExists(normalizedData.phoneNumber, actualUsername)) {
         console.error("Invalid or duplicate phone number:", normalizedData.phoneNumber);
         return false;
       }
@@ -199,7 +201,7 @@ export function updateUser(username: string, updatedData: Partial<UserData>): bo
 
     if (normalizedData.email) {
       const emailCheck = validateEmail(normalizedData.email);
-      if (!emailCheck.valid || emailExists(normalizedData.email, username)) {
+      if (!emailCheck.valid || emailExists(normalizedData.email, actualUsername)) {
         console.error("Invalid or duplicate email:", normalizedData.email);
         return false;
       }
@@ -207,7 +209,7 @@ export function updateUser(username: string, updatedData: Partial<UserData>): bo
 
     if (userIndex === -1) {
       // User not in DB (e.g. session from old flow) — insert them
-      users.push(normalizedData as UserData);
+      users.push({ ...normalizedData, username: actualUsername } as UserData);
     } else {
       users[userIndex] = { ...users[userIndex], ...normalizedData };
     }
@@ -216,9 +218,9 @@ export function updateUser(username: string, updatedData: Partial<UserData>): bo
 
     const currentUserJson = localStorage.getItem("current_user");
     const currentUser = currentUserJson ? JSON.parse(currentUserJson) : null;
-    if (currentUser?.username === username) {
+    if (currentUser && (currentUser.username === actualUsername || currentUser.supabaseId === identifier)) {
       localStorage.setItem("current_user", JSON.stringify(
-        userIndex === -1 ? normalizedData : { ...users[userIndex === -1 ? users.length - 1 : userIndex] }
+        userIndex === -1 ? { ...normalizedData, username: actualUsername } : { ...users[userIndex === -1 ? users.length - 1 : userIndex] }
       ));
     }
 

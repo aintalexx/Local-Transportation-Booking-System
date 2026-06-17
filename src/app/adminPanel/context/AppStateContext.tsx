@@ -383,9 +383,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     newStatus: DriverStatus,
     newLicense: LicenseStatus,
   ) {
-    if (!isUUID(id)) {
-      updateUser(id, { approvalStatus });
-    }
+    updateUser(id, { approvalStatus });
     setDrivers(prev =>
       prev.map(d =>
         d.id === id
