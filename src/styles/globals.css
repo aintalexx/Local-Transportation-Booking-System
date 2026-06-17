@@ -1,5 +1,73 @@
 /* Mobile App Utilities */
 
+.app-device-stage {
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(75, 15, 20, 0.08), transparent 30%),
+    linear-gradient(180deg, #f4f4f5 0%, #ececf0 100%);
+  padding: 24px;
+}
+
+.app-device-shell {
+  position: relative;
+  width: min(100%, 430px);
+  height: calc(100dvh - 48px);
+  min-height: 640px;
+  max-height: 920px;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 0;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.16);
+}
+
+.app-device-screen {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: #ffffff;
+}
+
+.app-device-screen > * {
+  min-height: 100%;
+}
+
+.app-device-screen .h-screen {
+  height: 100%;
+}
+
+.app-device-screen .min-h-screen {
+  min-height: 100%;
+}
+
+.app-device-screen [class*="100vh"] {
+  min-height: 100%;
+}
+
+.app-device-screen .max-w-screen-md {
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .app-device-stage {
+    padding: 0;
+    background: #ffffff;
+  }
+
+  .app-device-shell {
+    width: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
+    max-height: none;
+    border: 0;
+    box-shadow: none;
+  }
+}
+
 /* Animation utilities */
 .animate-slide-up {
   animation: slideInUp 0.3s ease-out;

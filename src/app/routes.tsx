@@ -1,4 +1,5 @@
 import { createBrowserRouter } from "react-router";
+import AppFrameLayout from "./components/AppFrameLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/auth/LoginPage";
@@ -81,83 +82,53 @@ function ProtectedSupportPage() {
 
 export const router = createBrowserRouter([
   {
-    path: "/",
-    Component: LandingPage,
-  },
-  {
-    path: "/login",
-    Component: LoginPage,
-  },
-  {
-    path: "/register",
-    Component: RegisterPage,
-  },
-  {
-    path: "/otp",
-    Component: OTPPage,
-  },
-  {
-    path: "/pending-approval",
-    Component: PendingApproval,
-  },
-  {
-    path: "/auth/callback",
-    Component: AuthCallbackPage,
-  },
-  {
-    path: "/auth/phone",
-    Component: GooglePhonePage,
-  },
-  {
-    path: "/passenger",
-    Component: ProtectedPassengerLayout,
-    children: [
-      { index: true, Component: PassengerDashboard },
-      { path: "book", Component: BookingPage },
-      { path: "finding-driver", Component: FindingDriverPage },
-      { path: "ongoing-booking", Component: OngoingBooking },
-      { path: "tracking/:rideId", Component: LiveTracking },
-      { path: "chat/:rideId", Component: PassengerChat },
-      { path: "profile", Component: PassengerProfile },
-      { path: "edit-profile", Component: EditProfile },
-      { path: "history", Component: RideHistory },
-      { path: "notifications", Component: Notifications },
-    ],
-  },
-  {
-    path: "/driver",
-    Component: ProtectedDriverLayout,
-    children: [
-      { index: true, Component: DriverDashboard },
-      { path: "active-ride", Component: ActiveRide },
-      { path: "ride/:rideId", Component: ActiveRide },
-      { path: "chat/:rideId", Component: DriverChat },
-      { path: "profile", Component: DriverProfile },
-      { path: "edit-profile", Component: DriverEditProfile },
-    ],
-  },
-  {
     path: "/admin/*",
     Component: ProtectedAdminPanelApp,
   },
   {
-    path: "/rating/:rideId",
-    Component: ProtectedRatingPage,
-  },
-  {
-    path: "/support",
-    Component: ProtectedSupportPage,
-  },
-  {
-    path: "/terms",
-    Component: TermsAndConditions,
-  },
-  {
-    path: "/privacy",
-    Component: PrivacyPolicy,
-  },
-  {
-    path: "*",
-    Component: NotFound,
+    path: "/",
+    Component: AppFrameLayout,
+    children: [
+      { index: true, Component: LandingPage },
+      { path: "login", Component: LoginPage },
+      { path: "register", Component: RegisterPage },
+      { path: "otp", Component: OTPPage },
+      { path: "pending-approval", Component: PendingApproval },
+      { path: "auth/callback", Component: AuthCallbackPage },
+      { path: "auth/phone", Component: GooglePhonePage },
+      {
+        path: "passenger",
+        Component: ProtectedPassengerLayout,
+        children: [
+          { index: true, Component: PassengerDashboard },
+          { path: "book", Component: BookingPage },
+          { path: "finding-driver", Component: FindingDriverPage },
+          { path: "ongoing-booking", Component: OngoingBooking },
+          { path: "tracking/:rideId", Component: LiveTracking },
+          { path: "chat/:rideId", Component: PassengerChat },
+          { path: "profile", Component: PassengerProfile },
+          { path: "edit-profile", Component: EditProfile },
+          { path: "history", Component: RideHistory },
+          { path: "notifications", Component: Notifications },
+        ],
+      },
+      {
+        path: "driver",
+        Component: ProtectedDriverLayout,
+        children: [
+          { index: true, Component: DriverDashboard },
+          { path: "active-ride", Component: ActiveRide },
+          { path: "ride/:rideId", Component: ActiveRide },
+          { path: "chat/:rideId", Component: DriverChat },
+          { path: "profile", Component: DriverProfile },
+          { path: "edit-profile", Component: DriverEditProfile },
+        ],
+      },
+      { path: "rating/:rideId", Component: ProtectedRatingPage },
+      { path: "support", Component: ProtectedSupportPage },
+      { path: "terms", Component: TermsAndConditions },
+      { path: "privacy", Component: PrivacyPolicy },
+      { path: "*", Component: NotFound },
+    ],
   },
 ]);

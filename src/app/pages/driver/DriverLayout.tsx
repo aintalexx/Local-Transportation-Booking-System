@@ -19,14 +19,14 @@ export default function DriverLayout() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="flex h-full min-h-full flex-col bg-gray-50">
       <main className="flex-1 overflow-auto scroll-smooth">
         <div style={{ paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>
           <Outlet />
         </div>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-gray-200 px-2 py-1 z-50 shadow-lg safe-bottom">
+      <nav className="shrink-0 bg-white/95 backdrop-blur-lg border-t border-gray-200 px-2 py-1 z-50 shadow-lg safe-bottom">
         <div className="swipe-indicator"></div>
         <div className="max-w-screen-md mx-auto flex items-stretch gap-1">
           {navItems.map((item) => (

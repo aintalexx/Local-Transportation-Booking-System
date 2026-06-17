@@ -36,7 +36,7 @@ import {
 } from "../../utils/validators";
 import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
 import { createDemoOtp } from "../../utils/demoOtp";
-import { signUpWithEmailPassword } from "../../utils/supabaseAuth";
+import { signInWithGoogle, signUpWithEmailPassword } from "../../utils/supabaseAuth";
 
 const MAX_DRIVER_UPLOAD_SIZE = 900;
 const DRIVER_UPLOAD_QUALITY = 0.72;
@@ -113,6 +113,7 @@ export default function RegisterPage() {
   const [isGuardianConfirmed, setIsGuardianConfirmed] = useState(false);
   const [liabilityAgreed, setLiabilityAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [birthdateInput, setBirthdateInput] = useState("");
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -189,6 +190,17 @@ export default function RegisterPage() {
       setStep("driverContact");
     } else {
       setStep("details");
+    }
+  };
+
+  const handlePassengerGoogleSignUp = async () => {
+    setGoogleLoading(true);
+    try {
+      await signInWithGoogle("passenger");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Google sign-up failed. Please try again.";
+      toast.error(message);
+      setGoogleLoading(false);
     }
   };
 
@@ -1583,10 +1595,33 @@ export default function RegisterPage() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={loading}
+                disabled={loading || googleLoading}
               >
-                {loading ? "Preparing OTP..." : "Sign in"}
+                {loading ? "Preparing OTP..." : "Manual Registration"}
               </Button>
+
+              <div className="relative py-1">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-gray-200" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-3 text-gray-500">or</span>
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handlePassengerGoogleSignUp}
+                disabled={loading || googleLoading}
+                className="w-full"
+              >
+                <span className="mr-2 flex h-5 w-5 items-center justify-center rounded-full border border-gray-200 bg-white text-sm font-semibold text-[#4285F4]">
+                  G
+                </span>
+                {googleLoading ? "Opening Google..." : "Continue with Google"}
+              </Button>
+
               <Button
                 type="button"
                 variant="outline"
