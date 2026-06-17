@@ -35,7 +35,6 @@ import {
   validatePHLicenseNumber,
   formatPHLicenseNumber,
 } from "../../utils/validators";
-import { signInWithGoogle } from "../../utils/supabaseAuth";
 import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
 import { createDemoOtp } from "../../utils/demoOtp";
 
@@ -71,7 +70,6 @@ export default function RegisterPage() {
   const [isGuardianConfirmed, setIsGuardianConfirmed] = useState(false);
   const [liabilityAgreed, setLiabilityAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [birthdateInput, setBirthdateInput] = useState("");
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -148,22 +146,6 @@ export default function RegisterPage() {
       setStep("driverContact");
     } else {
       setStep("details");
-    }
-  };
-
-  const handleGoogleSignup = async () => {
-    if (role === "driver") {
-      toast.info("Driver applicants must complete the full form so admins can verify age, phone number, and license.");
-      return;
-    }
-
-    setGoogleLoading(true);
-    try {
-      await signInWithGoogle("passenger");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Google signup failed. Please try again.";
-      toast.error(message);
-      setGoogleLoading(false);
     }
   };
 
@@ -534,31 +516,6 @@ export default function RegisterPage() {
               <Button onClick={handleContinueFromRole} className="w-full mt-6">
                 Continue
               </Button>
-
-              <div className="my-5 flex items-center gap-3">
-                <div className="h-px flex-1 bg-gray-200" />
-                <span className="text-xs font-medium text-gray-500">or</span>
-                <div className="h-px flex-1 bg-gray-200" />
-              </div>
-
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleGoogleSignup}
-                disabled={googleLoading}
-                className="w-full gap-3"
-              >
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-sm font-bold text-[#4B0F14]">
-                  G
-                </span>
-                {googleLoading ? "Opening Google..." : "Continue with Google"}
-              </Button>
-
-              {role === "passenger" && (
-                <p className="mt-2 text-center text-xs text-gray-500">
-                  After Google sign-up, you will add your phone number and verify it with demo OTP.
-                </p>
-              )}
 
               {role === "driver" && (
                 <p className="mt-2 text-center text-xs text-gray-500">
@@ -1591,31 +1548,6 @@ export default function RegisterPage() {
                 Back
               </Button>
             </form>
-
-            <div className="mt-6">
-              <div className="mb-5 flex items-center gap-3">
-                <div className="h-px flex-1 bg-gray-200" />
-                <span className="text-xs font-medium text-gray-500">or</span>
-                <div className="h-px flex-1 bg-gray-200" />
-              </div>
-
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleGoogleSignup}
-                disabled={googleLoading}
-                className="w-full gap-3"
-              >
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-sm font-bold text-[#4B0F14]">
-                  G
-                </span>
-                {googleLoading ? "Opening Google..." : "Continue with Google"}
-              </Button>
-
-              <p className="mt-2 text-center text-xs text-gray-500">
-                Google sign-up continues with phone number and demo OTP verification.
-              </p>
-            </div>
 
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600">
