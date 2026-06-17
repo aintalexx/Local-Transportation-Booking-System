@@ -4,7 +4,12 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
-import { getAllUsers } from "../../utils/userDatabase";
+import { getAllUsers, updateUser } from "../../utils/userDatabase";
+
+/** Returns true if the string looks like a Supabase UUID */
+function isUUID(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 export type DriverStatus  = "Active" | "Pending" | "Blocked";
@@ -350,80 +355,145 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ─── Driver actions ───────────────────────────────────────────────────────
+
+  /**
+   * Update a locally-registered driver's status in localStorage + local state.
+   * Used when the driver ID is not a Supabase UUID (e.g. "driver_09321312313").
+   */
+  function updateLocalDriver(
+    id: string,
+    approvalStatus: "approved" | "rejected",
+    newStatus: DriverStatus,
+    newLicense: LicenseStatus,
+  ) {
+    // id is the username for local-only drivers
+    updateUser(id, { approvalStatus });
+    setDrivers(prev =>
+      prev.map(d =>
+        d.id === id
+          ? { ...d, status: newStatus, license: newLicense }
+          : d
+      )
+    );
+    flashRow(id, approvalStatus === "approved" ? "success" : "error");
+  }
+
   const approveDriver = useCallback(async (id: string) => {
-    if (!supabase) return;
+    // Local-only driver — update localStorage directly
+    if (!isUUID(id)) {
+      updateLocalDriver(id, "approved", "Active", "Approved");
+      toast.success("Driver approved successfully");
+      return;
+    }
+    if (!supabase) { toast.error("Supabase not configured."); return; }
     const { error } = await supabase
       .from("profiles")
       .update({ approval_status: "approved" })
       .eq("id", id);
-
     if (error) {
       toast.error("Failed to approve driver", { description: error.message });
     } else {
       toast.success("Driver approved successfully");
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const rejectDriver = useCallback(async (id: string) => {
-    if (!supabase) return;
+    if (!isUUID(id)) {
+      updateLocalDriver(id, "rejected", "Blocked", "Blocked");
+      toast.success("Driver application rejected");
+      return;
+    }
+    if (!supabase) { toast.error("Supabase not configured."); return; }
     const { error } = await supabase
       .from("profiles")
       .update({ approval_status: "rejected" })
       .eq("id", id);
-
     if (error) {
       toast.error("Failed to reject driver", { description: error.message });
     } else {
       toast.success("Driver application rejected");
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const blockDriver = useCallback(async (id: string) => {
-    if (!supabase) return;
+    if (!isUUID(id)) {
+      updateLocalDriver(id, "rejected", "Blocked", "Blocked");
+      toast.warning("Driver blocked successfully");
+      return;
+    }
+    if (!supabase) { toast.error("Supabase not configured."); return; }
     const { error } = await supabase
       .from("profiles")
       .update({ approval_status: "rejected" })
       .eq("id", id);
-
     if (error) {
       toast.error("Failed to block driver", { description: error.message });
     } else {
       toast.warning("Driver blocked successfully");
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const reinstateDriver = useCallback(async (id: string) => {
-    if (!supabase) return;
+    if (!isUUID(id)) {
+      updateLocalDriver(id, "approved", "Active", "Approved");
+      toast.success("Driver reinstated successfully");
+      return;
+    }
+    if (!supabase) { toast.error("Supabase not configured."); return; }
     const { error } = await supabase
       .from("profiles")
       .update({ approval_status: "approved" })
       .eq("id", id);
-
     if (error) {
       toast.error("Failed to reinstate driver", { description: error.message });
     } else {
       toast.success("Driver reinstated successfully");
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const approveBatch = useCallback(async () => {
-    if (!supabase) return;
-    const pendingIds = drivers.filter(d => d.status === "Pending").map(d => d.id);
-    if (pendingIds.length === 0) {
+    const pendingDrivers = drivers.filter(d => d.status === "Pending");
+    if (pendingDrivers.length === 0) {
       toast.info("No pending drivers to approve.");
       return;
     }
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({ approval_status: "approved" })
-      .in("id", pendingIds);
+    // Split into local vs Supabase
+    const localPending  = pendingDrivers.filter(d => !isUUID(d.id));
+    const supabasePending = pendingDrivers.filter(d =>  isUUID(d.id));
 
-    if (error) {
-      toast.error("Failed to approve drivers in batch", { description: error.message });
-    } else {
-      toast.success(`Approved ${pendingIds.length} drivers`);
+    // Update local drivers in localStorage + state
+    for (const d of localPending) {
+      updateUser(d.id, { approvalStatus: "approved" });
     }
+    if (localPending.length > 0) {
+      setDrivers(prev =>
+        prev.map(d =>
+          localPending.some(ld => ld.id === d.id)
+            ? { ...d, status: "Active" as DriverStatus, license: "Approved" as LicenseStatus }
+            : d
+        )
+      );
+    }
+
+    // Update Supabase drivers
+    if (supabasePending.length > 0 && supabase) {
+      const supabaseIds = supabasePending.map(d => d.id);
+      const { error } = await supabase
+        .from("profiles")
+        .update({ approval_status: "approved" })
+        .in("id", supabaseIds);
+      if (error) {
+        toast.error("Failed to approve some drivers", { description: error.message });
+        return;
+      }
+    }
+
+    toast.success(`Approved ${pendingDrivers.length} driver${pendingDrivers.length > 1 ? "s" : ""}`);
   }, [drivers]);
 
   // ─── Booking actions ──────────────────────────────────────────────────────
