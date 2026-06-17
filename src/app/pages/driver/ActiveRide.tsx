@@ -17,7 +17,12 @@ import {
 import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
 import { useBooking } from "../../context/BookingContext";
-import { updateBookingStatus, updateDriverLocation } from "../../utils/bookingDatabase";
+import {
+  getDriverBookingHistory,
+  updateBookingStatus,
+  updateDriverLocation,
+  type BookingData,
+} from "../../utils/bookingDatabase";
 import { updateSupabaseBookingStatus } from "../../utils/supabaseBookings";
 import { publishDriverLocation } from "../../utils/realtimeTracking";
 import MapView from "../../components/MapView";
@@ -32,12 +37,22 @@ import {
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
 
+type CompletedTripSummary = {
+  passengerName: string;
+  fare: number;
+  distance: number;
+  paymentMethod: string;
+  completedAt: string;
+  tripsCompleted: number;
+};
+
 export default function ActiveRide() {
   const navigate = useNavigate();
   const { user } = useUser();
   const { activeBooking, refreshBooking, setActiveBooking } = useBooking();
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
   const [driverLocation, setDriverLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [completedTrip, setCompletedTrip] = useState<CompletedTripSummary | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -45,10 +60,12 @@ export default function ActiveRide() {
       return;
     }
 
-    if (!activeBooking) {
+    if (!activeBooking && !completedTrip) {
       navigate("/driver");
       return;
     }
+
+    if (!activeBooking) return;
 
     // Get driver's current location and update periodically
     const updateLocation = () => {
@@ -91,7 +108,7 @@ export default function ActiveRide() {
     const interval = setInterval(updateLocation, 5000);
 
     return () => clearInterval(interval);
-  }, [user, activeBooking, navigate, refreshBooking]);
+  }, [user, activeBooking, completedTrip, navigate, refreshBooking]);
 
   const handleStatusUpdate = async (newStatus: "en_route" | "arrived" | "in_progress") => {
     if (!activeBooking) return;
@@ -127,21 +144,36 @@ export default function ActiveRide() {
 
     const supabaseBooking = await updateSupabaseBookingStatus(activeBooking.id, "completed");
     if (supabaseBooking) {
-      toast.success(`Trip completed! You earned PHP ${activeBooking.finalPrice}`);
+      setCompletedTrip(createCompletedTripSummary(supabaseBooking, user?.username));
+      setShowCompleteDialog(false);
       setActiveBooking(null);
-      navigate("/driver");
       return;
     }
 
     const success = updateBookingStatus(activeBooking.id, "completed");
     if (success) {
-      toast.success(`Trip completed! You earned PHP ${activeBooking.finalPrice}`);
+      setCompletedTrip(createCompletedTripSummary(
+        { ...activeBooking, status: "completed", completedAt: new Date().toISOString() },
+        user?.username
+      ));
+      setShowCompleteDialog(false);
       setActiveBooking(null);
-      navigate("/driver");
     } else {
       toast.error("Failed to complete trip");
     }
   };
+
+  if (completedTrip) {
+    return (
+      <CompletedTripResult
+        summary={completedTrip}
+        onViewSummary={() => {
+          setCompletedTrip(null);
+          navigate("/driver");
+        }}
+      />
+    );
+  }
 
   if (!activeBooking) {
     return null;
@@ -342,4 +374,89 @@ export default function ActiveRide() {
       </AlertDialog>
     </div>
   );
+}
+
+function CompletedTripResult({
+  summary,
+  onViewSummary,
+}: {
+  summary: CompletedTripSummary;
+  onViewSummary: () => void;
+}) {
+  return (
+    <div className="flex min-h-screen items-start justify-center bg-[#343C56] px-4 pt-10">
+      <div className="w-full max-w-sm rounded-md bg-white px-5 py-6 text-center shadow-2xl">
+        <div className="mx-auto flex w-fit items-center justify-center gap-2 rounded-full border border-gray-100 px-5 py-2 shadow-sm">
+          <span className="text-sm font-black text-[#D4AF37]">₱</span>
+          <span className="text-2xl font-black text-[#1F2937]">
+            {summary.fare.toFixed(2)}
+          </span>
+        </div>
+
+        <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-gray-500">
+          {formatCompletedDate(summary.completedAt)}
+        </p>
+
+        <div className="my-5 h-px bg-gray-100" />
+
+        <p className="text-base font-semibold text-[#1F2937]">
+          Trip Completed
+        </p>
+        <p className="mt-1 text-sm text-gray-500">
+          Passenger: {summary.passengerName}
+        </p>
+
+        <div className="mt-4 grid grid-cols-2 gap-3 text-left">
+          <div className="rounded-lg bg-gray-50 p-3">
+            <p className="text-xs text-gray-500">Distance</p>
+            <p className="mt-1 font-bold text-gray-900">{summary.distance.toFixed(1)} km</p>
+          </div>
+          <div className="rounded-lg bg-gray-50 p-3">
+            <p className="text-xs text-gray-500">Payment</p>
+            <p className="mt-1 font-bold text-gray-900">{summary.paymentMethod}</p>
+          </div>
+        </div>
+
+        <p className="mt-5 text-sm font-semibold text-gray-700">
+          {summary.tripsCompleted.toString().padStart(2, "0")} Trips Completed
+        </p>
+
+        <button
+          onClick={onViewSummary}
+          className="mt-5 h-11 w-full rounded-full border border-[#D4AF37] text-sm font-bold uppercase text-[#D4AF37] transition hover:bg-[#FFF8E8]"
+        >
+          View Summary
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function createCompletedTripSummary(booking: BookingData, driverUsername?: string): CompletedTripSummary {
+  const completedLocalTrips = driverUsername
+    ? getDriverBookingHistory(driverUsername).filter(
+        (trip) => trip.status === "completed" || trip.status === "ride_completed"
+      ).length
+    : 0;
+
+  return {
+    passengerName: booking.passengerName,
+    fare: booking.finalPrice,
+    distance: booking.distance,
+    paymentMethod: booking.paymentMethod,
+    completedAt: booking.completedAt || new Date().toISOString(),
+    tripsCompleted: Math.max(1, completedLocalTrips),
+  };
+}
+
+function formatCompletedDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Today";
+
+  return date.toLocaleDateString("en-US", {
+    weekday: undefined,
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }
