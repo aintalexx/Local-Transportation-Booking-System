@@ -8,13 +8,17 @@ import { useBooking } from "../../context/BookingContext";
 import { useUser } from "../../context/UserContext";
 import {
   getPassengerActiveBooking,
+  cancelBooking,
   type BookingData,
   type BookingStatus,
 } from "../../utils/bookingDatabase";
 import {
   getSupabasePassengerActiveBooking,
   subscribeToSupabaseBooking,
+  updateSupabaseBookingStatus,
 } from "../../utils/supabaseBookings";
+import { Dialog, DialogPortal } from "../../components/ui/dialog";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 const DEFAULT_CENTER = { lat: 14.6042, lng: 121.0120 };
 const MAROON = "#4B0F14";
@@ -94,6 +98,29 @@ export default function FindingDriverPage() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
+
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
+
+  const handleCancelBooking = async () => {
+    if (!activeBooking) return;
+    setCancelLoading(true);
+    try {
+      if (activeBooking.id.startsWith("BK")) {
+        cancelBooking(activeBooking.id);
+      } else {
+        await updateSupabaseBookingStatus(activeBooking.id, "cancelled");
+      }
+      setActiveBooking(null);
+      toast.success("Booking cancelled.");
+      navigate("/passenger", { replace: true });
+    } catch (err) {
+      toast.error("Failed to cancel booking.");
+    } finally {
+      setCancelLoading(false);
+      setShowCancelDialog(false);
+    }
+  };
 
   const driverFound = useMemo(() => {
     if (!activeBooking) return false;
@@ -256,13 +283,17 @@ export default function FindingDriverPage() {
       <div className="absolute inset-0 z-10 bg-white/45" />
 
       <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-4 pt-10">
-        <button
-          onClick={() => navigate(driverFound ? "/passenger/ongoing-booking" : "/passenger/book")}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 shadow-sm"
-          aria-label="Back"
-        >
-          <ArrowLeft className="h-5 w-5 text-[#4B0F14]" />
-        </button>
+        {driverFound ? (
+          <button
+            onClick={() => navigate("/passenger/ongoing-booking")}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 shadow-sm"
+            aria-label="Back"
+          >
+            <ArrowLeft className="h-5 w-5 text-[#4B0F14]" />
+          </button>
+        ) : (
+          <div className="h-10 w-10" />
+        )}
 
         {driverFound && (
           <div className="flex gap-2">
@@ -300,6 +331,14 @@ export default function FindingDriverPage() {
               Your booking request is visible to available drivers. This page will update automatically when one accepts.
             </p>
           </div>
+
+          <button
+            onClick={() => setShowCancelDialog(true)}
+            className="mt-6 h-12 w-full max-w-[260px] rounded-2xl bg-[#f3f4f6] font-bold text-[#4B0F14] shadow-sm transition-opacity"
+            style={{ border: "2px solid #e5e7eb" }}
+          >
+            Cancel Booking
+          </button>
         </div>
       ) : (
         <div className="absolute inset-x-4 top-20 z-20 rounded-3xl bg-white/95 p-5 text-center shadow-lg backdrop-blur">
@@ -340,6 +379,36 @@ export default function FindingDriverPage() {
           </button>
         </div>
       )}
+
+      {/* ── Cancel Confirm Dialog ── */}
+      <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <DialogPortal>
+          <DialogPrimitive.Overlay className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <DialogPrimitive.Content className="fixed top-[50%] left-[50%] z-[9999] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] rounded-3xl bg-white p-6 shadow-2xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95">
+            <DialogPrimitive.Title className="text-lg font-black mb-1" style={{ color: MAROON }}>
+              Cancel Booking?
+            </DialogPrimitive.Title>
+            <DialogPrimitive.Description className="text-sm mb-6" style={{ color: "#6b7280" }}>
+              Are you sure you want to cancel your ride request? This action cannot be undone.
+            </DialogPrimitive.Description>
+
+            <div className="flex gap-3">
+              <button onClick={() => setShowCancelDialog(false)}
+                disabled={cancelLoading}
+                className="flex-1 h-12 rounded-2xl font-bold text-sm"
+                style={{ background: "#f3f4f6", color: "#374151" }}>
+                No, Keep it
+              </button>
+              <button onClick={handleCancelBooking}
+                disabled={cancelLoading}
+                className="flex-1 h-12 rounded-2xl font-bold text-sm shadow-lg flex items-center justify-center gap-2"
+                style={{ background: MAROON, color: "#fff" }}>
+                {cancelLoading ? "Cancelling..." : "Yes, Cancel"}
+              </button>
+            </div>
+          </DialogPrimitive.Content>
+        </DialogPortal>
+      </Dialog>
     </div>
   );
 }

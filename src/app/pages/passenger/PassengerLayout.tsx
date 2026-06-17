@@ -31,7 +31,8 @@ export default function PassengerLayout() {
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-gray-200 px-1 py-1 z-50 shadow-lg safe-bottom">
+      {location.pathname !== "/passenger/finding-driver" && (
+        <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-gray-200 px-1 py-1 z-50 shadow-lg safe-bottom">
         <div className="swipe-indicator"></div>
         <div className="max-w-screen-md mx-auto flex items-stretch gap-1">
           {navItems.map((item) => (
@@ -67,6 +68,7 @@ export default function PassengerLayout() {
           ))}
         </div>
       </nav>
+      )}
     </div>
   );
 }
