@@ -27,12 +27,16 @@ export default function LoginPage() {
     setLoading(true);
     try {
       if (usernameOrPhone.includes("@")) {
-        const supabaseUser = await signInWithEmailPassword(usernameOrPhone, password);
-        if (supabaseUser) {
-          setUser(supabaseUser);
-          toast.success("Login successful!");
-          navigate(getRoleHomePath(supabaseUser));
-          return;
+        try {
+          const supabaseUser = await signInWithEmailPassword(usernameOrPhone, password);
+          if (supabaseUser) {
+            setUser(supabaseUser);
+            toast.success("Login successful!");
+            navigate(getRoleHomePath(supabaseUser));
+            return;
+          }
+        } catch (supabaseError) {
+          console.warn("Supabase auth failed, trying local fallback:", supabaseError);
         }
       }
 
