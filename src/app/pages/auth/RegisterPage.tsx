@@ -38,8 +38,8 @@ import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
 import { createDemoOtp } from "../../utils/demoOtp";
 import { signInWithGoogle, signUpWithEmailPassword } from "../../utils/supabaseAuth";
 
-const MAX_DRIVER_UPLOAD_SIZE = 900;
-const DRIVER_UPLOAD_QUALITY = 0.72;
+const MAX_DRIVER_UPLOAD_SIZE = 400; // Reduced from 900 to prevent localStorage quota exceeded
+const DRIVER_UPLOAD_QUALITY = 0.5; // Reduced from 0.72
 
 async function compressImageFile(file: File): Promise<string> {
   const originalDataUrl = await readFileAsDataUrl(file);

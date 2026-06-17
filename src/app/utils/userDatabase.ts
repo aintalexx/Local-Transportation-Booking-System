@@ -149,7 +149,8 @@ export function registerUser(userData: UserData): { success: boolean; message: s
     return { success: true, message: "Registration successful" };
   } catch (error) {
     console.error("Error registering user:", error);
-    return { success: false, message: "Registration failed" };
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, message: msg || "Registration failed" };
   }
 }
 
