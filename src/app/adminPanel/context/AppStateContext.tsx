@@ -377,14 +377,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
    * Update a locally-registered driver's status in localStorage + local state.
    * Used when the driver ID is not a Supabase UUID (e.g. "driver_09321312313").
    */
-  function updateLocalDriver(
+  function updateDriverState(
     id: string,
     approvalStatus: "approved" | "rejected",
     newStatus: DriverStatus,
     newLicense: LicenseStatus,
   ) {
-    // id is the username for local-only drivers
-    updateUser(id, { approvalStatus });
+    if (!isUUID(id)) {
+      updateUser(id, { approvalStatus });
+    }
     setDrivers(prev =>
       prev.map(d =>
         d.id === id
@@ -396,9 +397,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   const approveDriver = useCallback(async (id: string) => {
-    // Local-only driver — update localStorage directly
     if (!isUUID(id)) {
-      updateLocalDriver(id, "approved", "Active", "Approved");
+      updateDriverState(id, "approved", "Active", "Approved");
       toast.success("Driver approved successfully");
       return;
     }
@@ -410,6 +410,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (error) {
       toast.error("Failed to approve driver", { description: error.message });
     } else {
+      updateDriverState(id, "approved", "Active", "Approved");
       toast.success("Driver approved successfully");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -417,7 +418,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const rejectDriver = useCallback(async (id: string) => {
     if (!isUUID(id)) {
-      updateLocalDriver(id, "rejected", "Blocked", "Blocked");
+      updateDriverState(id, "rejected", "Blocked", "Blocked");
       toast.success("Driver application rejected");
       return;
     }
@@ -429,6 +430,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (error) {
       toast.error("Failed to reject driver", { description: error.message });
     } else {
+      updateDriverState(id, "rejected", "Blocked", "Blocked");
       toast.success("Driver application rejected");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -436,7 +438,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const blockDriver = useCallback(async (id: string) => {
     if (!isUUID(id)) {
-      updateLocalDriver(id, "rejected", "Blocked", "Blocked");
+      updateDriverState(id, "rejected", "Blocked", "Blocked");
       toast.warning("Driver blocked successfully");
       return;
     }
@@ -448,6 +450,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (error) {
       toast.error("Failed to block driver", { description: error.message });
     } else {
+      updateDriverState(id, "rejected", "Blocked", "Blocked");
       toast.warning("Driver blocked successfully");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -455,7 +458,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const reinstateDriver = useCallback(async (id: string) => {
     if (!isUUID(id)) {
-      updateLocalDriver(id, "approved", "Active", "Approved");
+      updateDriverState(id, "approved", "Active", "Approved");
       toast.success("Driver reinstated successfully");
       return;
     }
@@ -467,6 +470,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (error) {
       toast.error("Failed to reinstate driver", { description: error.message });
     } else {
+      updateDriverState(id, "approved", "Active", "Approved");
       toast.success("Driver reinstated successfully");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
