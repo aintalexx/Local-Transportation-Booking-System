@@ -26,8 +26,8 @@ import {
   formatPHPhoneInput,
   normalizeSpaces,
   ok,
+  validateAuthEmail,
   validateBirthdate,
-  validateEmail,
   validateName,
   validatePassword,
   validatePHPhone,
@@ -215,7 +215,7 @@ export default function RegisterPage() {
       formData.noMiddleName ? { valid: true, message: "" } : validateName(formData.middleName, "Middle name"),
       validateBirthdate(formData.birthdate),
       validatePHPhone(normalizedPhone),
-      validateEmail(normalizedEmail),
+      validateAuthEmail(normalizedEmail),
       validatePassword(formData.password),
     ]);
 
@@ -267,7 +267,7 @@ export default function RegisterPage() {
       validateBirthdate(formData.birthdate),
       validatePHPhone(normalizedPhone),
       role === "passenger" ? validateUsername(formData.username.trim()) : ok,
-      validateEmail(normalizedEmail),
+      validateAuthEmail(normalizedEmail),
       validatePassword(formData.password),
     ]);
 
@@ -344,6 +344,7 @@ export default function RegisterPage() {
         middleName: formData.noMiddleName ? "" : normalizeSpaces(formData.middleName),
         suffix: normalizeOptionalSuffix(formData.suffix),
         email: normalizedEmail,
+        emailConfirmed: false,
         birthdate: birthdateString,
         role,
         guardianName: role === "passenger" ? normalizeSpaces(formData.guardianName) : "",

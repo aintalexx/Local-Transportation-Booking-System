@@ -36,6 +36,11 @@ export function getPendingGoogleRole(): PublicSignupRole {
   return pendingRole === "driver" ? "driver" : "passenger";
 }
 
+export function hasPendingGoogleRole(): boolean {
+  return sessionStorage.getItem(GOOGLE_ROLE_KEY) === "passenger" ||
+    sessionStorage.getItem(GOOGLE_ROLE_KEY) === "driver";
+}
+
 export function clearPendingGoogleRole() {
   sessionStorage.removeItem(GOOGLE_ROLE_KEY);
 }
@@ -62,6 +67,7 @@ export function createLocalUserFromGoogle(supabaseUser: SupabaseUser, role: Publ
     middleName: existingUser?.middleName || middleName,
     suffix: normalizeOptionalSuffix(existingUser?.suffix),
     email,
+    emailConfirmed: true,
     birthdate: existingUser?.birthdate || "",
     role: existingUser?.role || role,
     guardianName: existingUser?.guardianName || "",
@@ -96,6 +102,7 @@ export async function signUpWithEmailPassword(userData: UserData): Promise<UserD
     email: userData.email,
     password: userData.password,
     options: {
+      emailRedirectTo: `${window.location.origin}/auth/callback`,
       data: {
         username: userData.username,
         full_name: fullName,
@@ -118,6 +125,7 @@ export async function signUpWithEmailPassword(userData: UserData): Promise<UserD
   const nextUser = {
     ...userData,
     supabaseId: data.user.id,
+    emailConfirmed: Boolean(data.user.email_confirmed_at || data.session),
   };
 
   updateUser(nextUser.username, nextUser);
@@ -226,6 +234,7 @@ export async function createLocalUserFromSupabaseUser(supabaseUser: SupabaseUser
     middleName,
     suffix: normalizeOptionalSuffix(existingUser?.suffix),
     email,
+    emailConfirmed: Boolean(supabaseUser.email_confirmed_at || supabaseUser.confirmed_at || existingUser?.emailConfirmed),
     birthdate: existingUser?.birthdate || "",
     role,
     guardianName: existingUser?.guardianName || "",
@@ -243,7 +252,9 @@ export async function createLocalUserFromSupabaseUser(supabaseUser: SupabaseUser
     vehiclePhoto: profile?.vehicle_photo || existingUser?.vehiclePhoto || "",
     vehicleColor: existingUser?.vehicleColor || "",
     memberSince: existingUser?.memberSince || new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
-    approvalStatus: profile?.approval_status || existingUser?.approvalStatus || (role === "driver" ? "pending" : "approved"),
+    approvalStatus: existingUser?.approvalStatus === "approved"
+      ? "approved"
+      : (profile?.approval_status || existingUser?.approvalStatus || (role === "driver" ? "pending" : "approved")),
     profilePhoto: profile?.profile_photo || existingUser?.profilePhoto || String(metadata.avatar_url || metadata.picture || ""),
   };
 

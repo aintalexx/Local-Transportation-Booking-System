@@ -383,8 +383,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     newStatus: DriverStatus,
     newLicense: LicenseStatus,
   ) {
+    // Always sync to localStorage — either by username (non-UUID) or by supabaseId (UUID)
     if (!isUUID(id)) {
       updateUser(id, { approvalStatus });
+    } else {
+      // id is a Supabase UUID — find and update the matching local user record
+      const localUsers = getAllUsers();
+      const matchedLocal = localUsers.find(u => u.supabaseId === id);
+      if (matchedLocal) {
+        updateUser(matchedLocal.username, { approvalStatus });
+      }
     }
     setDrivers(prev =>
       prev.map(d =>
@@ -512,6 +520,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         toast.error("Failed to approve some drivers", { description: error.message });
         return;
       }
+      // Also sync approval to localStorage for each Supabase driver
+      const localUsers = getAllUsers();
+      for (const d of supabasePending) {
+        const matchedLocal = localUsers.find(u => u.supabaseId === d.id);
+        if (matchedLocal) {
+          updateUser(matchedLocal.username, { approvalStatus: "approved" });
+        }
+      }
+      setDrivers(prev =>
+        prev.map(d =>
+          supabasePending.some(sd => sd.id === d.id)
+            ? { ...d, status: "Active" as DriverStatus, license: "Approved" as LicenseStatus }
+            : d
+        )
+      );
     }
 
     toast.success(`Approved ${pendingDrivers.length} driver${pendingDrivers.length > 1 ? "s" : ""}`);

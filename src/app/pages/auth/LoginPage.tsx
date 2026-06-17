@@ -36,6 +36,11 @@ export default function LoginPage() {
             return;
           }
         } catch (supabaseError) {
+          const message = supabaseError instanceof Error ? supabaseError.message : "";
+          if (message.toLowerCase().includes("email not confirmed")) {
+            toast.error("Please confirm your email before logging in.");
+            return;
+          }
           console.warn("Supabase auth failed, trying local fallback:", supabaseError);
         }
       }
@@ -47,11 +52,21 @@ export default function LoginPage() {
         toast.error(existing ? "Incorrect password" : "Account not found. Please register first.");
         return;
       }
+
+      if (user.email && user.emailConfirmed === false) {
+        toast.error("Please confirm your email before logging in.");
+        return;
+      }
+
       if (user.role === "driver") {
         if (user.email) {
           try {
             const refreshedUser = await signInWithEmailPassword(user.email, password);
             if (refreshedUser) {
+              if (refreshedUser.emailConfirmed === false) {
+                toast.error("Please confirm your email before logging in.");
+                return;
+              }
               if (refreshedUser.approvalStatus === "approved") {
                 setUser(refreshedUser);
                 toast.success("Login successful!");
@@ -59,9 +74,15 @@ export default function LoginPage() {
                 return;
               }
               if (refreshedUser.approvalStatus === "rejected") {
-                toast.error("Your driver application has been rejected. Contact support.", { duration: 5000 });
-                return;
+                // Only block if the local record also says rejected
+                if (user.approvalStatus === "rejected") {
+                  toast.error("Your driver application has been rejected. Contact support.", { duration: 5000 });
+                  return;
+                }
+                // Otherwise the local record may be approved — fall through to local check below
               }
+              // If refreshedUser.approvalStatus === "pending" but local user is approved,
+              // fall through to the local status check below so the driver can log in.
             }
           } catch (supabaseError) {
             console.warn("Unable to refresh driver approval status from Supabase:", supabaseError);

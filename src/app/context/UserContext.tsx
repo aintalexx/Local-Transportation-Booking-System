@@ -11,6 +11,7 @@ interface UserData {
   middleName: string;
   suffix: string;
   email: string;
+  emailConfirmed?: boolean;
   birthdate: string;
   role: "passenger" | "driver" | "admin";
   guardianName?: string;

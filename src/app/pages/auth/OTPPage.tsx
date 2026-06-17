@@ -37,6 +37,7 @@ function buildRegistrationUser(state: OtpRouteState): UserData {
     middleName: userData.middleName || "",
     suffix: userData.suffix || "",
     email: userData.email || "",
+    emailConfirmed: userData.emailConfirmed || false,
     birthdate: userData.birthdate || "",
     role,
     guardianName: userData.guardianName || "",
@@ -117,8 +118,14 @@ export default function OTPPage() {
     }
 
     if (accountUser.role === "driver") {
-      toast.success("Phone verified. Your driver application is pending approval.");
-      navigate("/pending-approval", { replace: true });
+      toast.success("Phone verified. Please confirm your email before logging in.");
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    if (accountUser.email && accountUser.emailConfirmed === false) {
+      toast.success("Phone verified. Please check your email to confirm your account before logging in.", { duration: 7000 });
+      navigate("/login", { replace: true });
       return;
     }
 
