@@ -396,7 +396,6 @@ export default function RegisterPage() {
               accept="image/*"
               onChange={handlePhotoUpload(key)}
               className="absolute inset-0 opacity-0 cursor-pointer z-10"
-              required
             />
             <div className="w-9 h-9 rounded-full bg-red-50 flex items-center justify-center mb-1.5">
               {icon}
@@ -834,7 +833,7 @@ export default function RegisterPage() {
             </div>
             <h1 className="text-2xl font-bold text-gray-900">Activation</h1>
             <p className="text-xs text-gray-500 mt-1">
-              Authority of drycab is only applicable to Filipino citizens at least 21 years old
+              Driver registration is only applicable to Filipino citizens at least 18 years old
             </p>
           </div>
 
