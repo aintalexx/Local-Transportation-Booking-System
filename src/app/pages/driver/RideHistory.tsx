@@ -2,22 +2,21 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Card, CardContent } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { MapPin, Clock, Calendar } from "lucide-react";
 import { useUser } from "../../context/UserContext";
 import {
-  getPassengerBookingHistory,
+  getDriverBookingHistory,
   type BookingData,
   type BookingStatus,
 } from "../../utils/bookingDatabase";
-import { getSupabasePassengerBookingHistory } from "../../utils/supabaseBookings";
+import { getSupabaseDriverBookingHistory } from "../../utils/supabaseBookings";
 
 type HistoryFilter = "all" | "completed" | "cancelled";
 
 const HISTORY_STATUSES: BookingStatus[] = ["completed", "ride_completed", "cancelled"];
 
-export default function RideHistory() {
+export default function DriverRideHistory() {
   const navigate = useNavigate();
   const { user } = useUser();
   const [filter, setFilter] = useState<HistoryFilter>("all");
@@ -34,9 +33,9 @@ export default function RideHistory() {
 
     const loadHistory = async () => {
       setLoading(true);
-      const localRides = getPassengerBookingHistory(user.username, user.supabaseId)
+      const localRides = getDriverBookingHistory(user.username, user.supabaseId)
         .filter(ride => HISTORY_STATUSES.includes(ride.status));
-      const supabaseRides = await getSupabasePassengerBookingHistory(user);
+      const supabaseRides = await getSupabaseDriverBookingHistory(user);
       const merged = mergeRideHistory([...supabaseRides, ...localRides]);
 
       if (!cancelled) {
@@ -61,24 +60,24 @@ export default function RideHistory() {
   }, [filter, rides]);
 
   const completedRides = rides.filter(ride => ride.status === "completed" || ride.status === "ride_completed");
-  const totalSpent = completedRides.reduce((sum, ride) => sum + ride.finalPrice, 0);
+  const totalEarnings = completedRides.reduce((sum, ride) => sum + ride.finalPrice, 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-gradient-to-r from-[#4B0F14] to-[#6E171D] p-6 text-white">
         <div className="mx-auto max-w-screen-md">
-          <h1 className="mb-4 text-2xl font-bold">Ride History</h1>
+          <h1 className="mb-4 text-2xl font-bold">Trip History</h1>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Card className="border-white/20 bg-white/10 backdrop-blur">
               <CardContent className="pt-4">
-                <p className="text-sm text-[rgba(255,248,231,0.7)]">Completed Rides</p>
+                <p className="text-sm text-[rgba(255,248,231,0.7)]">Completed Trips</p>
                 <p className="break-words text-2xl font-bold text-white">{completedRides.length}</p>
               </CardContent>
             </Card>
             <Card className="border-white/20 bg-white/10 backdrop-blur">
               <CardContent className="pt-4">
-                <p className="text-sm text-[rgba(255,248,231,0.7)]">Total Spent</p>
-                <p className="break-words text-2xl font-bold text-white">PHP {totalSpent.toFixed(2)}</p>
+                <p className="text-sm text-[rgba(255,248,231,0.7)]">Total Earnings</p>
+                <p className="break-words text-2xl font-bold text-white">PHP {totalEarnings.toFixed(2)}</p>
               </CardContent>
             </Card>
           </div>
@@ -96,7 +95,7 @@ export default function RideHistory() {
 
         <div className="space-y-3">
           {loading ? (
-            <HistoryEmptyState icon={Clock} message="Loading ride history..." />
+            <HistoryEmptyState message="Loading trip history..." />
           ) : filteredRides.length > 0 ? (
             filteredRides.map((ride) => (
               <Card key={ride.id} className="transition-shadow hover:shadow-md">
@@ -125,30 +124,19 @@ export default function RideHistory() {
 
                   <div className="grid gap-3 border-t pt-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
                     <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-                      <InfoBlock label="Driver" value={ride.driverName || "Not assigned"} />
-                      <InfoBlock label="Vehicle" value={ride.driverVehicleType || ride.vehicleType || "Vehicle"} />
+                      <InfoBlock label="Passenger" value={ride.passengerName || "Passenger"} />
+                      <InfoBlock label="Payment" value={ride.paymentMethod || "Cash"} />
                     </div>
                     <div className="min-w-fit text-left sm:text-right">
-                      <p className="text-xl font-bold text-[#4B0F14]">PHP {ride.finalPrice.toFixed(2)}</p>
+                      <p className="text-xl font-bold text-green-600">PHP {ride.finalPrice.toFixed(2)}</p>
                       <p className="mt-1 text-xs text-gray-500">{ride.distance.toFixed(1)} km</p>
                     </div>
                   </div>
-
-                  {(ride.status === "completed" || ride.status === "ride_completed") && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-3 w-full"
-                      onClick={() => navigate(`/rating/${ride.id}`)}
-                    >
-                      Rate this ride
-                    </Button>
-                  )}
                 </CardContent>
               </Card>
             ))
           ) : (
-            <HistoryEmptyState icon={Clock} message="No ride history found" />
+            <HistoryEmptyState message="No trip history found" />
           )}
         </div>
       </div>
@@ -233,17 +221,11 @@ function InfoBlock({ label, value }: { label: string; value: string }) {
   );
 }
 
-function HistoryEmptyState({
-  icon: Icon,
-  message,
-}: {
-  icon: typeof Clock;
-  message: string;
-}) {
+function HistoryEmptyState({ message }: { message: string }) {
   return (
     <Card>
       <CardContent className="pt-6 text-center">
-        <Icon className="mx-auto mb-2 h-12 w-12 text-gray-400" />
+        <Clock className="mx-auto mb-2 h-12 w-12 text-gray-400" />
         <p className="text-gray-600">{message}</p>
       </CardContent>
     </Card>

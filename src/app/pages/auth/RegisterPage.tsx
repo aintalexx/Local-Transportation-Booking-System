@@ -247,9 +247,10 @@ export default function RegisterPage() {
     const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
     const normalizedEmail = formData.email.trim();
     const normalizedPlate = formData.plateNumber.trim().toUpperCase();
+    const normalizedPhoneDigits = normalizedPhone.replace(/\D/g, "");
     const finalUsername = role === "passenger" 
       ? formData.username.trim() 
-      : `driver_${normalizedPhone.replace(/\D/g, "")}`;
+      : `driver_${normalizedPhoneDigits}`;
 
     // Validate Basic Details
     const basicCheck = firstInvalid([
@@ -363,9 +364,11 @@ export default function RegisterPage() {
       if (role === "driver") {
         // Check if driver already has a local account (re-registration after a failed Supabase sync)
         const existingLocalDriver = getAllUsers().find(
-          u => u.username === finalUsername ||
-               (u.email && u.email.trim().toLowerCase() === normalizedEmail) ||
-               (u.phoneNumber && u.phoneNumber.replace(/\D/g, "") === normalizedPhone.replace(/\D/g, ""))
+          u => u.role === "driver" && (
+            u.username === finalUsername ||
+            (u.email && u.email.trim().toLowerCase() === normalizedEmail) ||
+            formatPHPhoneInput(u.phoneNumber).replace(/\D/g, "") === normalizedPhoneDigits
+          )
         );
 
         if (existingLocalDriver) {
@@ -374,7 +377,7 @@ export default function RegisterPage() {
             ...userData,
             username: existingLocalDriver.username,
             supabaseId: existingLocalDriver.supabaseId,
-            approvalStatus: existingLocalDriver.approvalStatus || "pending",
+            approvalStatus: "pending",
             memberSince: existingLocalDriver.memberSince,
           });
         } else {

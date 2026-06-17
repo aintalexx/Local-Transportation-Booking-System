@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
 import { authenticateUser, findUser } from "../../utils/userDatabase";
 import { formatPHPhoneInput } from "../../utils/validators";
-import { signInWithEmailPassword, signInWithGoogle } from "../../utils/supabaseAuth";
+import { resolveAuthEmailForLogin, signInWithEmailPassword, signInWithGoogle } from "../../utils/supabaseAuth";
 import { getRoleHomePath } from "../../utils/roleRouting";
 
 export default function LoginPage() {
@@ -21,18 +21,45 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setShowValidation(true);
-    if (!usernameOrPhone.trim()) { toast.error("Please enter your username or phone number"); return; }
+    const loginIdentifier = usernameOrPhone.trim();
+    const isEmailLogin = loginIdentifier.includes("@");
+
+    if (!loginIdentifier) { toast.error("Please enter your username or email"); return; }
     if (!password) { toast.error("Please enter your password"); return; }
 
     setLoading(true);
     try {
-      if (usernameOrPhone.includes("@")) {
+      const completeLogin = (account: NonNullable<ReturnType<typeof findUser>>) => {
+        if (account.emailConfirmed === false) {
+          toast.error("Please confirm your email before logging in.");
+          return false;
+        }
+
+        if (account.role === "driver") {
+          if (!account.approvalStatus || account.approvalStatus === "pending") {
+            toast.error("Your driver account is pending admin approval.", { duration: 5000 });
+            return false;
+          }
+
+          if (account.approvalStatus === "rejected") {
+            toast.error("Your driver application has been rejected. Contact support.", { duration: 5000 });
+            return false;
+          }
+        }
+
+        setUser(account);
+        toast.success("Login successful!");
+        navigate(getRoleHomePath(account));
+        return true;
+      };
+
+      const authEmail = await resolveAuthEmailForLogin(loginIdentifier);
+
+      if (authEmail) {
         try {
-          const supabaseUser = await signInWithEmailPassword(usernameOrPhone, password);
+          const supabaseUser = await signInWithEmailPassword(authEmail, password);
           if (supabaseUser) {
-            setUser(supabaseUser);
-            toast.success("Login successful!");
-            navigate(getRoleHomePath(supabaseUser));
+            completeLogin(supabaseUser);
             return;
           }
         } catch (supabaseError) {
@@ -41,21 +68,36 @@ export default function LoginPage() {
             toast.error("Please confirm your email before logging in.");
             return;
           }
+          if (message.toLowerCase().includes("invalid login credentials")) {
+            toast.error(isEmailLogin ? "Invalid email or password." : "Invalid username or password.");
+            return;
+          }
           console.warn("Supabase auth failed, trying local fallback:", supabaseError);
         }
       }
 
       await new Promise(r => setTimeout(r, 900));
-      const user = authenticateUser(usernameOrPhone, password);
+      let user = authenticateUser(loginIdentifier, password);
       if (!user) {
-        const existing = findUser(usernameOrPhone);
+        const existing = findUser(loginIdentifier);
         toast.error(existing ? "Incorrect password" : "Account not found. Please register first.");
         return;
       }
 
       if (user.email && user.emailConfirmed === false) {
-        toast.error("Please confirm your email before logging in.");
-        return;
+        try {
+          const refreshedUser = await signInWithEmailPassword(user.email, password);
+          if (refreshedUser?.emailConfirmed) {
+            user = refreshedUser;
+          } else {
+            toast.error("Please confirm your email before logging in.");
+            return;
+          }
+        } catch (supabaseError) {
+          console.warn("Unable to verify email confirmation from Supabase:", supabaseError);
+          toast.error("Please confirm your email before logging in.");
+          return;
+        }
       }
 
       if (user.role === "driver") {
@@ -98,15 +140,13 @@ export default function LoginPage() {
           return;
         }
       }
-      setUser(user);
-      toast.success("Login successful!");
-      navigate(getRoleHomePath(user));
+      completeLogin(user);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Login failed. Please try again.";
       if (message.toLowerCase().includes("email not confirmed")) {
         toast.error("Please check your email and click the confirmation link before logging in.", { duration: 6000 });
       } else if (message.toLowerCase().includes("invalid login credentials")) {
-        toast.error("Invalid username, phone number, or password.");
+        toast.error("Invalid username, email, or password.");
       } else {
         toast.error(message);
       }

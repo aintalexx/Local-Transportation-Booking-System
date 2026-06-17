@@ -31,6 +31,7 @@ import ActiveRide from "./pages/driver/ActiveRide";
 import DriverChat from "./pages/driver/Chat";
 import DriverProfile from "./pages/driver/Profile";
 import DriverEditProfile from "./pages/driver/EditProfile";
+import DriverRideHistory from "./pages/driver/RideHistory";
 
 // Admin pages
 import AdminPanelApp from "./adminPanel/App";
@@ -124,6 +125,7 @@ export const router = createBrowserRouter([
           { path: "active-ride", Component: ActiveRide },
           { path: "ride/:rideId", Component: ActiveRide },
           { path: "chat/:rideId", Component: DriverChat },
+          { path: "history", Component: DriverRideHistory },
           { path: "profile", Component: DriverProfile },
           { path: "edit-profile", Component: DriverEditProfile },
         ],

@@ -45,6 +45,38 @@ export function clearPendingGoogleRole() {
   sessionStorage.removeItem(GOOGLE_ROLE_KEY);
 }
 
+export async function resolveAuthEmailForLogin(identifier: string): Promise<string | null> {
+  const normalizedIdentifier = identifier.trim();
+  const normalizedLower = normalizedIdentifier.toLowerCase();
+
+  if (!normalizedIdentifier) return null;
+  if (normalizedIdentifier.includes("@")) return normalizedLower;
+
+  const localUser = getAllUsers().find(
+    user => user.username.toLowerCase() === normalizedLower
+  );
+
+  if (localUser?.email) {
+    return localUser.email.trim().toLowerCase();
+  }
+
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("email")
+    .eq("username", normalizedIdentifier)
+    .maybeSingle();
+
+  if (error) {
+    console.info("Username email lookup failed. Falling back to local login:", error.message);
+    return null;
+  }
+
+  const profileEmail = typeof data?.email === "string" ? data.email.trim().toLowerCase() : "";
+  return profileEmail || null;
+}
+
 export function createLocalUserFromGoogle(supabaseUser: SupabaseUser, role: PublicSignupRole): UserData {
   const email = supabaseUser.email?.trim().toLowerCase() || "";
   const metadata = supabaseUser.user_metadata || {};
@@ -227,7 +259,11 @@ export async function createLocalUserFromSupabaseUser(supabaseUser: SupabaseUser
   const surname = existingUser?.surname || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : "");
   const middleName = existingUser?.middleName || (nameParts.length > 2 ? nameParts.slice(1, -1).join(" ") : "");
   const isAdminEmail = email === "admin@arangkada.ph";
-  const role = isAdminEmail ? "admin" : (profile?.role || existingUser?.role || metadata.role || fallbackRole) as AppRole;
+  const role = isAdminEmail
+    ? "admin"
+    : (profile?.role === "driver" || existingUser?.role === "driver" || metadata.role === "driver")
+      ? "driver"
+      : (profile?.role || existingUser?.role || metadata.role || fallbackRole) as AppRole;
 
   const userData: UserData = {
     supabaseId: supabaseUser.id,
@@ -239,7 +275,7 @@ export async function createLocalUserFromSupabaseUser(supabaseUser: SupabaseUser
     firstName,
     middleName,
     suffix: normalizeOptionalSuffix(existingUser?.suffix),
-    email,
+    email: profile?.email || email,
     emailConfirmed: Boolean(supabaseUser.email_confirmed_at || supabaseUser.confirmed_at || existingUser?.emailConfirmed),
     birthdate: existingUser?.birthdate || "",
     role,
@@ -258,11 +294,13 @@ export async function createLocalUserFromSupabaseUser(supabaseUser: SupabaseUser
     vehiclePhoto: profile?.vehicle_photo || existingUser?.vehiclePhoto || "",
     vehicleColor: existingUser?.vehicleColor || "",
     memberSince: existingUser?.memberSince || new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
-    approvalStatus: existingUser?.approvalStatus === "approved"
-      ? "approved"
-      : (profile?.approval_status || existingUser?.approvalStatus || (role === "driver" ? "pending" : "approved")),
+    approvalStatus: profile?.approval_status || existingUser?.approvalStatus || (role === "driver" ? "pending" : "approved"),
     profilePhoto: profile?.profile_photo || existingUser?.profilePhoto || String(metadata.avatar_url || metadata.picture || ""),
   };
+
+  if (profile?.role !== userData.role || profile?.approval_status !== userData.approvalStatus) {
+    await syncSupabaseProfile(userData);
+  }
 
   updateUser(userData.username, userData);
   return userData;

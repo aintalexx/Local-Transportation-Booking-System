@@ -160,6 +160,40 @@ export async function getSupabasePendingBookings(vehicleType?: string): Promise<
   return (data as SupabaseBookingRow[]).map(mapSupabaseBooking);
 }
 
+export async function getSupabasePassengerBookingHistory(user: UserData): Promise<BookingData[]> {
+  if (!supabase) return [];
+
+  const userId = user.supabaseId || await getCurrentSupabaseUserId();
+  if (!userId) return [];
+
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("*")
+    .eq("passenger_id", userId)
+    .in("status", ["completed", "ride_completed", "cancelled"])
+    .order("created_at", { ascending: false });
+
+  if (error || !data) return [];
+  return (data as SupabaseBookingRow[]).map(mapSupabaseBooking);
+}
+
+export async function getSupabaseDriverBookingHistory(user: UserData): Promise<BookingData[]> {
+  if (!supabase) return [];
+
+  const userId = user.supabaseId || await getCurrentSupabaseUserId();
+  if (!userId) return [];
+
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("*")
+    .eq("driver_id", userId)
+    .in("status", ["completed", "ride_completed", "cancelled"])
+    .order("created_at", { ascending: false });
+
+  if (error || !data) return [];
+  return (data as SupabaseBookingRow[]).map(mapSupabaseBooking);
+}
+
 export async function acceptSupabaseBooking(bookingId: string, driver: UserData): Promise<BookingData | null> {
   if (!supabase || !isUuid(bookingId)) return null;
 

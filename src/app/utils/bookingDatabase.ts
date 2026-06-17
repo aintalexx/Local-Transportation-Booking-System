@@ -99,6 +99,29 @@ function saveAllBookings(bookings: BookingData[]): void {
   }
 }
 
+export function upsertBooking(bookingData: BookingData): BookingData {
+  const bookings = getAllBookings();
+  const bookingIndex = bookings.findIndex(b => b.id === bookingData.id);
+  const nextBooking = {
+    ...bookingData,
+    ...((bookingData.status === "completed" || bookingData.status === "ride_completed") && {
+      completedAt: bookingData.completedAt || new Date().toISOString(),
+    }),
+  };
+
+  if (bookingIndex === -1) {
+    bookings.push(nextBooking);
+  } else {
+    bookings[bookingIndex] = {
+      ...bookings[bookingIndex],
+      ...nextBooking,
+    };
+  }
+
+  saveAllBookings(bookings);
+  return nextBooking;
+}
+
 // Create a new booking
 export function createBooking(bookingData: Omit<BookingData, "id" | "createdAt" | "status">): BookingData {
   const basePriceCheck = validatePositiveMoney(bookingData.basePrice, "Base price");
@@ -285,19 +308,19 @@ export function cancelBooking(bookingId: string): boolean {
 }
 
 // Get passenger's booking history
-export function getPassengerBookingHistory(username: string): BookingData[] {
+export function getPassengerBookingHistory(username: string, alternateId?: string): BookingData[] {
   const bookings = getAllBookings();
-  return bookings.filter(b => b.passengerUsername === username).sort((a, b) =>
-    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  return bookings
+    .filter(b => b.passengerUsername === username || (!!alternateId && b.passengerUsername === alternateId))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 // Get driver's booking history
-export function getDriverBookingHistory(username: string): BookingData[] {
+export function getDriverBookingHistory(username: string, alternateId?: string): BookingData[] {
   const bookings = getAllBookings();
-  return bookings.filter(b => b.driverUsername === username).sort((a, b) =>
-    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  return bookings
+    .filter(b => b.driverUsername === username || (!!alternateId && b.driverUsername === alternateId))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 // Get booking statistics

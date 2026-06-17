@@ -21,6 +21,7 @@ import {
   getDriverBookingHistory,
   updateBookingStatus,
   updateDriverLocation,
+  upsertBooking,
   type BookingData,
 } from "../../utils/bookingDatabase";
 import { updateSupabaseBookingStatus } from "../../utils/supabaseBookings";
@@ -144,7 +145,8 @@ export default function ActiveRide() {
 
     const supabaseBooking = await updateSupabaseBookingStatus(activeBooking.id, "completed");
     if (supabaseBooking) {
-      setCompletedTrip(createCompletedTripSummary(supabaseBooking, user?.username));
+      upsertBooking(supabaseBooking);
+      setCompletedTrip(createCompletedTripSummary(supabaseBooking, user?.username, user?.supabaseId));
       setShowCompleteDialog(false);
       setActiveBooking(null);
       return;
@@ -154,7 +156,8 @@ export default function ActiveRide() {
     if (success) {
       setCompletedTrip(createCompletedTripSummary(
         { ...activeBooking, status: "completed", completedAt: new Date().toISOString() },
-        user?.username
+        user?.username,
+        user?.supabaseId
       ));
       setShowCompleteDialog(false);
       setActiveBooking(null);
@@ -169,7 +172,7 @@ export default function ActiveRide() {
         summary={completedTrip}
         onViewSummary={() => {
           setCompletedTrip(null);
-          navigate("/driver");
+          navigate("/driver/history");
         }}
       />
     );
@@ -432,9 +435,13 @@ function CompletedTripResult({
   );
 }
 
-function createCompletedTripSummary(booking: BookingData, driverUsername?: string): CompletedTripSummary {
+function createCompletedTripSummary(
+  booking: BookingData,
+  driverUsername?: string,
+  driverSupabaseId?: string
+): CompletedTripSummary {
   const completedLocalTrips = driverUsername
-    ? getDriverBookingHistory(driverUsername).filter(
+    ? getDriverBookingHistory(driverUsername, driverSupabaseId).filter(
         (trip) => trip.status === "completed" || trip.status === "ride_completed"
       ).length
     : 0;

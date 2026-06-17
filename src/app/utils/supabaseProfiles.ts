@@ -5,6 +5,7 @@ import type { UserData } from "./userDatabase";
 export type SupabaseProfile = {
   id: string;
   username: string | null;
+  email?: string | null;
   full_name: string;
   phone: string | null;
   role: "passenger" | "driver" | "admin";
@@ -47,31 +48,47 @@ export async function syncSupabaseProfile(user: UserData): Promise<SupabaseProfi
     user.approvalStatus ||
     (user.role === "driver" ? "pending" : "approved");
 
+  const profilePayload = {
+    id: userId,
+    username: user.username,
+    email: user.email?.trim().toLowerCase() || null,
+    full_name: fullName,
+    phone: user.phoneNumber || null,
+    role: user.role,
+    vehicle_type: user.vehicleType || null,
+    plate_number: user.plateNumber || null,
+    license_number: user.licenseNumber || null,
+    driver_license_photo: user.driverLicensePhoto || null,
+    valid_id_photo: user.validIdPhoto || null,
+    or_cr_photo: user.orCrPhoto || null,
+    clearance_photo: user.clearancePhoto || null,
+    vehicle_photo: user.vehiclePhoto || null,
+    profile_photo: user.profilePhoto || null,
+    approval_status: approvalStatus,
+    updated_at: new Date().toISOString(),
+  };
+
   const { data, error } = await supabase
     .from("profiles")
     .upsert(
-      {
-        id: userId,
-        username: user.username,
-        full_name: fullName,
-        phone: user.phoneNumber || null,
-        role: user.role,
-        vehicle_type: user.vehicleType || null,
-        plate_number: user.plateNumber || null,
-        license_number: user.licenseNumber || null,
-        driver_license_photo: user.driverLicensePhoto || null,
-        valid_id_photo: user.validIdPhoto || null,
-        or_cr_photo: user.orCrPhoto || null,
-        clearance_photo: user.clearancePhoto || null,
-        vehicle_photo: user.vehiclePhoto || null,
-        profile_photo: user.profilePhoto || null,
-        approval_status: approvalStatus,
-        updated_at: new Date().toISOString(),
-      },
+      profilePayload,
       { onConflict: "id" }
     )
     .select()
     .single();
+
+  if (error && error.message.toLowerCase().includes("email")) {
+    const { email: _email, ...payloadWithoutEmail } = profilePayload;
+    const { data: retryData, error: retryError } = await supabase
+      .from("profiles")
+      .upsert(payloadWithoutEmail, { onConflict: "id" })
+      .select()
+      .single();
+
+    if (!retryError) {
+      return retryData as SupabaseProfile;
+    }
+  }
 
   if (error) {
     console.info("Supabase profile sync failed. Local account flow will continue:", error.message);

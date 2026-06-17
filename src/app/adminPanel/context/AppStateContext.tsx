@@ -61,6 +61,37 @@ export interface AppNotification {
 
 let notifSeq = 0;
 
+function normalizePhone(value?: string): string {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function findMatchingLocalDriver(driver: Partial<Driver>, users = getAllUsers()) {
+  return users.find(u =>
+    u.role === "driver" && (
+      (!!driver.id && (u.supabaseId === driver.id || u.username === driver.id)) ||
+      (!!driver.phone && normalizePhone(u.phoneNumber) === normalizePhone(driver.phone)) ||
+      (!!driver.plate && !!u.plateNumber && u.plateNumber.trim().toLowerCase() === driver.plate.trim().toLowerCase()) ||
+      (!!driver.licenseNumber && !!u.licenseNumber && u.licenseNumber.trim().toLowerCase() === driver.licenseNumber.trim().toLowerCase())
+    )
+  );
+}
+
+async function syncLocalDriverApprovalToSupabase(id: string, approvalStatus: "approved" | "rejected") {
+  if (!supabase) return;
+
+  const matchedLocal = findMatchingLocalDriver({ id });
+  if (!matchedLocal?.supabaseId) return;
+
+  await supabase
+    .from("profiles")
+    .update({
+      approval_status: approvalStatus,
+      role: "driver",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", matchedLocal.supabaseId);
+}
+
 // Helper to map a local UserData driver to the Driver admin type
 function mapLocalUserToDriver(u: any): Driver {
   const initials = [u.firstName, u.surname]
@@ -116,7 +147,7 @@ function mapProfileToDriver(p: any): Driver {
   const localUsers = getAllUsers();
   const localUser = localUsers.find(u =>
     (u.supabaseId && u.supabaseId === p.id) ||
-    (u.phoneNumber && p.phone && u.phoneNumber.replace(/\D/g, "") === p.phone.replace(/\D/g, "")) ||
+    (normalizePhone(u.phoneNumber) && normalizePhone(p.phone) && normalizePhone(u.phoneNumber) === normalizePhone(p.phone)) ||
     (u.username && p.username && u.username.toLowerCase() === p.username.toLowerCase())
   );
 
@@ -277,7 +308,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       const merged = [...supabaseDrivers];
       for (const ld of localDrivers) {
         const alreadyInSupabase = supabaseDrivers.some(sd =>
-          (ld.phone && sd.phone && ld.phone.replace(/\D/g, "") === sd.phone.replace(/\D/g, "")) ||
+          (normalizePhone(ld.phone) && normalizePhone(sd.phone) && normalizePhone(ld.phone) === normalizePhone(sd.phone)) ||
           sd.id === ld.id
         );
         if (!alreadyInSupabase) {
@@ -383,17 +414,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     newStatus: DriverStatus,
     newLicense: LicenseStatus,
   ) {
-    // Always sync to localStorage — either by username (non-UUID) or by supabaseId (UUID)
-    if (!isUUID(id)) {
-      updateUser(id, { approvalStatus });
-    } else {
-      // id is a Supabase UUID — find and update the matching local user record
-      const localUsers = getAllUsers();
-      const matchedLocal = localUsers.find(u => u.supabaseId === id);
-      if (matchedLocal) {
-        updateUser(matchedLocal.username, { approvalStatus });
-      }
+    const driver = drivers.find(d => d.id === id) || { id };
+    const matchedLocal = findMatchingLocalDriver(driver);
+
+    if (matchedLocal) {
+      updateUser(matchedLocal.username, {
+        approvalStatus,
+        role: "driver",
+        ...(isUUID(id) ? { supabaseId: id } : {}),
+      });
+    } else if (!isUUID(id)) {
+      updateUser(id, { approvalStatus, role: "driver" });
     }
+
     setDrivers(prev =>
       prev.map(d =>
         d.id === id
@@ -407,13 +440,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const approveDriver = useCallback(async (id: string) => {
     if (!isUUID(id)) {
       updateDriverState(id, "approved", "Active", "Approved");
+      await syncLocalDriverApprovalToSupabase(id, "approved");
       toast.success("Driver approved successfully");
       return;
     }
     if (!supabase) { toast.error("Supabase not configured."); return; }
     const { error } = await supabase
       .from("profiles")
-      .update({ approval_status: "approved" })
+      .update({ approval_status: "approved", role: "driver", updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) {
       toast.error("Failed to approve driver", { description: error.message });
@@ -427,13 +461,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const rejectDriver = useCallback(async (id: string) => {
     if (!isUUID(id)) {
       updateDriverState(id, "rejected", "Blocked", "Blocked");
+      await syncLocalDriverApprovalToSupabase(id, "rejected");
       toast.success("Driver application rejected");
       return;
     }
     if (!supabase) { toast.error("Supabase not configured."); return; }
     const { error } = await supabase
       .from("profiles")
-      .update({ approval_status: "rejected" })
+      .update({ approval_status: "rejected", role: "driver", updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) {
       toast.error("Failed to reject driver", { description: error.message });
@@ -447,13 +482,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const blockDriver = useCallback(async (id: string) => {
     if (!isUUID(id)) {
       updateDriverState(id, "rejected", "Blocked", "Blocked");
+      await syncLocalDriverApprovalToSupabase(id, "rejected");
       toast.warning("Driver blocked successfully");
       return;
     }
     if (!supabase) { toast.error("Supabase not configured."); return; }
     const { error } = await supabase
       .from("profiles")
-      .update({ approval_status: "rejected" })
+      .update({ approval_status: "rejected", role: "driver", updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) {
       toast.error("Failed to block driver", { description: error.message });
@@ -467,13 +503,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const reinstateDriver = useCallback(async (id: string) => {
     if (!isUUID(id)) {
       updateDriverState(id, "approved", "Active", "Approved");
+      await syncLocalDriverApprovalToSupabase(id, "approved");
       toast.success("Driver reinstated successfully");
       return;
     }
     if (!supabase) { toast.error("Supabase not configured."); return; }
     const { error } = await supabase
       .from("profiles")
-      .update({ approval_status: "approved" })
+      .update({ approval_status: "approved", role: "driver", updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) {
       toast.error("Failed to reinstate driver", { description: error.message });
@@ -497,7 +534,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     // Update local drivers in localStorage + state
     for (const d of localPending) {
-      updateUser(d.id, { approvalStatus: "approved" });
+      const matchedLocal = findMatchingLocalDriver(d);
+      updateUser(matchedLocal?.username || d.id, { approvalStatus: "approved", role: "driver" });
+      await syncLocalDriverApprovalToSupabase(matchedLocal?.username || d.id, "approved");
     }
     if (localPending.length > 0) {
       setDrivers(prev =>
@@ -514,7 +553,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       const supabaseIds = supabasePending.map(d => d.id);
       const { error } = await supabase
         .from("profiles")
-        .update({ approval_status: "approved" })
+        .update({ approval_status: "approved", role: "driver", updated_at: new Date().toISOString() })
         .in("id", supabaseIds);
       if (error) {
         toast.error("Failed to approve some drivers", { description: error.message });
@@ -523,9 +562,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // Also sync approval to localStorage for each Supabase driver
       const localUsers = getAllUsers();
       for (const d of supabasePending) {
-        const matchedLocal = localUsers.find(u => u.supabaseId === d.id);
+        const matchedLocal = findMatchingLocalDriver(d, localUsers);
         if (matchedLocal) {
-          updateUser(matchedLocal.username, { approvalStatus: "approved" });
+          updateUser(matchedLocal.username, { approvalStatus: "approved", role: "driver", supabaseId: d.id });
         }
       }
       setDrivers(prev =>
@@ -559,7 +598,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       updateUser(id, { approvalStatus: "rejected" }); // mark as rejected so they don't re-appear
     } else if (supabase) {
       // For Supabase drivers, mark as archived/rejected
-      await supabase.from("profiles").update({ approval_status: "rejected" }).eq("id", id);
+      await supabase.from("profiles").update({ approval_status: "rejected", role: "driver", updated_at: new Date().toISOString() }).eq("id", id);
     }
 
     toast.success(`${driver.name} has been archived.`);
@@ -591,7 +630,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!isUUID(id)) {
       updateUser(id, { approvalStatus: "approved" });
     } else if (supabase) {
-      await supabase.from("profiles").update({ approval_status: "approved" }).eq("id", id);
+      await supabase.from("profiles").update({ approval_status: "approved", role: "driver", updated_at: new Date().toISOString() }).eq("id", id);
     }
 
     toast.success(`${driver.name} has been restored.`);

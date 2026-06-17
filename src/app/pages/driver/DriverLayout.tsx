@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from "react-router";
-import { Home, User } from "lucide-react";
+import { Clock, Home, User } from "lucide-react";
 import { cn } from "../../components/ui/utils";
 
 export default function DriverLayout() {
@@ -8,6 +8,7 @@ export default function DriverLayout() {
 
   const navItems = [
     { icon: Home, label: "Dashboard", path: "/driver" },
+    { icon: Clock, label: "History", path: "/driver/history" },
     { icon: User, label: "Profile", path: "/driver/profile" },
   ];
 

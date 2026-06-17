@@ -13,12 +13,16 @@ export function firstInvalid(results: ValidationResult[]): ValidationResult {
   return results.find((result) => !result.valid) || ok;
 }
 
-export function normalizeSpaces(value: string): string {
-  return value.trim().replace(/\s+/g, " ");
+function safeText(value: unknown): string {
+  return typeof value === "string" ? value : String(value || "");
 }
 
-export function formatPHPhoneInput(value: string): string {
-  const digits = value.replace(/\D/g, "");
+export function normalizeSpaces(value: string | null | undefined): string {
+  return safeText(value).trim().replace(/\s+/g, " ");
+}
+
+export function formatPHPhoneInput(value: string | null | undefined): string {
+  const digits = safeText(value).replace(/\D/g, "");
 
   if (digits.startsWith("63")) {
     return `0${digits.slice(2, 12)}`.slice(0, 11);
@@ -53,8 +57,8 @@ export function validateName(value: string, label: string, required = true): Val
   return ok;
 }
 
-export function validateUsername(username: string): ValidationResult {
-  const normalized = username.trim();
+export function validateUsername(username: string | null | undefined): ValidationResult {
+  const normalized = safeText(username).trim();
 
   if (!normalized) {
     return fail("Username is required.");
@@ -85,8 +89,8 @@ export function validatePHPhone(phoneNumber: string, label = "Phone number"): Va
   return ok;
 }
 
-export function validateEmail(email: string, required = false): ValidationResult {
-  const normalized = email.trim();
+export function validateEmail(email: string | null | undefined, required = false): ValidationResult {
+  const normalized = safeText(email).trim();
 
   if (!normalized) {
     return required ? fail("Email is required.") : ok;
@@ -117,11 +121,11 @@ const BLOCKED_AUTH_EMAIL_DOMAINS = new Set([
   "trashmail.com",
 ]);
 
-export function validateAuthEmail(email: string): ValidationResult {
+export function validateAuthEmail(email: string | null | undefined): ValidationResult {
   const basicCheck = validateEmail(email, true);
   if (!basicCheck.valid) return basicCheck;
 
-  const normalized = email.trim().toLowerCase();
+  const normalized = safeText(email).trim().toLowerCase();
   const domain = normalized.split("@")[1] || "";
   const domainParts = domain.split(".");
   const tld = domainParts[domainParts.length - 1] || "";
@@ -239,8 +243,8 @@ export function validatePercentage(value: string | number, label = "Percentage")
   return ok;
 }
 
-export function validatePlateNumber(plateNumber: string, required = true): ValidationResult {
-  const normalized = plateNumber.trim().toUpperCase();
+export function validatePlateNumber(plateNumber: string | null | undefined, required = true): ValidationResult {
+  const normalized = safeText(plateNumber).trim().toUpperCase();
 
   if (!normalized) {
     return required ? fail("Plate number is required.") : ok;
@@ -253,8 +257,8 @@ export function validatePlateNumber(plateNumber: string, required = true): Valid
   return ok;
 }
 
-export function validatePHLicenseNumber(licenseNumber: string): ValidationResult {
-  const normalized = licenseNumber.trim().toUpperCase();
+export function validatePHLicenseNumber(licenseNumber: string | null | undefined): ValidationResult {
+  const normalized = safeText(licenseNumber).trim().toUpperCase();
   if (!normalized) {
     return fail("Driver's license number is required.");
   }
@@ -264,8 +268,8 @@ export function validatePHLicenseNumber(licenseNumber: string): ValidationResult
   return ok;
 }
 
-export function formatPHLicenseNumber(value: string): string {
-  const clean = value.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+export function formatPHLicenseNumber(value: string | null | undefined): string {
+  const clean = safeText(value).replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   
   if (clean.length === 0) return "";
   
