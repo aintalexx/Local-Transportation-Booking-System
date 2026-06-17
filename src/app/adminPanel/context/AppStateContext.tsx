@@ -43,10 +43,60 @@ export interface AppNotification {
 
 let notifSeq = 0;
 
+// Helper to map a local UserData driver to the Driver admin type
+function mapLocalUserToDriver(u: any): Driver {
+  const initials = [u.firstName, u.surname]
+    .filter(Boolean)
+    .map((n: string) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "DR";
+
+  const colors = ["#6B0E1A", "#C49A1A", "#7c3aed", "#15803d", "#b45309", "#0e7490", "#9f1239"];
+  const name = `${u.firstName || ""} ${u.surname || ""}`.trim();
+  const charCodeSum = name.split("").reduce((sum: number, char: string) => sum + char.charCodeAt(0), 0);
+  const bg = colors[charCodeSum % colors.length];
+
+  const status: DriverStatus = u.approvalStatus === "pending"
+    ? "Pending"
+    : u.approvalStatus === "rejected"
+    ? "Blocked"
+    : "Active";
+
+  const license: LicenseStatus = u.approvalStatus === "pending"
+    ? "Pending"
+    : u.approvalStatus === "rejected"
+    ? "Blocked"
+    : "Approved";
+
+  return {
+    id: u.supabaseId || u.username,   // use username as fallback ID for local-only
+    name: name || u.username,
+    photo: initials,
+    vehicle: u.vehicleType || "Tricycle",
+    plate: u.plateNumber || "N/A",
+    route: "Sta. Mesa Local Route",
+    rides: u.totalTrips || 0,
+    rating: u.rating || 5.0,
+    status,
+    license,
+    joined: u.memberSince || new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    bg,
+    phone: u.phoneNumber || "",
+    licenseNumber: u.licenseNumber || "N/A",
+    driverLicensePhoto: u.driverLicensePhoto || "",
+    validIdPhoto: u.validIdPhoto || "",
+    orCrPhoto: u.orCrPhoto || "",
+    clearancePhoto: u.clearancePhoto || "",
+    vehiclePhoto: u.vehiclePhoto || "",
+    profilePhoto: u.profilePhoto || "",
+  };
+}
+
 // Helper to map Supabase profiles to Driver
 function mapProfileToDriver(p: any): Driver {
   const localUsers = getAllUsers();
-  const localUser = localUsers.find(u => 
+  const localUser = localUsers.find(u =>
     (u.supabaseId && u.supabaseId === p.id) ||
     (u.phoneNumber && p.phone && u.phoneNumber.replace(/\D/g, "") === p.phone.replace(/\D/g, "")) ||
     (u.username && p.username && u.username.toLowerCase() === p.username.toLowerCase())
@@ -179,18 +229,41 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   // Fetch initial data and set up real-time subscriptions
   useEffect(() => {
-    if (!supabase) return;
 
     async function loadDrivers() {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("role", "driver")
-        .order("created_at", { ascending: false });
+      let supabaseDrivers: Driver[] = [];
 
-      if (!error && data) {
-        setDrivers(data.map(mapProfileToDriver));
+      if (supabase) {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("role", "driver")
+          .order("created_at", { ascending: false });
+
+        if (!error && data) {
+          supabaseDrivers = data.map(mapProfileToDriver);
+        }
       }
+
+      // Always merge with localStorage drivers so admin sees locally-registered drivers
+      const localUsers = getAllUsers();
+      const localDrivers = localUsers
+        .filter(u => u.role === "driver")
+        .map(mapLocalUserToDriver);
+
+      // Deduplicate: prefer Supabase record if the same driver exists in both
+      const merged = [...supabaseDrivers];
+      for (const ld of localDrivers) {
+        const alreadyInSupabase = supabaseDrivers.some(sd =>
+          (ld.phone && sd.phone && ld.phone.replace(/\D/g, "") === sd.phone.replace(/\D/g, "")) ||
+          sd.id === ld.id
+        );
+        if (!alreadyInSupabase) {
+          merged.push(ld);
+        }
+      }
+
+      setDrivers(merged);
     }
 
     async function loadBookings() {
@@ -205,6 +278,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     loadDrivers();
+
+    if (!supabase) return;
+
     loadBookings();
 
     const profilesChannel = supabase

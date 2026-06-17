@@ -25,6 +25,7 @@ import {
   firstInvalid,
   formatPHPhoneInput,
   normalizeSpaces,
+  ok,
   validateBirthdate,
   validateEmail,
   validateName,
