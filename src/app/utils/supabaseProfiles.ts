@@ -36,6 +36,16 @@ export async function syncSupabaseProfile(user: UserData): Promise<SupabaseProfi
   if (!userId) return null;
 
   const fullName = formatPersonName(user, user.username);
+  const { data: existingProfile } = await supabase
+    .from("profiles")
+    .select("approval_status")
+    .eq("id", userId)
+    .maybeSingle();
+
+  const approvalStatus =
+    existingProfile?.approval_status ||
+    user.approvalStatus ||
+    (user.role === "driver" ? "pending" : "approved");
 
   const { data, error } = await supabase
     .from("profiles")
@@ -55,7 +65,7 @@ export async function syncSupabaseProfile(user: UserData): Promise<SupabaseProfi
         clearance_photo: user.clearancePhoto || null,
         vehicle_photo: user.vehiclePhoto || null,
         profile_photo: user.profilePhoto || null,
-        approval_status: user.approvalStatus || (user.role === "driver" ? "pending" : "approved"),
+        approval_status: approvalStatus,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "id" }

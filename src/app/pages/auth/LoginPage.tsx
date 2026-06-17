@@ -48,6 +48,26 @@ export default function LoginPage() {
         return;
       }
       if (user.role === "driver") {
+        if (user.email) {
+          try {
+            const refreshedUser = await signInWithEmailPassword(user.email, password);
+            if (refreshedUser) {
+              if (refreshedUser.approvalStatus === "approved") {
+                setUser(refreshedUser);
+                toast.success("Login successful!");
+                navigate(getRoleHomePath(refreshedUser));
+                return;
+              }
+              if (refreshedUser.approvalStatus === "rejected") {
+                toast.error("Your driver application has been rejected. Contact support.", { duration: 5000 });
+                return;
+              }
+            }
+          } catch (supabaseError) {
+            console.warn("Unable to refresh driver approval status from Supabase:", supabaseError);
+          }
+        }
+
         if (!user.approvalStatus || user.approvalStatus === "pending") {
           toast.error("Your driver account is pending admin approval.", { duration: 5000 });
           return;
