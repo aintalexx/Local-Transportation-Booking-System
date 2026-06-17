@@ -77,6 +77,13 @@ export default function RegisterPage() {
   const [zoomModal, setZoomModal] = useState<{ url: string; title: string } | null>(null);
 
   const isMinor = formData.birthdate ? calculateAge(formData.birthdate) < 18 : false;
+  const driverDocumentFields = [
+    { key: "profilePhoto", label: "Driver Profile Photo" },
+    { key: "validIdPhoto", label: "Valid ID / License" },
+    { key: "orCrPhoto", label: "OR/CR Document" },
+    { key: "clearancePhoto", label: "Barangay/NBI Clearance" },
+    { key: "vehiclePhoto", label: "Vehicle/Tricycle Photo" },
+  ] as const;
 
   const handleBirthdateInputChange = (rawValue: string) => {
     const digits = rawValue.replace(/\D/g, "").slice(0, 8);
@@ -268,8 +275,13 @@ export default function RegisterPage() {
       return;
     }
 
-    // Driver documents are collected for admin review, but registration should
-    // still submit the application even if a document needs follow-up.
+    if (role === "driver") {
+      const missingDocument = driverDocumentFields.find((document) => !formData[document.key]);
+      if (missingDocument) {
+        toast.error(`Please upload ${missingDocument.label} for admin review.`);
+        return;
+      }
+    }
 
     if (!agreedToTerms) {
       toast.error("You must accept the Terms and Privacy Policy to continue");
@@ -351,11 +363,19 @@ export default function RegisterPage() {
     icon: React.ReactNode
   ) => {
     const photo = formData[key];
+    const isMissing = showValidationErrors && role === "driver" && !photo;
     return (
       <div className="flex flex-col gap-1.5">
-        <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">{label}</span>
+        <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+          {label} <span className="text-red-500">*</span>
+        </span>
         {!photo ? (
-          <div className="border-2 border-dashed border-red-200 hover:border-red-300 rounded-xl p-4 bg-red-50/5 text-center flex flex-col items-center justify-center cursor-pointer hover:bg-red-50/15 transition-all relative h-32">
+          <div className={cn(
+            "border-2 border-dashed rounded-xl p-4 text-center flex flex-col items-center justify-center cursor-pointer transition-all relative h-32",
+            isMissing
+              ? "border-red-500 bg-red-50"
+              : "border-red-200 hover:border-red-300 bg-red-50/5 hover:bg-red-50/15"
+          )}>
             <input
               type="file"
               accept="image/*"
@@ -367,6 +387,9 @@ export default function RegisterPage() {
             </div>
             <p className="text-xs font-bold text-gray-800">Upload Image</p>
             <p className="text-[10px] text-gray-400">Tap to capture</p>
+            {isMissing && (
+              <p className="mt-1 text-[10px] font-semibold text-red-600">Required</p>
+            )}
           </div>
         ) : (
           <div className="border border-red-200 rounded-xl p-1 bg-white relative overflow-hidden flex flex-col items-center justify-center shadow-inner h-32">
@@ -863,7 +886,7 @@ export default function RegisterPage() {
             </CardHeader>
 
             <CardContent>
-              <form onSubmit={handleRegister} className="space-y-5">
+              <form onSubmit={handleRegister} noValidate className="space-y-5">
                 {/* 5 Documents Grid */}
                 <div className="grid grid-cols-2 gap-3 pt-2">
                   {renderUploadCard("Driver Profile Photo", "profilePhoto", <UserCircle className="h-5 w-5 text-red-500" />)}

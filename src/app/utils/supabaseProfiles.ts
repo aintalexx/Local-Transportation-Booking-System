@@ -10,6 +10,13 @@ export type SupabaseProfile = {
   role: "passenger" | "driver" | "admin";
   vehicle_type: string | null;
   plate_number: string | null;
+  license_number?: string | null;
+  driver_license_photo?: string | null;
+  valid_id_photo?: string | null;
+  or_cr_photo?: string | null;
+  clearance_photo?: string | null;
+  vehicle_photo?: string | null;
+  profile_photo?: string | null;
   is_online: boolean;
   approval_status?: "pending" | "approved" | "rejected";
 };
@@ -41,6 +48,13 @@ export async function syncSupabaseProfile(user: UserData): Promise<SupabaseProfi
         role: user.role,
         vehicle_type: user.vehicleType || null,
         plate_number: user.plateNumber || null,
+        license_number: user.licenseNumber || null,
+        driver_license_photo: user.driverLicensePhoto || null,
+        valid_id_photo: user.validIdPhoto || null,
+        or_cr_photo: user.orCrPhoto || null,
+        clearance_photo: user.clearancePhoto || null,
+        vehicle_photo: user.vehiclePhoto || null,
+        profile_photo: user.profilePhoto || null,
         approval_status: user.approvalStatus || (user.role === "driver" ? "pending" : "approved"),
         updated_at: new Date().toISOString(),
       },

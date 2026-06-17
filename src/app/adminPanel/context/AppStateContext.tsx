@@ -86,13 +86,13 @@ function mapProfileToDriver(p: any): Driver {
     joined: new Date(p.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
     bg,
     phone: p.phone || "",
-    licenseNumber: localUser?.licenseNumber || p.license_number || "N/A",
-    driverLicensePhoto: localUser?.driverLicensePhoto || "",
-    validIdPhoto: localUser?.validIdPhoto || localUser?.driverLicensePhoto || "",
-    orCrPhoto: localUser?.orCrPhoto || "",
-    clearancePhoto: localUser?.clearancePhoto || "",
-    vehiclePhoto: localUser?.vehiclePhoto || "",
-    profilePhoto: localUser?.profilePhoto || "",
+    licenseNumber: p.license_number || localUser?.licenseNumber || "N/A",
+    driverLicensePhoto: p.driver_license_photo || localUser?.driverLicensePhoto || "",
+    validIdPhoto: p.valid_id_photo || localUser?.validIdPhoto || localUser?.driverLicensePhoto || "",
+    orCrPhoto: p.or_cr_photo || localUser?.orCrPhoto || "",
+    clearancePhoto: p.clearance_photo || localUser?.clearancePhoto || "",
+    vehiclePhoto: p.vehicle_photo || localUser?.vehiclePhoto || "",
+    profilePhoto: p.profile_photo || localUser?.profilePhoto || "",
   };
 }
 
