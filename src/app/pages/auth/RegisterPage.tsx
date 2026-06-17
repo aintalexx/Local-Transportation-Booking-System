@@ -311,11 +311,213 @@ export default function RegisterPage() {
     if (emailExists(normalizedEmail)) {
       toast.error("Email already registered. Please use a different email.");
       return;
+
+  const handleBirthdateInputChange = (rawValue: string) => {
+    const digits = rawValue.replace(/\D/g, "").slice(0, 8);
+
+    let formatted = digits;
+    if (digits.length > 4) {
+      formatted = digits.slice(0, 2) + "/" + digits.slice(2, 4) + "/" + digits.slice(4);
+    } else if (digits.length > 2) {
+      formatted = digits.slice(0, 2) + "/" + digits.slice(2);
+    }
+
+    setBirthdateInput(formatted);
+
+    if (digits.length === 8) {
+      const month = parseInt(digits.slice(0, 2)) - 1;
+      const day   = parseInt(digits.slice(2, 4));
+      const year  = parseInt(digits.slice(4, 8));
+
+      if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
+        const date = new Date(year, month, day);
+        if (date.getMonth() === month && date.getDate() === day && validateBirthdate(date).valid) {
+          setFormData({ ...formData, birthdate: date });
+          return;
+        }
+      }
+    }
+    setFormData({ ...formData, birthdate: undefined });
+  };
+
+  const handleCalendarSelect = (date: Date | undefined) => {
+    if (date && !validateBirthdate(date).valid) {
+      toast.error(validateBirthdate(date).message);
+      return;
+    }
+
+    setFormData({ ...formData, birthdate: date });
+    if (date) {
+      setBirthdateInput(format(date, "MM/dd/yyyy"));
+    } else {
+      setBirthdateInput("");
+    }
+  };
+
+  const handleMonthChange = (value: string) => {
+    const currentDate = formData.birthdate || new Date();
+    const newDate = new Date(currentDate.getFullYear(), parseInt(value), currentDate.getDate());
+    setFormData({ ...formData, birthdate: newDate });
+    setBirthdateInput(format(newDate, "MM/dd/yyyy"));
+  };
+
+  const handleYearChange = (value: string) => {
+    const currentDate = formData.birthdate || new Date();
+    const newDate = new Date(parseInt(value), currentDate.getMonth(), currentDate.getDate());
+    setFormData({ ...formData, birthdate: newDate });
+    setBirthdateInput(format(newDate, "MM/dd/yyyy"));
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPHPhoneInput(e.target.value);
+    setFormData({ ...formData, phoneNumber: formatted });
+  };
+
+  const handleContinueFromRole = () => {
+    if (role === "driver") {
+      setStep("driverContact");
+    } else {
+      setStep("details");
+    }
+  };
+
+  const handleNextToVehicle = () => {
+    setShowValidationErrors(true);
+    const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
+    const normalizedEmail = formData.email.trim();
+
+    const contactCheck = firstInvalid([
+      validateName(formData.surname, "Surname"),
+      validateName(formData.firstName, "First name"),
+      formData.noMiddleName ? { valid: true, message: "" } : validateName(formData.middleName, "Middle name"),
+      validateBirthdate(formData.birthdate),
+      validatePHPhone(normalizedPhone),
+      validateEmail(normalizedEmail),
+      validatePassword(formData.password),
+    ]);
+
+    if (!contactCheck.valid) {
+      toast.error(contactCheck.message);
+      return;
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    if (formData.birthdate && calculateAge(formData.birthdate) < 18) {
+      toast.error("You must be at least 18 years old to register as a driver");
+      return;
+    }
+
+    if (phoneExists(normalizedPhone)) {
+      toast.error("Phone number already registered. Please login or use a different number.");
+      return;
+    }
+
+    if (emailExists(normalizedEmail)) {
+      toast.error("Email already registered. Please use a different email.");
+      return;
+    }
+
+    setStep("driverVehicle");
+    setShowValidationErrors(false);
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setShowValidationErrors(true);
+
+    const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
+    const normalizedEmail = formData.email.trim();
+    const normalizedPlate = formData.plateNumber.trim().toUpperCase();
+    const finalUsername = role === "passenger" 
+      ? formData.username.trim() 
+      : `driver_${normalizedPhone.replace(/\D/g, "")}`;
+
+    // Validate Basic Details
+    const basicCheck = firstInvalid([
+      validateName(formData.surname, "Surname"),
+      validateName(formData.firstName, "First name"),
+      formData.noMiddleName ? { valid: true, message: "" } : validateName(formData.middleName, "Middle name"),
+      validateBirthdate(formData.birthdate),
+      validatePHPhone(normalizedPhone),
+      role === "passenger" ? validateUsername(formData.username.trim()) : ok,
+      validateEmail(normalizedEmail),
+      validatePassword(formData.password),
+    ]);
+
+    if (!basicCheck.valid) {
+      toast.error(basicCheck.message);
+      return;
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    if (!formData.birthdate) return;
+    const age = calculateAge(formData.birthdate);
+
+    if (role === "driver" && age < 18) {
+      toast.error("You must be at least 18 years old to register as a driver");
+      return;
+    }
+
+    if (role === "passenger" && age < 18) {
+      const normalizedGuardianPhone = formatPHPhoneInput(formData.guardianPhone);
+      const guardianCheck = firstInvalid([
+        validateName(formData.guardianName, "Guardian's full name"),
+        validatePHPhone(normalizedGuardianPhone, "Guardian phone number"),
+      ]);
+
+      if (!guardianCheck.valid) {
+        toast.error(guardianCheck.message);
+        return;
+      }
+      if (!isGuardianConfirmed) {
+        toast.error("Please confirm that you are the legal guardian");
+        return;
+      }
+      if (!liabilityAgreed) {
+        toast.error("Please agree to the liability waiver for minors");
+        return;
+      }
+    }
+
+    if (role === "passenger" && usernameExists(finalUsername)) {
+      toast.error("Username already taken. Please choose a different username.");
+      return;
+    }
+
+    if (phoneExists(normalizedPhone)) {
+      toast.error("Phone number already registered. Please login or use a different number.");
+      return;
+    }
+
+    if (emailExists(normalizedEmail)) {
+      toast.error("Email already registered. Please use a different email.");
+      return;
     }
 
     if (!agreedToTerms) {
       toast.error("You must accept the Terms and Privacy Policy to continue");
       return;
+    }
+
+    if (role === "driver") {
+      if (
+        !formData.validIdPhoto ||
+        !formData.orCrPhoto ||
+        !formData.clearancePhoto ||
+        !formData.profilePhoto ||
+        !formData.vehiclePhoto
+      ) {
+        toast.error("Please upload all required document photos to continue.");
+        return;
+      }
     }
 
     setLoading(true);
@@ -418,10 +620,10 @@ export default function RegisterPage() {
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">{label}</span>
-          <span className="text-[9px] font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Optional</span>
+          <span className="text-[9px] font-semibold text-red-500 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Required</span>
         </div>
         {!photo ? (
-          <div className="border-2 border-dashed border-gray-200 hover:border-gray-300 rounded-xl p-4 bg-gray-50/30 text-center flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50/60 transition-all relative h-32">
+          <div className={`border-2 border-dashed ${showValidationErrors ? "border-red-400 bg-red-50/30" : "border-gray-200 hover:border-gray-300 bg-gray-50/30"} rounded-xl p-4 text-center flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50/60 transition-all relative h-32`}>
             <input
               type="file"
               accept="image/*"
