@@ -9,8 +9,8 @@ import {
 import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
 import { useBooking } from "../../context/BookingContext";
-import { createBooking } from "../../utils/bookingDatabase";
-import { createSupabaseBooking } from "../../utils/supabaseBookings";
+import { createBooking, getPassengerActiveBooking } from "../../utils/bookingDatabase";
+import { createSupabaseBooking, getSupabasePassengerActiveBooking } from "../../utils/supabaseBookings";
 import { formatPersonName } from "../../utils/nameFormatting";
 import { applyRideDiscounts, calculateFare } from "../../utils/fareCalculator";
 import {
@@ -317,6 +317,15 @@ export default function BookingPage() {
     setShowConfirm(false);
 
     try {
+      const existingBooking = await getSupabasePassengerActiveBooking(user) || getPassengerActiveBooking(user.username);
+      if (existingBooking) {
+        setActiveBooking(existingBooking);
+        refreshBooking();
+        toast.info("You already have an active booking.");
+        navigate(existingBooking.status === "pending" ? "/passenger/finding-driver" : "/passenger/ongoing-booking");
+        return;
+      }
+
       const passengerName = formatPersonName(user, user.username);
       const discount = appliedPromo
         ? { type: appliedPromo.code, amount: appliedPromo.discount }
