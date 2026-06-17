@@ -415,23 +415,26 @@ export default function RegisterPage() {
     const photo = formData[key];
     return (
       <div className="flex flex-col gap-1.5">
-        <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">{label}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">{label}</span>
+          <span className="text-[9px] font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Optional</span>
+        </div>
         {!photo ? (
-          <div className="border-2 border-dashed border-red-200 hover:border-red-300 rounded-xl p-4 bg-red-50/5 text-center flex flex-col items-center justify-center cursor-pointer hover:bg-red-50/15 transition-all relative h-32">
+          <div className="border-2 border-dashed border-gray-200 hover:border-gray-300 rounded-xl p-4 bg-gray-50/30 text-center flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50/60 transition-all relative h-32">
             <input
               type="file"
               accept="image/*"
               onChange={handlePhotoUpload(key)}
               className="absolute inset-0 opacity-0 cursor-pointer z-10"
             />
-            <div className="w-9 h-9 rounded-full bg-red-50 flex items-center justify-center mb-1.5">
+            <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center mb-1.5">
               {icon}
             </div>
-            <p className="text-xs font-bold text-gray-800">Upload Image</p>
-            <p className="text-[10px] text-gray-400">Tap to capture</p>
+            <p className="text-xs font-semibold text-gray-600">Upload Image</p>
+            <p className="text-[10px] text-gray-400">Tap to capture or upload</p>
           </div>
         ) : (
-          <div className="border border-red-200 rounded-xl p-1 bg-white relative overflow-hidden flex flex-col items-center justify-center shadow-inner h-32">
+          <div className="border border-green-200 rounded-xl p-1 bg-white relative overflow-hidden flex flex-col items-center justify-center shadow-inner h-32">
             <img
               src={photo}
               alt={label}
@@ -441,12 +444,12 @@ export default function RegisterPage() {
               <button
                 type="button"
                 onClick={() => setZoomModal({ url: photo, title: label })}
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-white/95 text-gray-800 hover:bg-red-100 shadow transition-colors"
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-white/95 text-gray-800 hover:bg-green-100 shadow transition-colors"
                 title="View"
               >
                 <Eye className="w-4 h-4" />
               </button>
-              <label className="flex items-center justify-center w-8 h-8 rounded-full bg-white/95 text-gray-800 hover:bg-red-100 shadow cursor-pointer transition-colors relative">
+              <label className="flex items-center justify-center w-8 h-8 rounded-full bg-white/95 text-gray-800 hover:bg-green-100 shadow cursor-pointer transition-colors relative">
                 <input
                   type="file"
                   accept="image/*"
@@ -586,7 +589,7 @@ export default function RegisterPage() {
               <Navigation className="h-12 w-12 text-[#4B0F14]" />
             </div>
             <h1 className="text-3xl font-bold text-gray-900">Driver Sign-Up</h1>
-            <p className="text-gray-600 mt-2">Step 1: Contact Details</p>
+            <p className="text-gray-600 mt-2">Step 1 of 2 — Basic Info</p>
           </div>
 
           <Card>
@@ -858,10 +861,9 @@ export default function RegisterPage() {
             <div className="flex justify-center mb-4">
               <Navigation className="h-10 w-10 text-[#4B0F14]" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">Activation</h1>
-            <p className="text-xs text-gray-500 mt-1">
-              Driver registration is only applicable to Filipino citizens at least 18 years old
-            </p>
+            <h1 className="text-2xl font-bold text-gray-900">Driver Sign-Up</h1>
+            <p className="text-gray-600 mt-1 text-sm">Step 2 of 2 — Document Submission</p>
+            <p className="text-xs text-gray-400 mt-1">After submission, your application goes to the admin for review</p>
           </div>
 
           <Card className="border-t-4 border-t-red-500 shadow-xl">
@@ -926,14 +928,22 @@ export default function RegisterPage() {
 
             <CardContent>
               <form onSubmit={handleRegister} noValidate className="space-y-5">
+                {/* Info banner: documents are optional */}
+                <div className="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5 text-xs text-blue-700">
+                  <span className="mt-0.5 shrink-0 text-base leading-none">ℹ️</span>
+                  <p className="leading-relaxed">
+                    <span className="font-bold">Document photos are optional.</span> You can submit now and upload them later. The admin will review and verify your documents before approving your account.
+                  </p>
+                </div>
+
                 {/* 5 Documents Grid */}
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  {renderUploadCard("Driver Profile Photo", "profilePhoto", <UserCircle className="h-5 w-5 text-red-500" />)}
-                  {renderUploadCard("Valid ID / License", "validIdPhoto", <Camera className="h-5 w-5 text-red-500" />)}
-                  {renderUploadCard("OR/CR Document", "orCrPhoto", <Navigation className="h-5 w-5 text-red-500" />)}
-                  {renderUploadCard("Barangay/NBI Clearance", "clearancePhoto", <User className="h-5 w-5 text-red-500" />)}
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  {renderUploadCard("Driver Profile Photo", "profilePhoto", <UserCircle className="h-5 w-5 text-gray-400" />)}
+                  {renderUploadCard("Valid ID / License", "validIdPhoto", <Camera className="h-5 w-5 text-gray-400" />)}
+                  {renderUploadCard("OR/CR Document", "orCrPhoto", <Navigation className="h-5 w-5 text-gray-400" />)}
+                  {renderUploadCard("Barangay/NBI Clearance", "clearancePhoto", <User className="h-5 w-5 text-gray-400" />)}
                   <div className="col-span-2">
-                    {renderUploadCard("Vehicle/Tricycle Photo", "vehiclePhoto", <Bike className="h-5 w-5 text-red-500" />)}
+                    {renderUploadCard("Vehicle/Tricycle Photo", "vehiclePhoto", <Bike className="h-5 w-5 text-gray-400" />)}
                   </div>
                 </div>
 
@@ -1108,7 +1118,7 @@ export default function RegisterPage() {
                   className="w-full bg-[#e14e34] hover:bg-[#c93e27] text-white font-extrabold h-12 rounded-xl transition-all"
                   disabled={loading}
                 >
-                  {loading ? "Preparing OTP..." : "Submit for Admin Approval"}
+                  {loading ? "Submitting..." : "Submit for Admin Approval"}
                 </Button>
 
                 <Button
