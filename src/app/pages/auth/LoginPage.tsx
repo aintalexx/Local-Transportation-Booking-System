@@ -103,7 +103,13 @@ export default function LoginPage() {
       navigate(getRoleHomePath(user));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Login failed. Please try again.";
-      toast.error(message);
+      if (message.toLowerCase().includes("email not confirmed")) {
+        toast.error("Please check your email and click the confirmation link before logging in.", { duration: 6000 });
+      } else if (message.toLowerCase().includes("invalid login credentials")) {
+        toast.error("Invalid username, phone number, or password.");
+      } else {
+        toast.error(message);
+      }
     } finally {
       setLoading(false);
     }
