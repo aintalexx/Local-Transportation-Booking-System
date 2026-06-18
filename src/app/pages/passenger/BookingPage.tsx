@@ -207,6 +207,73 @@ export default function BookingPage() {
   const [searchLoading, setSearchLoading] = useState<Record<PinMode, boolean>>({ pickup: false, dropoff: false });
   const [activeSearch, setActiveSearch] = useState<PinMode | null>(null);
 
+  // Draggable sheet state
+  const [sheetY, setSheetY] = useState(160); // Default standard position
+  const [isDragging, setIsDragging] = useState(false);
+  const startDragY = useRef(0);
+  const startSheetY = useRef(0);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setIsDragging(true);
+    startDragY.current = e.touches[0].clientY;
+    startSheetY.current = sheetY;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging) return;
+    const deltaY = e.touches[0].clientY - startDragY.current;
+    const newY = Math.max(0, Math.min(320, startSheetY.current + deltaY));
+    setSheetY(newY);
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+    if (sheetY < 80) {
+      setSheetY(0);
+    } else if (sheetY < 240) {
+      setSheetY(160);
+    } else {
+      setSheetY(320);
+    }
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    startDragY.current = e.clientY;
+    startSheetY.current = sheetY;
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return;
+      const deltaY = e.clientY - startDragY.current;
+      const newY = Math.max(0, Math.min(320, startSheetY.current + deltaY));
+      setSheetY(newY);
+    };
+
+    const handleMouseUp = () => {
+      if (isDragging) {
+        setIsDragging(false);
+        if (sheetY < 80) {
+          setSheetY(0);
+        } else if (sheetY < 240) {
+          setSheetY(160);
+        } else {
+          setSheetY(320);
+        }
+      }
+    };
+
+    if (isDragging) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging, sheetY]);
+
   // Route data
   const [routeData, setRouteData] = useState<{
     distanceKm: number;
@@ -725,12 +792,17 @@ export default function BookingPage() {
         </p>
       </div>
 
-      {/* ── GPS button (floating) ── */}
+       {/* ── GPS button (floating) ── */}
       <button
         onClick={() => handleUseGPS("pickup")}
         disabled={gpsLoading}
         className="absolute z-20 w-12 h-12 rounded-full flex items-center justify-center shadow-xl"
-        style={{ right: 16, bottom: 320, background: "#fff" }}
+        style={{
+          right: 16,
+          bottom: `calc(470px - ${sheetY}px)`,
+          background: "#fff",
+          transition: isDragging ? "none" : "bottom 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+        }}
       >
         <Locate size={20} color={gpsLoading ? "#9ca3af" : "#2563EB"} />
       </button>
@@ -738,14 +810,33 @@ export default function BookingPage() {
       {/* ── Bottom panel ── */}
       <div
         className="absolute bottom-0 left-0 right-0 z-20 rounded-t-3xl shadow-2xl"
-        style={{ background: "#fff", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+        style={{
+          background: "#fff",
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          transform: `translateY(${sheetY}px)`,
+          transition: isDragging ? "none" : "transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+        }}
       >
         {/* Drag handle */}
-        <div className="flex justify-center pt-2.5 pb-1">
-          <div className="w-10 h-1 rounded-full" style={{ background: "#e5e7eb" }} />
+        <div
+          className="flex justify-center pt-2.5 pb-2 cursor-ns-resize touch-none select-none"
+          onMouseDown={handleMouseDown}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+          <div className="w-10 h-1.5 rounded-full" style={{ background: "#cbd5e1" }} />
         </div>
 
-        {/* ── Location inputs ── */}
+        {/* ── Scrollable Form Container ── */}
+        <div
+          className="overflow-y-auto space-y-3"
+          style={{
+            maxHeight: "calc(55vh - 140px)",
+            scrollbarWidth: "none",
+          }}
+        >
+          {/* ── Location inputs ── */}
         <div className="px-4 pt-1 pb-2 space-y-2">
           {renderLocationSearch(
             "pickup",
@@ -941,6 +1032,8 @@ export default function BookingPage() {
             )}
           </div>
         )}
+
+        </div>
 
         {/* ── Fare estimate + Book ── */}
         <div className="px-4 pt-2 pb-5 flex items-center gap-3">
