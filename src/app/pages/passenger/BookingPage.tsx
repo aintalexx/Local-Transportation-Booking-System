@@ -31,7 +31,7 @@ const GOLD   = "#D4AF37";
 const GREEN  = "#16A34A";
 const DEFAULT_CENTER = { lat: 14.6042, lng: 121.0120 };
 
-type RideType      = "solo";
+type RideType      = "solo" | "group";
 type PassengerType = "regular" | "student" | "pwd";
 type PaymentMethod = "cash" | "epayment";
 type PinMode       = "pickup" | "dropoff";
@@ -285,7 +285,7 @@ function BookingPage() {
 
   let basePrice = 0;
   if (rideType === "solo") {
-    basePrice = Math.max(50, standardFare);
+    basePrice = standardFare;
   } else {
     const effectiveCount = reserveEntire ? 5 : passengerCount;
     basePrice = effectiveCount * standardFare;
@@ -885,7 +885,7 @@ function BookingPage() {
               }}
             >
               <span>Solo Ride</span>
-              <span className="text-[10px] font-normal opacity-85 mt-0.5">₱50 min • Exclusive</span>
+              <span className="text-[10px] font-normal opacity-85 mt-0.5">₱16 first km • Exclusive</span>
             </button>
             <button
               type="button"
@@ -900,7 +900,7 @@ function BookingPage() {
               }}
             >
               <span>Group Ride</span>
-              <span className="text-[10px] font-normal opacity-85 mt-0.5">Companions • Max 5</span>
+              <span className="text-[10px] font-normal opacity-85 mt-0.5">Per passenger • Max 5</span>
             </button>
           </div>
 
