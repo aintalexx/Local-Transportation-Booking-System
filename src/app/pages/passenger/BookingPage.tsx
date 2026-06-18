@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate, useLocation } from "react-router";
+import { useNavigate } from "react-router";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
-  MapPin, Locate, ArrowLeft, X, Tag, User, Users,
+  MapPin, Locate, ArrowLeft, X, Tag, Search,
   Navigation2, Clock, Ruler, CreditCard,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -32,12 +32,22 @@ const GOLD   = "#D4AF37";
 const GREEN  = "#16A34A";
 const DEFAULT_CENTER = { lat: 14.6042, lng: 121.0120 };
 
-type RideType      = "solo" | "shared";
+type RideType      = "solo";
 type PassengerType = "regular" | "student" | "pwd";
 type PaymentMethod = "cash" | "epayment";
 type PinMode       = "pickup" | "dropoff";
 
 interface LatLng { lat: number; lng: number; address: string }
+type LocationSearchState = Record<PinMode, string>;
+type LocationSuggestionMap = Record<PinMode, PlaceSuggestion[]>;
+
+interface PlaceSuggestion {
+  id: string;
+  label: string;
+  lat: number;
+  lng: number;
+  category: string;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function makePickupIcon() {
@@ -78,6 +88,44 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
     return data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   } catch {
     return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  }
+}
+
+async function searchPlaces(query: string): Promise<PlaceSuggestion[]> {
+  const trimmed = query.trim();
+  if (trimmed.length < 3) return [];
+
+  try {
+    const params = new URLSearchParams({
+      format: "jsonv2",
+      q: trimmed,
+      limit: "6",
+      countrycodes: "ph",
+      addressdetails: "1",
+      "accept-language": "en",
+    });
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
+    const data = await res.json();
+
+    if (!Array.isArray(data)) return [];
+
+    return data
+      .map((item: any): PlaceSuggestion | null => {
+        const lat = Number(item.lat);
+        const lng = Number(item.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+        return {
+          id: String(item.place_id || `${lat},${lng}`),
+          label: String(item.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`),
+          lat,
+          lng,
+          category: String(item.type || item.class || "place").replace(/_/g, " "),
+        };
+      })
+      .filter(Boolean) as PlaceSuggestion[];
+  } catch {
+    return [];
   }
 }
 
@@ -128,11 +176,9 @@ const AVAILABLE_PROMOS = [
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function BookingPage() {
   const navigate     = useNavigate();
-  const location     = useLocation();
   const { user }     = useUser();
   const { setActiveBooking, refreshBooking } = useBooking();
-
-  const initialRideType = (location.state?.rideType as RideType) || "solo";
+  const rideType: RideType = "solo";
 
   // Map refs
   const mapContainerRef  = useRef<HTMLDivElement>(null);
@@ -146,7 +192,6 @@ export default function BookingPage() {
   const [pinMode, setPinMode]           = useState<PinMode>("pickup");
   const [pickup,  setPickup]            = useState<LatLng | null>(null);
   const [dropoff, setDropoff]           = useState<LatLng | null>(null);
-  const [rideType, setRideType]         = useState<RideType>(initialRideType);
   const [passengerType, setPassengerType] = useState<PassengerType>("regular");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [promoCode,  setPromoCode]      = useState("");
@@ -156,6 +201,10 @@ export default function BookingPage() {
   const [showConfirm,   setShowConfirm] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
   const [gpsLoading,  setGpsLoading]    = useState(false);
+  const [locationQueries, setLocationQueries] = useState<LocationSearchState>({ pickup: "", dropoff: "" });
+  const [locationSuggestions, setLocationSuggestions] = useState<LocationSuggestionMap>({ pickup: [], dropoff: [] });
+  const [searchLoading, setSearchLoading] = useState<Record<PinMode, boolean>>({ pickup: false, dropoff: false });
+  const [activeSearch, setActiveSearch] = useState<PinMode | null>(null);
 
   // Route data
   const [routeData, setRouteData] = useState<{
@@ -167,6 +216,20 @@ export default function BookingPage() {
   const durationMin = routeData?.durationMin ?? 0;
   const fareEst     = calculateFare(distanceKm);
   const finalPrice  = calcFinalPrice(fareEst.finalFare, rideType, passengerType, appliedPromo?.discount);
+
+  const setLocationByMode = useCallback((mode: PinMode, loc: LatLng, mapZoom = 17) => {
+    if (mode === "pickup") {
+      setPickup(loc);
+    } else {
+      setDropoff(loc);
+    }
+
+    setPinMode(mode);
+    setLocationQueries(prev => ({ ...prev, [mode]: loc.address }));
+    setLocationSuggestions(prev => ({ ...prev, [mode]: [] }));
+    setActiveSearch(null);
+    mapRef.current?.setView([loc.lat, loc.lng], mapZoom);
+  }, []);
 
   // ── Map init ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -217,7 +280,7 @@ export default function BookingPage() {
         }).addTo(mapRef.current);
 
         const addr = await reverseGeocode(latitude, longitude);
-        setPickup({ lat: latitude, lng: longitude, address: addr });
+        setLocationByMode("pickup", { lat: latitude, lng: longitude, address: addr }, 16);
       }, () => {}, { enableHighAccuracy: true, timeout: 8000 });
     }
 
@@ -227,7 +290,7 @@ export default function BookingPage() {
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [setLocationByMode]);
 
   // ── Map click handler ────────────────────────────────────────────────────────
   const handleMapClick = useCallback(async (e: L.LeafletMouseEvent) => {
@@ -235,12 +298,8 @@ export default function BookingPage() {
     const addr = await reverseGeocode(lat, lng);
     const loc: LatLng = { lat, lng, address: addr };
 
-    if (pinMode === "pickup") {
-      setPickup(loc);
-    } else {
-      setDropoff(loc);
-    }
-  }, [pinMode]);
+    setLocationByMode(pinMode, loc, 17);
+  }, [pinMode, setLocationByMode]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -296,19 +355,66 @@ export default function BookingPage() {
   }, [pickup, dropoff]);
 
   // ── GPS button ───────────────────────────────────────────────────────────────
-  const handleUseGPS = () => {
+  useEffect(() => {
+    if (!activeSearch) return;
+
+    const query = locationQueries[activeSearch].trim();
+    if (query.length < 3) {
+      setLocationSuggestions(prev => ({ ...prev, [activeSearch]: [] }));
+      setSearchLoading(prev => ({ ...prev, [activeSearch]: false }));
+      return;
+    }
+
+    let cancelled = false;
+    setSearchLoading(prev => ({ ...prev, [activeSearch]: true }));
+
+    const timer = window.setTimeout(async () => {
+      const results = await searchPlaces(query);
+      if (!cancelled) {
+        setLocationSuggestions(prev => ({ ...prev, [activeSearch]: results }));
+        setSearchLoading(prev => ({ ...prev, [activeSearch]: false }));
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [activeSearch, locationQueries]);
+
+  const handleLocationQueryChange = (mode: PinMode, value: string) => {
+    setPinMode(mode);
+    setActiveSearch(mode);
+    setLocationQueries(prev => ({ ...prev, [mode]: value }));
+  };
+
+  const handleSelectSuggestion = (mode: PinMode, suggestion: PlaceSuggestion) => {
+    setLocationByMode(mode, {
+      lat: suggestion.lat,
+      lng: suggestion.lng,
+      address: suggestion.label,
+    });
+  };
+
+  const handleSelectFromMap = (mode: PinMode) => {
+    setPinMode(mode);
+    setActiveSearch(null);
+    setLocationSuggestions(prev => ({ ...prev, [mode]: [] }));
+    toast.info(`Tap the map to set your ${mode === "pickup" ? "pickup" : "destination"} location.`);
+  };
+
+  const handleUseGPS = (mode: PinMode = "pickup") => {
     if (!navigator.geolocation) { toast.error("Geolocation not supported"); return; }
     setGpsLoading(true);
     navigator.geolocation.getCurrentPosition(async (pos) => {
       const { latitude, longitude } = pos.coords;
       const addr = await reverseGeocode(latitude, longitude);
       const loc: LatLng = { lat: latitude, lng: longitude, address: addr };
-      setPickup(loc);
-      mapRef.current?.setView([latitude, longitude], 16);
-      toast.success("Pickup set to your current location");
+      setLocationByMode(mode, loc, 16);
+      toast.success(`${mode === "pickup" ? "Pickup" : "Destination"} set to your current location`);
       setGpsLoading(false);
     }, () => { toast.error("Could not get your location"); setGpsLoading(false); },
-    { enableHighAccuracy: true, timeout: 10000 });
+       { enableHighAccuracy: true, timeout: 10000 });
   };
 
   // ── Promo ────────────────────────────────────────────────────────────────────
@@ -392,6 +498,150 @@ export default function BookingPage() {
     }
   };
 
+  const renderLocationSearch = (
+    mode: PinMode,
+    label: string,
+    placeholder: string,
+    selected: LatLng | null,
+    color: string,
+  ) => {
+    const suggestions = locationSuggestions[mode];
+    const query = locationQueries[mode];
+    const isActive = activeSearch === mode;
+    const canShowSuggestions = isActive && (searchLoading[mode] || suggestions.length > 0 || query.trim().length >= 3);
+
+    return (
+      <div
+        className="rounded-2xl transition-all"
+        style={{
+          background: pinMode === mode ? `${color}0D` : "#f9fafb",
+          border: `2px solid ${pinMode === mode ? color : "#e5e7eb"}`,
+        }}
+      >
+        <div className="flex items-center gap-3 px-3 pt-3">
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: color }}
+          >
+            <MapPin size={14} color="#fff" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#6b7280" }}>
+              {label}
+            </p>
+            {selected && (
+              <p className="text-[11px] font-semibold truncate" style={{ color: "#374151" }}>
+                {selected.address}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="px-3 py-2">
+          <div
+            className="flex items-center gap-2 px-3 rounded-xl"
+            style={{ background: "#fff", border: "1.5px solid #e5e7eb", minHeight: 42 }}
+          >
+            <Search size={15} color="#6b7280" />
+            <input
+              type="text"
+              value={query}
+              placeholder={placeholder}
+              onFocus={() => {
+                setPinMode(mode);
+                setActiveSearch(mode);
+              }}
+              onChange={(e) => handleLocationQueryChange(mode, e.target.value)}
+              className="flex-1 min-w-0 bg-transparent outline-none text-sm font-semibold"
+              style={{ color: "#111827" }}
+            />
+            {mode === "pickup" ? (
+              <button
+                type="button"
+                onClick={() => handleUseGPS(mode)}
+                disabled={gpsLoading}
+                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ background: "rgba(37,99,235,0.08)" }}
+                title="Use current location"
+              >
+                <Locate size={14} color={gpsLoading ? "#9ca3af" : "#2563EB"} />
+              </button>
+            ) : selected ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setDropoff(null);
+                  setRouteData(null);
+                  setLocationQueries(prev => ({ ...prev, dropoff: "" }));
+                  setLocationSuggestions(prev => ({ ...prev, dropoff: [] }));
+                }}
+                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ background: "rgba(75,15,20,0.08)" }}
+                title="Clear destination"
+              >
+                <X size={14} color={MAROON} />
+              </button>
+            ) : null}
+          </div>
+
+          {canShowSuggestions && (
+            <div
+              className="mt-2 rounded-xl overflow-hidden"
+              style={{ background: "#fff", border: "1px solid #e5e7eb" }}
+            >
+              {searchLoading[mode] ? (
+                <div className="px-3 py-2 text-xs font-semibold" style={{ color: "#6b7280" }}>
+                  Searching places...
+                </div>
+              ) : suggestions.length > 0 ? (
+                suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.id}
+                    type="button"
+                    onClick={() => handleSelectSuggestion(mode, suggestion)}
+                    className="w-full px-3 py-2 text-left border-b last:border-b-0"
+                    style={{ borderColor: "#f3f4f6" }}
+                  >
+                    <p className="text-xs font-bold line-clamp-2" style={{ color: "#111827" }}>
+                      {suggestion.label}
+                    </p>
+                    <p className="text-[10px] capitalize" style={{ color: "#6b7280" }}>
+                      {suggestion.category}
+                    </p>
+                  </button>
+                ))
+              ) : (
+                <div className="px-3 py-2 text-xs font-semibold" style={{ color: "#6b7280" }}>
+                  No places found. Try a nearby landmark or tap Select from Map.
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => handleUseGPS(mode)}
+              disabled={gpsLoading}
+              className="flex-1 h-9 rounded-xl text-xs font-bold"
+              style={{ background: "rgba(37,99,235,0.08)", color: "#2563EB" }}
+            >
+              Current Location
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectFromMap(mode)}
+              className="flex-1 h-9 rounded-xl text-xs font-bold"
+              style={{ background: `${color}14`, color }}
+            >
+              Select from Map
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ─────────────────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────────
@@ -416,19 +666,9 @@ export default function BookingPage() {
             style={{ background: "rgba(255,255,255,0.95)" }}>
             <p className="text-xs font-semibold" style={{ color: "#6b7280" }}>Book a Tricycle</p>
             <p className="text-sm font-bold" style={{ color: MAROON }}>
-              {rideType === "shared" ? "Shared Ride • -30%" : "Solo Ride"}
+              Solo Ride
             </p>
           </div>
-          {/* Ride toggle */}
-          <button
-            onClick={() => setRideType(r => r === "solo" ? "shared" : "solo")}
-            className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg"
-            style={{ background: rideType === "shared" ? MAROON : "rgba(255,255,255,0.95)" }}
-          >
-            {rideType === "shared"
-              ? <Users size={16} color="#fff" />
-              : <User size={16} color={MAROON} />}
-          </button>
         </div>
       </div>
 
@@ -466,7 +706,7 @@ export default function BookingPage() {
 
       {/* ── GPS button (floating) ── */}
       <button
-        onClick={handleUseGPS}
+        onClick={() => handleUseGPS("pickup")}
         disabled={gpsLoading}
         className="absolute z-20 w-12 h-12 rounded-full flex items-center justify-center shadow-xl"
         style={{ right: 16, bottom: 320, background: "#fff" }}
@@ -486,33 +726,13 @@ export default function BookingPage() {
 
         {/* ── Location inputs ── */}
         <div className="px-4 pt-1 pb-2 space-y-2">
-          {/* Pickup */}
-          <button
-            onClick={() => setPinMode("pickup")}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-all"
-            style={{
-              background: pinMode === "pickup" ? "rgba(22,163,74,0.06)" : "#f9fafb",
-              border: `2px solid ${pinMode === "pickup" ? GREEN : "#e5e7eb"}`,
-            }}
-          >
-            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: GREEN }}>
-              <MapPin size={14} color="#fff" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#6b7280" }}>Pickup</p>
-              <p className="text-sm font-semibold truncate" style={{ color: pickup ? "#111827" : "#9ca3af" }}>
-                {pickup ? pickup.address : "Tap map or use GPS →"}
-              </p>
-            </div>
-            <button
-              onClick={(e) => { e.stopPropagation(); handleUseGPS(); }}
-              className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: "rgba(37,99,235,0.08)" }}
-            >
-              <Locate size={13} color="#2563EB" />
-            </button>
-          </button>
+          {renderLocationSearch(
+            "pickup",
+            "Pickup",
+            "Search pickup address or landmark",
+            pickup,
+            GREEN,
+          )}
 
           {/* Dotted connector */}
           <div className="flex items-center gap-3 px-4">
@@ -524,35 +744,13 @@ export default function BookingPage() {
             <div className="flex-1 h-px" style={{ background: "#f3f4f6" }} />
           </div>
 
-          {/* Drop-off */}
-          <button
-            onClick={() => setPinMode("dropoff")}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-all"
-            style={{
-              background: pinMode === "dropoff" ? "rgba(75,15,20,0.05)" : "#f9fafb",
-              border: `2px solid ${pinMode === "dropoff" ? MAROON : "#e5e7eb"}`,
-            }}
-          >
-            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: MAROON }}>
-              <MapPin size={14} color="#fff" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#6b7280" }}>Drop-off</p>
-              <p className="text-sm font-semibold truncate" style={{ color: dropoff ? "#111827" : "#9ca3af" }}>
-                {dropoff ? dropoff.address : "Tap map to pin destination"}
-              </p>
-            </div>
-            {dropoff && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setDropoff(null); setRouteData(null); }}
-                className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ background: "rgba(75,15,20,0.08)" }}
-              >
-                <X size={13} color={MAROON} />
-              </button>
-            )}
-          </button>
+          {renderLocationSearch(
+            "dropoff",
+            "Destination",
+            "Search destination, landmark, or place",
+            dropoff,
+            MAROON,
+          )}
         </div>
 
         {/* ── Route info strip (only when route loaded) ── */}
@@ -593,22 +791,6 @@ export default function BookingPage() {
         {/* ── Collapsible options ── */}
         {showOptions && (
           <div className="px-4 pb-2 space-y-3 animate-in slide-in-from-bottom-2">
-            {/* Ride type */}
-            <div className="flex gap-2">
-              {(["solo", "shared"] as RideType[]).map(rt => (
-                <button key={rt} onClick={() => setRideType(rt)}
-                  className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-1.5 text-sm font-semibold transition-all"
-                  style={{
-                    background: rideType === rt ? MAROON : "#f3f4f6",
-                    color:      rideType === rt ? "#fff"  : "#374151",
-                    border:     rideType === rt ? "none"  : "1.5px solid #e5e7eb",
-                  }}>
-                  {rt === "solo" ? <User size={13} /> : <Users size={13} />}
-                  {rt === "solo" ? "Solo" : "Shared -30%"}
-                </button>
-              ))}
-            </div>
-
             {/* Passenger type */}
             <div className="flex gap-2">
               {(["regular", "student", "pwd"] as PassengerType[]).map(pt => (
@@ -735,7 +917,7 @@ export default function BookingPage() {
                 { label: "Drop-off",  value: dropoff?.address    ?? "—" },
                 { label: "Distance",  value: distanceKm >= 1 ? `${distanceKm.toFixed(2)} km` : `${Math.round(distanceKm * 1000)} m` },
                 { label: "Duration",  value: `${durationMin} mins` },
-                { label: "Ride",      value: rideType === "solo" ? "Solo" : "Shared" },
+                { label: "Ride",      value: "Solo" },
                 { label: "Passenger", value: passengerType === "regular" ? "Regular" : passengerType === "student" ? "Student" : "PWD" },
                 { label: "Payment",   value: paymentMethod === "cash" ? "Cash" : "E-Payment" },
               ].map((row) => (

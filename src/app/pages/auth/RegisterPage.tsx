@@ -834,7 +834,7 @@ export default function RegisterPage() {
                     </button>
                   </div>
                   <p className="text-xs text-gray-500">
-                    8-30 characters with uppercase, lowercase, number, and special character.
+                    Minimum 8 characters. Any letters, numbers, or special characters are allowed.
                   </p>
                 </div>
 
@@ -1449,7 +1449,7 @@ export default function RegisterPage() {
                   />
                 </div>
                 <p className="text-xs text-gray-500">
-                  8-30 characters. Use letters, numbers, dots, underscores, or hyphens.
+                  8-30 characters. Letters only are allowed; numbers, dots, underscores, and hyphens are optional.
                 </p>
               </div>
 
@@ -1477,7 +1477,7 @@ export default function RegisterPage() {
                   </button>
                 </div>
                 <p className="text-xs text-gray-500">
-                  8-30 characters with uppercase, lowercase, number, and special character.
+                  Minimum 8 characters. Any letters, numbers, or special characters are allowed.
                 </p>
               </div>
 

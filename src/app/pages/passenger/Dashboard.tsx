@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router";
-import { Bell, MapPin, Clock, Star, Zap, Users, User, Navigation2, ChevronRight, ShieldCheck } from "lucide-react";
+import { Bell, MapPin, Clock, Star, Zap, User, Navigation2, ChevronRight, ShieldCheck } from "lucide-react";
 import { useUser } from "../../context/UserContext";
 
 const MAROON = "#4B0F14";
@@ -28,7 +28,7 @@ export default function PassengerDashboard() {
 
 
   const promos = [
-    { code: "RIDE20", label: "20% OFF", desc: "First shared ride" },
+    { code: "RIDE20", label: "20% OFF", desc: "First ride discount" },
     { code: "STUDENT", label: "Beep 20%", desc: "Student discount" },
   ];
 
@@ -99,38 +99,24 @@ export default function PassengerDashboard() {
 
       <div className="px-5 pt-5 pb-36">
 
-        {/* Solo / Shared ride type */}
+        {/* Ride type */}
         <p style={{ color: "#1E1E1E", fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Uri ng Biyahe</p>
-        <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {/* Solo */}
+        <div className="mb-5">
           <button
             onClick={() => navigate("/passenger/book", { state: { rideType: "solo" } })}
-            className="flex flex-col items-center gap-2 p-4 rounded-2xl"
+            className="flex w-full items-center gap-4 rounded-2xl p-4 text-left"
             style={{ background: "#ffffff", border: `2px solid ${MAROON}`, boxShadow: "0 2px 8px rgba(75,15,20,0.1)" }}
           >
-            <div className="h-12 w-12 rounded-xl flex items-center justify-center" style={{ background: "rgba(75,15,20,0.08)" }}>
+            <div className="h-12 w-12 shrink-0 rounded-xl flex items-center justify-center" style={{ background: "rgba(75,15,20,0.08)" }}>
               <User size={22} color={MAROON} />
             </div>
-            <div className="text-center">
-              <p style={{ color: MAROON, fontSize: 14, fontWeight: 800 }}>Solo</p>
+            <div className="min-w-0 flex-1">
+              <p style={{ color: MAROON, fontSize: 14, fontWeight: 800 }}>Tricycle Ride</p>
               <p style={{ color: "#7a6a5a", fontSize: 11, marginTop: 1 }}>Pribadong sakay</p>
               <p style={{ color: "#9a8a7a", fontSize: 10 }}>Buong bayad</p>
             </div>
-          </button>
-
-          {/* Shared */}
-          <button
-            onClick={() => navigate("/passenger/book", { state: { rideType: "shared" } })}
-            className="flex flex-col items-center gap-2 p-4 rounded-2xl"
-            style={{ background: "rgba(75,15,20,0.05)", border: `2px solid rgba(212,175,55,0.5)`, boxShadow: "0 2px 8px rgba(212,175,55,0.15)" }}
-          >
-            <div className="h-12 w-12 rounded-xl flex items-center justify-center" style={{ background: "rgba(212,175,55,0.15)" }}>
-              <Users size={22} color={GOLD} />
-            </div>
-            <div className="text-center">
-              <p style={{ color: MAROON, fontSize: 14, fontWeight: 800 }}>Shared</p>
-              <p style={{ color: "#7a6a5a", fontSize: 11, marginTop: 1 }}>Ibahagi ang sakay</p>
-              <p style={{ color: "#2E7D32", fontSize: 10, fontWeight: 700 }}>30% mas mura!</p>
+            <div className="h-9 w-9 shrink-0 rounded-xl flex items-center justify-center" style={{ background: MAROON }}>
+              <Navigation2 size={16} color={GOLD} />
             </div>
           </button>
         </div>

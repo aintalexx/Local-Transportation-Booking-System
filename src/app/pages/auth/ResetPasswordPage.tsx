@@ -216,7 +216,7 @@ export default function ResetPasswordPage() {
               disabled={preparingRecovery}
             />
             <p className="text-xs leading-5 text-[#7a6a5a]">
-              Use 8-30 characters with uppercase, lowercase, number, and special character.
+              Use at least 8 characters. Any letters, numbers, or special characters are allowed.
             </p>
           </div>
 

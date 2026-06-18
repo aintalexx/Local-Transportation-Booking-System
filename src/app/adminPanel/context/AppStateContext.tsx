@@ -65,6 +65,24 @@ function normalizePhone(value?: string): string {
   return String(value || "").replace(/\D/g, "");
 }
 
+function hasMeaningfulValue(value?: string): boolean {
+  const normalized = String(value || "").trim().toLowerCase();
+  return Boolean(normalized && normalized !== "n/a" && normalized !== "none" && normalized !== "-");
+}
+
+function sameDriverRecord(a: Partial<Driver>, b: Partial<Driver>): boolean {
+  return (
+    (hasMeaningfulValue(a.id) && hasMeaningfulValue(b.id) && a.id === b.id) ||
+    (hasMeaningfulValue(a.phone) && hasMeaningfulValue(b.phone) && normalizePhone(a.phone) === normalizePhone(b.phone)) ||
+    (hasMeaningfulValue(a.plate) && hasMeaningfulValue(b.plate) && a.plate.trim().toLowerCase() === b.plate.trim().toLowerCase()) ||
+    (hasMeaningfulValue(a.licenseNumber) && hasMeaningfulValue(b.licenseNumber) && a.licenseNumber.trim().toLowerCase() === b.licenseNumber.trim().toLowerCase())
+  );
+}
+
+function isArchivedDriver(driver: Partial<Driver>, archive = getArchivedDrivers()): boolean {
+  return archive.some(archived => sameDriverRecord(driver, archived));
+}
+
 function findMatchingLocalDriver(driver: Partial<Driver>, users = getAllUsers()) {
   return users.find(u =>
     u.role === "driver" && (
@@ -294,7 +312,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           .order("created_at", { ascending: false });
 
         if (!error && data) {
-          supabaseDrivers = data.map(mapProfileToDriver);
+          const archivedSnapshot = getArchivedDrivers();
+          supabaseDrivers = data
+            .map(mapProfileToDriver)
+            .filter(driver => !isArchivedDriver(driver, archivedSnapshot));
         }
       }
 
@@ -302,7 +323,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       const localUsers = getAllUsers();
       const localDrivers = localUsers
         .filter(u => u.role === "driver")
-        .map(mapLocalUserToDriver);
+        .map(mapLocalUserToDriver)
+        .filter(driver => !isArchivedDriver(driver));
 
       // Deduplicate: prefer Supabase record if the same driver exists in both
       const merged = [...supabaseDrivers];
@@ -344,6 +366,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         (payload) => {
           if (payload.eventType === "INSERT") {
             const newDriver = mapProfileToDriver(payload.new);
+            if (isArchivedDriver(newDriver)) return;
             setDrivers((prev) => {
               if (prev.some(d => d.id === newDriver.id)) return prev;
               return [newDriver, ...prev];
@@ -357,6 +380,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             flashRow(newDriver.id, "success");
           } else if (payload.eventType === "UPDATE") {
             const updatedDriver = mapProfileToDriver(payload.new);
+            if (isArchivedDriver(updatedDriver)) {
+              setDrivers((prev) => prev.filter(d => !sameDriverRecord(d, updatedDriver)));
+              return;
+            }
             setDrivers((prev) => prev.map(d => d.id === updatedDriver.id ? updatedDriver : d));
             flashRow(updatedDriver.id, "success");
           } else if (payload.eventType === "DELETE") {
@@ -586,16 +613,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!driver) return;
 
     const archived: Driver = { ...driver, status: "Archived" as DriverStatus };
-    const updated = [...archivedDrivers, archived];
+    const updated = [
+      archived,
+      ...archivedDrivers.filter(d => !sameDriverRecord(d, archived)),
+    ];
     setArchivedDrivers(updated);
     saveArchivedDrivers(updated);
 
     // Remove from active drivers
-    setDrivers(prev => prev.filter(d => d.id !== id));
+    setDrivers(prev => prev.filter(d => !sameDriverRecord(d, archived)));
+
+    const matchedLocal = findMatchingLocalDriver(driver);
+    if (matchedLocal) {
+      updateUser(matchedLocal.username, { approvalStatus: "rejected", role: "driver" });
+    }
 
     // Update localStorage for local-only drivers
     if (!isUUID(id)) {
-      updateUser(id, { approvalStatus: "rejected" }); // mark as rejected so they don't re-appear
+      updateUser(id, { approvalStatus: "rejected", role: "driver" }); // mark as rejected so they don't re-appear
     } else if (supabase) {
       // For Supabase drivers, mark as archived/rejected
       await supabase.from("profiles").update({ approval_status: "rejected", role: "driver", updated_at: new Date().toISOString() }).eq("id", id);

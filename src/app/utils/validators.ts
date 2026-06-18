@@ -68,8 +68,8 @@ export function validateUsername(username: string | null | undefined): Validatio
     return fail("Username must be between 8 and 30 characters.");
   }
 
-  if (!/^[A-Za-z0-9._-]+$/.test(normalized)) {
-    return fail("Username can only use letters, numbers, dots, underscores, and hyphens.");
+  if (!/^[\p{L}0-9._-]+$/u.test(normalized)) {
+    return fail("Username can use letters only, or optional numbers, dots, underscores, and hyphens.");
   }
 
   return ok;
@@ -150,12 +150,8 @@ export function validatePassword(password: string): ValidationResult {
     return fail("Password is required.");
   }
 
-  if (password.length < 8 || password.length > 30) {
-    return fail("Password must be between 8 and 30 characters.");
-  }
-
-  if (!/^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*]).{8,}$/.test(password)) {
-    return fail("Password must include uppercase, lowercase, number, and special character.");
+  if (password.length < 8) {
+    return fail("Password must be at least 8 characters.");
   }
 
   return ok;
