@@ -1,8 +1,80 @@
 import { useNavigate } from "react-router";
-import { Clock, CheckCircle, Phone, ArrowLeft } from "lucide-react";
+import { Clock, CheckCircle, Phone, ArrowLeft, AlertTriangle, XCircle, LogOut } from "lucide-react";
+import { useUser } from "../../context/UserContext";
 
 export default function PendingApproval() {
+  const { user, setUser } = useUser();
   const navigate = useNavigate();
+
+  const approvalStatus = user?.approvalStatus || "pending";
+  const accountStatus = user?.accountStatus || "Active";
+
+  const handleLogout = () => {
+    setUser(null);
+    navigate("/login", { replace: true });
+  };
+
+  // Determine status configurations
+  let title = "Application Submitted!";
+  let subtitle = "Your driver account has been received and is now under review by our admin team.";
+  let IconComponent = Clock;
+  let iconColor = "#D4AF37";
+  let iconBg = "rgba(212,175,55,0.12)";
+  let iconBorder = "2px solid rgba(212,175,55,0.3)";
+
+  let steps = [
+    { icon: CheckCircle, label: "Phone verification complete", done: true },
+    { icon: Clock, label: "Admin review (1–2 business days)", done: false },
+    { icon: Phone, label: "You'll be notified once approved", done: false },
+  ];
+
+  let infoTitle = "💡 What happens next?";
+  let infoItems = [
+    "Our admin team will verify your submitted documents.",
+    "Your driver's license and plate number will be reviewed.",
+    "Once approved, you can log in and start accepting rides.",
+    "If rejected, you will be notified with the reason.",
+  ];
+
+  if (accountStatus === "Blocked" || accountStatus === "Archived" || accountStatus === "Suspended") {
+    title = `Account ${accountStatus}!`;
+    subtitle = `Your driver account has been ${accountStatus.toLowerCase()} by the administration.`;
+    IconComponent = AlertTriangle;
+    iconColor = "#C62828";
+    iconBg = "rgba(198,40,40,0.12)";
+    iconBorder = "2px solid rgba(198,40,40,0.3)";
+
+    steps = [
+      { icon: CheckCircle, label: "Account registered", done: true },
+      { icon: AlertTriangle, label: `Account status: ${accountStatus}`, done: false },
+    ];
+
+    infoTitle = "⚠️ Next Steps";
+    infoItems = [
+      "Contact support at support@arangkada.ph to inquire about your status.",
+      "Provide your registered phone number when sending support requests.",
+      "Review the Terms and Conditions of Arangkada Sta. Mesa.",
+    ];
+  } else if (approvalStatus === "rejected") {
+    title = "Application Rejected";
+    subtitle = "Unfortunately, your driver application has been rejected after review.";
+    IconComponent = XCircle;
+    iconColor = "#C62828";
+    iconBg = "rgba(198,40,40,0.12)";
+    iconBorder = "2px solid rgba(198,40,40,0.3)";
+
+    steps = [
+      { icon: CheckCircle, label: "Phone verification complete", done: true },
+      { icon: XCircle, label: "Admin review: Rejected", done: false },
+    ];
+
+    infoTitle = "📋 Feedback & Re-application";
+    infoItems = [
+      "Common reasons for rejection include invalid, blurry, or missing document photos.",
+      "Ensure your plate number and license details match the uploaded documents.",
+      "You can contact support at support@arangkada.ph for specific details.",
+    ];
+  }
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#FFF8E7" }}>
@@ -31,36 +103,32 @@ export default function PendingApproval() {
           className="rounded-3xl p-6 mb-4"
           style={{ background: "#ffffff", boxShadow: "0 8px 32px rgba(75,15,20,0.12)", border: "1.5px solid rgba(75,15,20,0.08)" }}
         >
-          {/* Pending icon */}
+          {/* Status icon */}
           <div className="flex justify-center mb-5">
             <div
               className="h-20 w-20 rounded-3xl flex items-center justify-center"
-              style={{ background: "rgba(212,175,55,0.12)", border: "2px solid rgba(212,175,55,0.3)" }}
+              style={{ background: iconBg, border: iconBorder }}
             >
-              <Clock size={36} color="#D4AF37" />
+              <IconComponent size={36} color={iconColor} />
             </div>
           </div>
 
           <h1 style={{ color: "#4B0F14", fontSize: 22, fontWeight: 900, textAlign: "center", marginBottom: 8, lineHeight: 1.2 }}>
-            Application Submitted!
+            {title}
           </h1>
           <p style={{ color: "#7a6a5a", fontSize: 14, textAlign: "center", lineHeight: 1.6, marginBottom: 24 }}>
-            Your driver account has been received and is now under review by our admin team.
+            {subtitle}
           </p>
 
           {/* Steps */}
           <div className="space-y-3 mb-6">
-            {[
-              { icon: CheckCircle, label: "Phone verification complete", done: true },
-              { icon: Clock, label: "Admin review (1–2 business days)", done: false },
-              { icon: Phone, label: "You'll be notified once approved", done: false },
-            ].map((step, i) => (
+            {steps.map((step, i) => (
               <div key={i} className="flex items-center gap-3 p-3.5 rounded-2xl" style={{ background: step.done ? "rgba(46,125,50,0.07)" : "rgba(75,15,20,0.04)" }}>
                 <div
                   className="h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0"
                   style={{ background: step.done ? "rgba(46,125,50,0.12)" : "rgba(212,175,55,0.12)" }}
                 >
-                  <step.icon size={18} color={step.done ? "#2E7D32" : "#B8860B"} />
+                  <step.icon size={18} color={step.done ? "#2E7D32" : (step.icon === XCircle || step.icon === AlertTriangle ? "#C62828" : "#B8860B")} />
                 </div>
                 <p style={{ color: step.done ? "#2E7D32" : "#1E1E1E", fontSize: 14, fontWeight: step.done ? 700 : 500 }}>
                   {step.label}
@@ -77,14 +145,9 @@ export default function PendingApproval() {
             className="p-4 rounded-2xl mb-2"
             style={{ background: "rgba(212,175,55,0.08)", border: "1.5px solid rgba(212,175,55,0.25)" }}
           >
-            <p style={{ color: "#4B0F14", fontSize: 13, fontWeight: 700, marginBottom: 6 }}>💡 What happens next?</p>
+            <p style={{ color: "#4B0F14", fontSize: 13, fontWeight: 700, marginBottom: 6 }}>{infoTitle}</p>
             <ul className="space-y-1.5">
-              {[
-                "Our admin team will verify your submitted documents.",
-                "Your driver's license and plate number will be reviewed.",
-                "Once approved, you can log in and start accepting rides.",
-                "If rejected, you will be notified with the reason.",
-              ].map(item => (
+              {infoItems.map(item => (
                 <li key={item} className="flex items-start gap-2">
                   <span style={{ color: "#D4AF37", fontSize: 12, marginTop: 1 }}>•</span>
                   <span style={{ color: "#7a6a5a", fontSize: 13, lineHeight: 1.5 }}>{item}</span>
@@ -94,16 +157,17 @@ export default function PendingApproval() {
           </div>
         </div>
 
-        {/* Sign in button */}
+        {/* Sign out button */}
         <button
-          onClick={() => navigate("/login")}
-          className="w-full h-14 rounded-2xl flex items-center justify-center mb-3"
+          onClick={handleLogout}
+          className="w-full h-14 rounded-2xl flex items-center justify-center gap-2 mb-3"
           style={{
             background: "linear-gradient(135deg, #4B0F14, #6E171D)",
             boxShadow: "0 6px 20px rgba(75,15,20,0.3)",
           }}
         >
-          <span style={{ color: "#D4AF37", fontSize: 16, fontWeight: 800 }}>Go to Sign In</span>
+          <LogOut size={18} color="#D4AF37" />
+          <span style={{ color: "#D4AF37", fontSize: 16, fontWeight: 800 }}>Sign Out</span>
         </button>
 
         <button

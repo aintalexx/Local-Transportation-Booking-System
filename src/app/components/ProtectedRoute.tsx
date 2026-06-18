@@ -21,8 +21,10 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     return <Navigate to={getRoleHomePath(user)} replace />;
   }
 
-  if (user.role === "driver" && user.approvalStatus !== "approved") {
-    return <Navigate to="/pending-approval" replace />;
+  if (user.role === "driver") {
+    if (user.approvalStatus !== "approved" || user.accountStatus === "Blocked" || user.accountStatus === "Archived" || user.accountStatus === "Suspended") {
+      return <Navigate to="/pending-approval" replace />;
+    }
   }
 
   return <>{children}</>;

@@ -3,6 +3,7 @@ import { getSupabaseConfigMessage, supabase } from "../lib/supabase";
 import { getAllUsers, updateUser, type UserData } from "./userDatabase";
 import { syncSupabaseProfile } from "./supabaseProfiles";
 import { formatPersonName, normalizeDisplayName, normalizeOptionalSuffix } from "./nameFormatting";
+import { formatPHPhoneInput } from "./validators";
 
 const GOOGLE_ROLE_KEY = "arangkada_google_signup_role";
 
@@ -52,8 +53,11 @@ export async function resolveAuthEmailForLogin(identifier: string): Promise<stri
   if (!normalizedIdentifier) return null;
   if (normalizedIdentifier.includes("@")) return normalizedLower;
 
+  const normalizedPhone = formatPHPhoneInput(normalizedIdentifier);
+
   const localUser = getAllUsers().find(
-    user => user.username.toLowerCase() === normalizedLower
+    user => user.username.toLowerCase() === normalizedLower ||
+            (user.phoneNumber && formatPHPhoneInput(user.phoneNumber) === normalizedPhone)
   );
 
   if (localUser?.email) {
@@ -65,11 +69,11 @@ export async function resolveAuthEmailForLogin(identifier: string): Promise<stri
   const { data, error } = await supabase
     .from("profiles")
     .select("email")
-    .eq("username", normalizedIdentifier)
+    .or(`username.eq."${normalizedIdentifier}",phone.eq."${normalizedIdentifier}",phone.eq."${normalizedPhone}"`)
     .maybeSingle();
 
   if (error) {
-    console.info("Username email lookup failed. Falling back to local login:", error.message);
+    console.info("Username/phone email lookup failed. Falling back to local login:", error.message);
     return null;
   }
 

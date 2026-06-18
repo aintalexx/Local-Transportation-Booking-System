@@ -196,6 +196,15 @@ export default function OTPPage() {
         await handleVerifiedGooglePhone();
       } else if (state.mode === "register") {
         await handleVerifiedRegistration();
+      } else if (state.mode === "login" && state.role === "driver") {
+        const userData = state.userData as UserData;
+        setUser(userData);
+        toast.success("Login successful!");
+        if (userData.approvalStatus === "approved" && userData.accountStatus === "Active") {
+          navigate("/driver", { replace: true });
+        } else {
+          navigate("/pending-approval", { replace: true });
+        }
       } else {
         toast.success("Phone number verified successfully!");
         navigate("/login", { replace: true });

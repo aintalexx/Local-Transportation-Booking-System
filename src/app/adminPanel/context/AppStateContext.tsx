@@ -160,28 +160,29 @@ function mapLocalUserToDriver(u: any): Driver {
   };
 }
 
-// Helper to map Supabase profiles to Driver
-function mapProfileToDriver(p: any): Driver {
-  const localUsers = getAllUsers();
-  const localUser = localUsers.find(u =>
-    (u.supabaseId && u.supabaseId === p.id) ||
-    (normalizePhone(u.phoneNumber) && normalizePhone(p.phone) && normalizePhone(u.phoneNumber) === normalizePhone(p.phone)) ||
-    (u.username && p.username && u.username.toLowerCase() === p.username.toLowerCase())
-  );
-
-  const initials = p.full_name
-    ? p.full_name.split(/\s+/).map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()
+// Helper to map Supabase db driver row to Driver
+function mapDbDriverToAdminDriver(p: any): Driver {
+  const fullName = `${p.first_name || ""} ${p.surname || ""}`.trim();
+  const initials = fullName
+    ? fullName.split(/\s+/).map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()
     : "DR";
 
   const colors = ["#6B0E1A", "#C49A1A", "#7c3aed", "#15803d", "#b45309", "#0e7490", "#9f1239"];
-  const charCodeSum = (p.full_name || "").split("").reduce((sum: number, char: string) => sum + char.charCodeAt(0), 0);
+  const charCodeSum = fullName.split("").reduce((sum: number, char: string) => sum + char.charCodeAt(0), 0);
   const bg = colors[charCodeSum % colors.length];
 
-  const status: DriverStatus = p.approval_status === "pending"
-    ? "Pending"
-    : p.approval_status === "rejected"
-    ? "Blocked"
-    : "Active";
+  let status: DriverStatus = "Pending";
+  if (p.account_status === "Blocked" || p.account_status === "Suspended") {
+    status = "Blocked";
+  } else if (p.account_status === "Archived") {
+    status = "Archived";
+  } else if (p.approval_status === "pending") {
+    status = "Pending";
+  } else if (p.approval_status === "rejected") {
+    status = "Blocked";
+  } else {
+    status = "Active";
+  }
 
   const license: LicenseStatus = p.approval_status === "pending"
     ? "Pending"
@@ -191,7 +192,7 @@ function mapProfileToDriver(p: any): Driver {
 
   return {
     id: p.id,
-    name: p.full_name,
+    name: fullName,
     photo: initials,
     vehicle: p.vehicle_type || "Tricycle",
     plate: p.plate_number || "N/A",
@@ -200,17 +201,60 @@ function mapProfileToDriver(p: any): Driver {
     rating: 5.0,
     status,
     license,
-    joined: new Date(p.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    joined: p.created_at ? new Date(p.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
     bg,
     phone: p.phone || "",
-    licenseNumber: p.license_number || localUser?.licenseNumber || "N/A",
-    driverLicensePhoto: p.driver_license_photo || localUser?.driverLicensePhoto || "",
-    validIdPhoto: p.valid_id_photo || localUser?.validIdPhoto || localUser?.driverLicensePhoto || "",
-    orCrPhoto: p.or_cr_photo || localUser?.orCrPhoto || "",
-    clearancePhoto: p.clearance_photo || localUser?.clearancePhoto || "",
-    vehiclePhoto: p.vehicle_photo || localUser?.vehiclePhoto || "",
-    profilePhoto: p.profile_photo || localUser?.profilePhoto || "",
+    licenseNumber: p.license_number || "N/A",
+    driverLicensePhoto: p.valid_id_photo || "",
+    validIdPhoto: p.valid_id_photo || "",
+    orCrPhoto: p.or_cr_photo || "",
+    clearancePhoto: p.clearance_photo || "",
+    vehiclePhoto: p.vehicle_photo || "",
+    profilePhoto: p.profile_photo || "",
   };
+}
+
+async function syncDriverToProfile(driverId: string) {
+  if (!supabase) return;
+  const { data: dbDriver, error: fetchErr } = await supabase
+    .from("drivers")
+    .select("*")
+    .eq("id", driverId)
+    .maybeSingle();
+
+  if (fetchErr || !dbDriver) {
+    console.error("Failed to fetch driver for syncing to profiles:", fetchErr);
+    return;
+  }
+
+  const fullName = `${dbDriver.first_name || ""} ${dbDriver.surname || ""}`.trim();
+  const profilePayload = {
+    id: dbDriver.id,
+    username: `driver_${dbDriver.phone.replace(/\D/g, "")}`,
+    full_name: fullName,
+    phone: dbDriver.phone || null,
+    role: "driver",
+    vehicle_type: dbDriver.vehicle_type || null,
+    plate_number: dbDriver.plate_number || null,
+    license_number: dbDriver.license_number || null,
+    driver_license_photo: dbDriver.valid_id_photo || null,
+    valid_id_photo: dbDriver.valid_id_photo || null,
+    or_cr_photo: dbDriver.or_cr_photo || null,
+    clearance_photo: dbDriver.clearance_photo || null,
+    vehicle_photo: dbDriver.vehicle_photo || null,
+    profile_photo: dbDriver.profile_photo || null,
+    approval_status: "approved",
+    is_online: false,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error: upsertErr } = await supabase
+    .from("profiles")
+    .upsert(profilePayload, { onConflict: "id" });
+
+  if (upsertErr) {
+    console.error("Failed to sync driver to profiles table:", upsertErr.message);
+  }
 }
 
 // Helper to map Supabase bookings to Booking
@@ -306,15 +350,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
       if (supabase) {
         const { data, error } = await supabase
-          .from("profiles")
+          .from("drivers")
           .select("*")
-          .eq("role", "driver")
           .order("created_at", { ascending: false });
 
         if (!error && data) {
           const archivedSnapshot = getArchivedDrivers();
           supabaseDrivers = data
-            .map(mapProfileToDriver)
+            .map(mapDbDriverToAdminDriver)
             .filter(driver => !isArchivedDriver(driver, archivedSnapshot));
         }
       }
@@ -358,14 +401,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     loadBookings();
 
-    const profilesChannel = supabase
-      .channel("admin-profiles-realtime")
+    const driversChannel = supabase
+      .channel("admin-drivers-realtime")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "profiles", filter: "role=eq.driver" },
+        { event: "*", schema: "public", table: "drivers" },
         (payload) => {
           if (payload.eventType === "INSERT") {
-            const newDriver = mapProfileToDriver(payload.new);
+            const newDriver = mapDbDriverToAdminDriver(payload.new);
             if (isArchivedDriver(newDriver)) return;
             setDrivers((prev) => {
               if (prev.some(d => d.id === newDriver.id)) return prev;
@@ -379,7 +422,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             });
             flashRow(newDriver.id, "success");
           } else if (payload.eventType === "UPDATE") {
-            const updatedDriver = mapProfileToDriver(payload.new);
+            const updatedDriver = mapDbDriverToAdminDriver(payload.new);
             if (isArchivedDriver(updatedDriver)) {
               setDrivers((prev) => prev.filter(d => !sameDriverRecord(d, updatedDriver)));
               return;
@@ -424,7 +467,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(profilesChannel);
+      supabase.removeChannel(driversChannel);
       supabase.removeChannel(bookingsChannel);
     };
   }, []);
@@ -473,12 +516,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
     if (!supabase) { toast.error("Supabase not configured."); return; }
     const { error } = await supabase
-      .from("profiles")
-      .update({ approval_status: "approved", role: "driver", updated_at: new Date().toISOString() })
+      .from("drivers")
+      .update({ approval_status: "approved", account_status: "Active", updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) {
       toast.error("Failed to approve driver", { description: error.message });
     } else {
+      await syncDriverToProfile(id);
       updateDriverState(id, "approved", "Active", "Approved");
       toast.success("Driver approved successfully");
     }
@@ -494,12 +538,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
     if (!supabase) { toast.error("Supabase not configured."); return; }
     const { error } = await supabase
-      .from("profiles")
-      .update({ approval_status: "rejected", role: "driver", updated_at: new Date().toISOString() })
+      .from("drivers")
+      .update({ approval_status: "rejected", updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) {
       toast.error("Failed to reject driver", { description: error.message });
     } else {
+      await supabase.from("profiles").update({ approval_status: "rejected", updated_at: new Date().toISOString() }).eq("id", id);
       updateDriverState(id, "rejected", "Blocked", "Blocked");
       toast.success("Driver application rejected");
     }
@@ -515,12 +560,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
     if (!supabase) { toast.error("Supabase not configured."); return; }
     const { error } = await supabase
-      .from("profiles")
-      .update({ approval_status: "rejected", role: "driver", updated_at: new Date().toISOString() })
+      .from("drivers")
+      .update({ account_status: "Blocked", updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) {
       toast.error("Failed to block driver", { description: error.message });
     } else {
+      await supabase.from("profiles").update({ approval_status: "rejected", updated_at: new Date().toISOString() }).eq("id", id);
       updateDriverState(id, "rejected", "Blocked", "Blocked");
       toast.warning("Driver blocked successfully");
     }
@@ -536,12 +582,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
     if (!supabase) { toast.error("Supabase not configured."); return; }
     const { error } = await supabase
-      .from("profiles")
-      .update({ approval_status: "approved", role: "driver", updated_at: new Date().toISOString() })
+      .from("drivers")
+      .update({ approval_status: "approved", account_status: "Active", updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) {
       toast.error("Failed to reinstate driver", { description: error.message });
     } else {
+      await syncDriverToProfile(id);
       updateDriverState(id, "approved", "Active", "Approved");
       toast.success("Driver reinstated successfully");
     }
@@ -579,20 +626,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (supabasePending.length > 0 && supabase) {
       const supabaseIds = supabasePending.map(d => d.id);
       const { error } = await supabase
-        .from("profiles")
-        .update({ approval_status: "approved", role: "driver", updated_at: new Date().toISOString() })
+        .from("drivers")
+        .update({ approval_status: "approved", account_status: "Active", updated_at: new Date().toISOString() })
         .in("id", supabaseIds);
       if (error) {
         toast.error("Failed to approve some drivers", { description: error.message });
         return;
       }
-      // Also sync approval to localStorage for each Supabase driver
-      const localUsers = getAllUsers();
+      // Sync approved drivers to profiles
       for (const d of supabasePending) {
-        const matchedLocal = findMatchingLocalDriver(d, localUsers);
-        if (matchedLocal) {
-          updateUser(matchedLocal.username, { approvalStatus: "approved", role: "driver", supabaseId: d.id });
-        }
+        await syncDriverToProfile(d.id);
       }
       setDrivers(prev =>
         prev.map(d =>
@@ -633,7 +676,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       updateUser(id, { approvalStatus: "rejected", role: "driver" }); // mark as rejected so they don't re-appear
     } else if (supabase) {
       // For Supabase drivers, mark as archived/rejected
-      await supabase.from("profiles").update({ approval_status: "rejected", role: "driver", updated_at: new Date().toISOString() }).eq("id", id);
+      await supabase.from("drivers").update({ approval_status: "rejected", account_status: "Archived", updated_at: new Date().toISOString() }).eq("id", id);
+      await supabase.from("profiles").update({ approval_status: "rejected", updated_at: new Date().toISOString() }).eq("id", id);
     }
 
     toast.success(`${driver.name} has been archived.`);
@@ -665,7 +709,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!isUUID(id)) {
       updateUser(id, { approvalStatus: "approved" });
     } else if (supabase) {
-      await supabase.from("profiles").update({ approval_status: "approved", role: "driver", updated_at: new Date().toISOString() }).eq("id", id);
+      await supabase.from("drivers").update({ approval_status: "approved", account_status: "Active", updated_at: new Date().toISOString() }).eq("id", id);
+      await syncDriverToProfile(id);
     }
 
     toast.success(`${driver.name} has been restored.`);

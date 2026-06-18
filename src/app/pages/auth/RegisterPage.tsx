@@ -37,6 +37,8 @@ import {
 import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
 import { createDemoOtp } from "../../utils/demoOtp";
 import { signInWithGoogle, signUpWithEmailPassword } from "../../utils/supabaseAuth";
+import { registerSupabaseDriver } from "../../utils/supabaseDrivers";
+import { useUser } from "../../context/UserContext";
 
 const MAX_DRIVER_UPLOAD_SIZE = 400; // Reduced from 900 to prevent localStorage quota exceeded
 const DRIVER_UPLOAD_QUALITY = 0.5; // Reduced from 0.72
@@ -83,8 +85,13 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 
 export default function RegisterPage() {
   const navigate = useNavigate();
-  const [step, setStep] = useState<"role" | "details" | "driverContact" | "driverVehicle">("role");
+  const { setUser } = useUser();
+  const [step, setStep] = useState<"role" | "details" | "driverPhone" | "driverOtp" | "driverInfo" | "driverDocs" | "passengerPhone" | "passengerOtp" | "passengerInfo">("role");
   const [role, setRole] = useState<"passenger" | "driver">("passenger");
+  const [demoOtp, setDemoOtp] = useState("");
+  const [enteredOtp, setEnteredOtp] = useState("");
+  const [otpResendTimer, setOtpResendTimer] = useState(60);
+  const [otpCanResend, setOtpCanResend] = useState(false);
   const [formData, setFormData] = useState({
     surname: "",
     firstName: "",
@@ -123,6 +130,24 @@ export default function RegisterPage() {
   const [zoomModal, setZoomModal] = useState<{ url: string; title: string } | null>(null);
 
   const isMinor = formData.birthdate ? calculateAge(formData.birthdate) < 18 : false;
+
+  useEffect(() => {
+    if (step !== "driverOtp" && step !== "passengerOtp") return;
+    if (otpCanResend) return;
+
+    const timer = window.setInterval(() => {
+      setOtpResendTimer((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(timer);
+          setOtpCanResend(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [step, otpCanResend]);
 
   const handleBirthdateInputChange = (rawValue: string) => {
     const digits = rawValue.replace(/\D/g, "").slice(0, 8);
@@ -187,9 +212,9 @@ export default function RegisterPage() {
 
   const handleContinueFromRole = () => {
     if (role === "driver") {
-      setStep("driverContact");
+      setStep("driverPhone");
     } else {
-      setStep("details");
+      setStep("passengerPhone");
     }
   };
 
@@ -204,18 +229,191 @@ export default function RegisterPage() {
     }
   };
 
-  const handleNextToVehicle = () => {
-    setShowValidationErrors(true);
+  const handlePassengerPhoneSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
     const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
-    const normalizedEmail = formData.email.trim();
+    const phoneCheck = validatePHPhone(normalizedPhone);
+    if (!phoneCheck.valid) {
+      toast.error(phoneCheck.message);
+      return;
+    }
 
+    if (phoneExists(normalizedPhone)) {
+      toast.error("Phone number already registered. Please login or use a different number.");
+      return;
+    }
+
+    const generatedOtp = createDemoOtp();
+    setDemoOtp(generatedOtp);
+    setOtpResendTimer(60);
+    setOtpCanResend(false);
+    toast.success(`Demo OTP: ${generatedOtp}`, { duration: 10000 });
+    setStep("passengerOtp");
+  };
+
+  const handlePassengerOtpVerify = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (enteredOtp.length !== 6) {
+      toast.error("Please enter a complete 6-digit OTP");
+      return;
+    }
+    if (enteredOtp !== demoOtp) {
+      toast.error("Invalid OTP. Please try again.");
+      setEnteredOtp("");
+      return;
+    }
+    toast.success("Phone verified successfully!");
+    setStep("passengerInfo");
+  };
+
+  const handlePassengerRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setShowValidationErrors(true);
+
+    const normalizedEmail = formData.email.trim().toLowerCase();
+    const emailCheck = validateAuthEmail(normalizedEmail);
+    if (!emailCheck.valid) {
+      toast.error(emailCheck.message);
+      return;
+    }
+
+    if (emailExists(normalizedEmail)) {
+      toast.error("This email is already used. Please try a different email address.");
+      return;
+    }
+
+    const passwordCheck = validatePassword(formData.password);
+    if (!passwordCheck.valid) {
+      toast.error(passwordCheck.message);
+      return;
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    if (!agreedToTerms) {
+      toast.error("You must accept the Terms and Privacy Policy to continue");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
+      const normalizedPhoneDigits = normalizedPhone.replace(/\D/g, "");
+      const finalUsername = `passenger_${normalizedPhoneDigits}`;
+      const birthdateString = new Date(2000, 0, 1).toISOString();
+
+      const userData: UserData = {
+        username: finalUsername,
+        password: formData.password,
+        phoneNumber: normalizedPhone,
+        surname: "Passenger",
+        firstName: "User",
+        middleName: "",
+        suffix: "",
+        email: normalizedEmail,
+        emailConfirmed: true, // Auto confirmed
+        birthdate: birthdateString,
+        role: "passenger",
+        guardianName: "",
+        guardianPhone: "",
+        rating: 5.0,
+        totalTrips: 0,
+        totalEarnings: 0,
+        vehicleType: "",
+        plateNumber: "",
+        driverLicensePhoto: "",
+        licenseNumber: "",
+        validIdPhoto: "",
+        orCrPhoto: "",
+        clearancePhoto: "",
+        profilePhoto: "",
+        vehiclePhoto: "",
+        vehicleColor: "",
+        memberSince: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+        approvalStatus: "approved",
+      };
+
+      // Attempt Supabase registration if online
+      let supabaseUser = null;
+      if (signUpWithEmailPassword) {
+        try {
+          supabaseUser = await signUpWithEmailPassword(userData);
+          if (supabaseUser) {
+            userData.supabaseId = supabaseUser.supabaseId;
+            userData.emailConfirmed = true;
+          }
+        } catch (supabaseError) {
+          const errMsg = supabaseError instanceof Error ? supabaseError.message.toLowerCase() : "";
+          if (errMsg.includes("already registered") || errMsg.includes("already exists") || errMsg.includes("email_taken")) {
+            toast.error("This email is already used. Please try a different email address.");
+            setLoading(false);
+            return;
+          }
+          console.warn("Supabase registration failed, continuing with local registration:", supabaseError);
+        }
+      }
+
+      const localResult = registerUser(userData);
+      if (!localResult.success) {
+        toast.error(localResult.message);
+        setLoading(false);
+        return;
+      }
+
+      setUser(userData);
+      toast.success("Registration successful!");
+      navigate("/passenger", { replace: true });
+    } catch (error) {
+      console.error("Passenger registration exception:", error);
+      toast.error("An error occurred. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDriverPhoneSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
+    const phoneCheck = validatePHPhone(normalizedPhone);
+    if (!phoneCheck.valid) {
+      toast.error(phoneCheck.message);
+      return;
+    }
+
+    const generatedOtp = createDemoOtp();
+    setDemoOtp(generatedOtp);
+    setOtpResendTimer(60);
+    setOtpCanResend(false);
+    toast.success(`Demo OTP: ${generatedOtp}`, { duration: 10000 });
+    setStep("driverOtp");
+  };
+
+  const handleDriverOtpVerify = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (enteredOtp.length !== 6) {
+      toast.error("Please enter a complete 6-digit OTP");
+      return;
+    }
+    if (enteredOtp !== demoOtp) {
+      toast.error("Invalid OTP. Please try again.");
+      setEnteredOtp("");
+      return;
+    }
+    toast.success("Phone verified successfully!");
+    setStep("driverInfo");
+  };
+
+  const handleDriverInfoSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
     const contactCheck = firstInvalid([
       validateName(formData.surname, "Surname"),
       validateName(formData.firstName, "First name"),
       formData.noMiddleName ? { valid: true, message: "" } : validateName(formData.middleName, "Middle name"),
       validateBirthdate(formData.birthdate),
-      validatePHPhone(normalizedPhone),
-      validateAuthEmail(normalizedEmail),
       validatePassword(formData.password),
     ]);
 
@@ -234,10 +432,7 @@ export default function RegisterPage() {
       return;
     }
 
-    // Drivers may re-submit — duplicate phone/email is handled at final submission (upsert)
-
-    setStep("driverVehicle");
-    setShowValidationErrors(false);
+    setStep("driverDocs");
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -245,7 +440,7 @@ export default function RegisterPage() {
     setShowValidationErrors(true);
 
     const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
-    const normalizedEmail = formData.email.trim();
+    const normalizedEmail = role === "passenger" ? formData.email.trim() : "";
     const normalizedPlate = formData.plateNumber.trim().toUpperCase();
     const normalizedPhoneDigits = normalizedPhone.replace(/\D/g, "");
     const finalUsername = role === "passenger" 
@@ -260,7 +455,7 @@ export default function RegisterPage() {
       validateBirthdate(formData.birthdate),
       validatePHPhone(normalizedPhone),
       role === "passenger" ? validateUsername(formData.username.trim()) : ok,
-      validateAuthEmail(normalizedEmail),
+      role === "passenger" ? validateAuthEmail(normalizedEmail) : ok,
       validatePassword(formData.password),
     ]);
 
@@ -339,7 +534,7 @@ export default function RegisterPage() {
         middleName: formData.noMiddleName ? "" : normalizeSpaces(formData.middleName),
         suffix: normalizeOptionalSuffix(formData.suffix),
         email: normalizedEmail,
-        emailConfirmed: false,
+        emailConfirmed: role === "driver",
         birthdate: birthdateString,
         role,
         guardianName: role === "passenger" ? normalizeSpaces(formData.guardianName) : "",
@@ -362,38 +557,52 @@ export default function RegisterPage() {
       };
 
       if (role === "driver") {
-        // Check if driver already has a local account (re-registration after a failed Supabase sync)
+        // Save in Supabase public.drivers table
+        let supabaseId = undefined;
+        try {
+          const dbDriver = await registerSupabaseDriver(userData);
+          if (dbDriver) {
+            supabaseId = dbDriver.id;
+            userData.supabaseId = supabaseId;
+          }
+        } catch (error) {
+          console.error("Supabase driver table sync failed:", error);
+        }
+
+        // Check if driver already has a local account
         const existingLocalDriver = getAllUsers().find(
           u => u.role === "driver" && (
             u.username === finalUsername ||
-            (u.email && u.email.trim().toLowerCase() === normalizedEmail) ||
             formatPHPhoneInput(u.phoneNumber).replace(/\D/g, "") === normalizedPhoneDigits
           )
         );
 
         if (existingLocalDriver) {
-          // Update the existing record with the latest form data (documents, etc.)
           updateUser(existingLocalDriver.username, {
             ...userData,
             username: existingLocalDriver.username,
-            supabaseId: existingLocalDriver.supabaseId,
+            supabaseId: existingLocalDriver.supabaseId || supabaseId,
             approvalStatus: "pending",
             memberSince: existingLocalDriver.memberSince,
           });
         } else {
-          const result = registerUser(userData);
+          const result = registerUser({
+            ...userData,
+            supabaseId,
+          });
           if (!result.success) {
             toast.error(result.message);
             return;
           }
         }
 
-        try {
-          await signUpWithEmailPassword(userData);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Supabase account creation failed.";
-          toast.info(`Application saved locally. Supabase sync needs attention: ${message}`, { duration: 6000 });
-        }
+        // Set local context to the newly registered driver
+        const completeUserData = {
+          ...userData,
+          supabaseId,
+          approvalStatus: "pending" as const,
+        };
+        setUser(completeUserData);
 
         toast.success("Driver application submitted for admin approval.");
         navigate("/pending-approval", { replace: true });
@@ -610,8 +819,8 @@ export default function RegisterPage() {
     );
   }
 
-  // 2. Driver Step 1: Contact Details Form
-  if (step === "driverContact") {
+  // 2. Driver Step 1: Phone Number Input
+  if (step === "driverPhone") {
     return (
       <div className="min-h-screen bg-gradient-to-b from-[#FFF8E7] to-white flex items-center justify-center p-4">
         <div className="w-full max-w-md">
@@ -620,16 +829,155 @@ export default function RegisterPage() {
               <Navigation className="h-12 w-12 text-[#4B0F14]" />
             </div>
             <h1 className="text-3xl font-bold text-gray-900">Driver Sign-Up</h1>
-            <p className="text-gray-600 mt-2">Step 1 of 2 — Basic Info</p>
+            <p className="text-gray-600 mt-2">Enter your phone number to begin</p>
           </div>
 
           <Card>
             <CardHeader>
-              <CardTitle>Contact Details</CardTitle>
-              <CardDescription>Please enter your contact and account details</CardDescription>
+              <CardTitle>Phone Number</CardTitle>
+              <CardDescription>Enter your mobile number for verification</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-5">
+              <form onSubmit={handleDriverPhoneSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="09XXXXXXXXX"
+                      value={formData.phoneNumber}
+                      onChange={handlePhoneChange}
+                      inputMode="numeric"
+                      maxLength={11}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <Button type="submit" className="w-full mt-6">
+                  Send Demo OTP
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setStep("role")}
+                  className="w-full"
+                >
+                  Back
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // 2.5. Driver Step 1.5: Demo OTP Verification
+  if (step === "driverOtp") {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#FFF8E7] to-white flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="flex justify-center mb-4">
+              <Navigation className="h-12 w-12 text-[#4B0F14]" />
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900">Verify Number</h1>
+            <p className="text-gray-600 mt-2">Enter the demo OTP sent to your phone</p>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Demo OTP Verification</CardTitle>
+              <CardDescription>No SMS is sent. Use the demo code below for testing.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleDriverOtpVerify} className="space-y-6">
+                <div className="rounded-xl border border-[#4B0F14]/20 bg-[#4B0F14]/5 p-4 text-center">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Demo OTP Code</p>
+                  <p className="mt-1 text-3xl font-black tracking-[0.2em] text-[#4B0F14]">{demoOtp}</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="otp">Enter 6-Digit OTP</Label>
+                  <Input
+                    id="otp"
+                    type="text"
+                    placeholder="Enter code"
+                    value={enteredOtp}
+                    onChange={(e) => setEnteredOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    maxLength={6}
+                    className="text-center font-mono text-2xl tracking-[0.1em] h-12"
+                    required
+                  />
+                </div>
+
+                <Button type="submit" className="w-full" disabled={enteredOtp.length !== 6}>
+                  Verify OTP
+                </Button>
+
+                <div className="text-center">
+                  {otpCanResend ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextOtp = createDemoOtp();
+                        setDemoOtp(nextOtp);
+                        setOtpResendTimer(60);
+                        setOtpCanResend(false);
+                        toast.success(`New demo OTP: ${nextOtp}`, { duration: 10000 });
+                      }}
+                      className="text-sm font-semibold text-[#4B0F14] hover:underline"
+                    >
+                      Resend Demo OTP
+                    </button>
+                  ) : (
+                    <p className="text-xs text-gray-500">
+                      Resend in {otpResendTimer} seconds
+                    </p>
+                  )}
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setStep("driverPhone")}
+                  className="w-full"
+                >
+                  Change Phone Number
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // 2.7. Driver Step 1.7: Driver Information Form
+  if (step === "driverInfo") {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#FFF8E7] to-white flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="flex justify-center mb-4">
+              <Navigation className="h-12 w-12 text-[#4B0F14]" />
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900">Driver Profile</h1>
+            <p className="text-gray-600 mt-2">Please enter your basic information</p>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Personal Details</CardTitle>
+              <CardDescription>All fields are required unless marked optional</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleDriverInfoSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="surname">Surname</Label>
                   <Input
@@ -781,36 +1129,6 @@ export default function RegisterPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="phone"
-                      type="tel"
-                      placeholder="09XXXXXXXXX"
-                      value={formData.phoneNumber}
-                      onChange={handlePhoneChange}
-                      inputMode="numeric"
-                      maxLength={11}
-                      className="pl-10"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="your.email@example.com"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value.trim() })}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
                   <Label htmlFor="password">Password</Label>
                   <div className="relative">
                     <Input
@@ -828,14 +1146,10 @@ export default function RegisterPage() {
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute inset-y-0 right-2 flex !h-full !min-h-0 !w-9 !min-w-0 items-center justify-center p-0 text-gray-400 hover:text-gray-600"
-                      aria-label={showPassword ? "Hide password" : "Show password"}
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500">
-                    Minimum 8 characters. Any letters, numbers, or special characters are allowed.
-                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -856,26 +1170,25 @@ export default function RegisterPage() {
                       type="button"
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                       className="absolute inset-y-0 right-2 flex !h-full !min-h-0 !w-9 !min-w-0 items-center justify-center p-0 text-gray-400 hover:text-gray-600"
-                      aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
                     >
                       {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>
 
-                <Button onClick={handleNextToVehicle} className="w-full mt-6">
-                  Next: Vehicle &amp; License
+                <Button type="submit" className="w-full mt-6">
+                  Next: Vehicle &amp; Documents
                 </Button>
 
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setStep("role")}
+                  onClick={() => setStep("driverPhone")}
                   className="w-full"
                 >
                   Back
                 </Button>
-              </div>
+              </form>
             </CardContent>
           </Card>
         </div>
@@ -884,7 +1197,7 @@ export default function RegisterPage() {
   }
 
   // 3. Driver Step 2: Vehicle & License Details (Guideline-based)
-  if (step === "driverVehicle") {
+  if (step === "driverDocs") {
     return (
       <div className="min-h-screen bg-gradient-to-b from-[#FFF8E7] to-white flex items-center justify-center p-4">
         <div className="w-full max-w-md">
@@ -1155,10 +1468,337 @@ export default function RegisterPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setStep("driverContact")}
+                  onClick={() => setStep("driverInfo")}
                   className="w-full rounded-xl"
                 >
-                  Back to Contact Details
+                  Back to Personal Details
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // 3.1. Passenger Step 1: Phone Number Input
+  if (step === "passengerPhone") {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#FFF8E7] to-white flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="flex justify-center mb-4">
+              <Navigation className="h-12 w-12 text-[#4B0F14]" />
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900">Passenger Sign-Up</h1>
+            <p className="text-gray-600 mt-2">Enter your phone number to begin</p>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Phone Number</CardTitle>
+              <CardDescription>Enter your mobile number for verification</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handlePassengerPhoneSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="09XXXXXXXXX"
+                      value={formData.phoneNumber}
+                      onChange={handlePhoneChange}
+                      inputMode="numeric"
+                      maxLength={11}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <Button type="submit" className="w-full mt-6">
+                  Send Demo OTP
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setStep("role")}
+                  className="w-full"
+                >
+                  Back
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // 3.2. Passenger Step 2: Demo OTP Verification
+  if (step === "passengerOtp") {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#FFF8E7] to-white flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="flex justify-center mb-4">
+              <Navigation className="h-12 w-12 text-[#4B0F14]" />
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900">Verify Number</h1>
+            <p className="text-gray-600 mt-2">Enter the demo OTP sent to your phone</p>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Demo OTP Verification</CardTitle>
+              <CardDescription>No SMS is sent. Use the demo code below for testing.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handlePassengerOtpVerify} className="space-y-6">
+                <div className="rounded-xl border border-[#4B0F14]/20 bg-[#4B0F14]/5 p-4 text-center">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Demo OTP Code</p>
+                  <p className="mt-1 text-3xl font-black tracking-[0.2em] text-[#4B0F14]">{demoOtp}</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="otp">Enter 6-Digit OTP</Label>
+                  <Input
+                    id="otp"
+                    type="text"
+                    placeholder="Enter code"
+                    value={enteredOtp}
+                    onChange={(e) => setEnteredOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    maxLength={6}
+                    className="text-center font-mono text-2xl tracking-[0.1em] h-12"
+                    required
+                  />
+                </div>
+
+                <Button type="submit" className="w-full" disabled={enteredOtp.length !== 6}>
+                  Verify OTP
+                </Button>
+
+                <div className="text-center">
+                  {otpCanResend ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextOtp = createDemoOtp();
+                        setDemoOtp(nextOtp);
+                        setOtpResendTimer(60);
+                        setOtpCanResend(false);
+                        toast.success(`New demo OTP: ${nextOtp}`, { duration: 10000 });
+                      }}
+                      className="text-sm font-semibold text-[#4B0F14] hover:underline"
+                    >
+                      Resend Demo OTP
+                    </button>
+                  ) : (
+                    <p className="text-xs text-gray-500">
+                      Resend in {otpResendTimer} seconds
+                    </p>
+                  )}
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setStep("passengerPhone")}
+                  className="w-full"
+                >
+                  Change Phone Number
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // 3.3. Passenger Step 3: Signup Form (Email + Password)
+  if (step === "passengerInfo") {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#FFF8E7] to-white flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="flex justify-center mb-4">
+              <Navigation className="h-12 w-12 text-[#4B0F14]" />
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900">Create Account</h1>
+            <p className="text-gray-600 mt-2">Enter your email and password to complete registration</p>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Account Details</CardTitle>
+              <CardDescription>Fill in your information to continue</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handlePassengerRegisterSubmit} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="your.email@example.com"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value.trim() })}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter a strong password"
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      className="pr-14"
+                      required
+                      minLength={8}
+                      maxLength={30}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-2 flex !h-full !min-h-0 !w-9 !min-w-0 items-center justify-center p-0 text-gray-400 hover:text-gray-600"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Minimum 8 characters. Any letters, numbers, or special characters are allowed.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirm Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="confirmPassword"
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="Re-enter password"
+                      value={formData.confirmPassword}
+                      onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                      className="pr-14"
+                      required
+                      minLength={8}
+                      maxLength={30}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute inset-y-0 right-2 flex !h-full !min-h-0 !w-9 !min-w-0 items-center justify-center p-0 text-gray-400 hover:text-gray-600"
+                      aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className={cn(
+                  "flex items-start gap-3 rounded-xl border p-3",
+                  showValidationErrors && !agreedToTerms
+                    ? "border-red-200 bg-red-50"
+                    : "border-[rgba(75,15,20,0.1)] bg-[rgba(75,15,20,0.03)]"
+                )}>
+                  <Checkbox
+                    id="terms"
+                    checked={agreedToTerms}
+                    onCheckedChange={(checked) => setAgreedToTerms(checked as boolean)}
+                    className="mt-1"
+                    required
+                  />
+                  <div className="min-w-0 flex-1 text-sm font-medium leading-6 text-gray-800">
+                    <label htmlFor="terms" className="cursor-pointer">
+                      <span className="text-red-500">*</span> I agree to the{" "}
+                    </label>
+                    <button
+                      type="button"
+                      className="inline !h-auto !min-h-0 !min-w-0 p-0 align-baseline text-sm font-semibold leading-6 text-[#4B0F14] hover:underline"
+                      onClick={(e) => { e.preventDefault(); setShowTermsPopup(true); }}
+                    >
+                      Terms &amp; Conditions
+                    </button>{" "}
+                    and{" "}
+                    <button
+                      type="button"
+                      className="inline !h-auto !min-h-0 !min-w-0 p-0 align-baseline text-sm font-semibold leading-6 text-[#4B0F14] hover:underline"
+                      onClick={(e) => { e.preventDefault(); setShowPrivacyPopup(true); }}
+                    >
+                      Privacy Policy
+                    </button>
+                  </div>
+                </div>
+
+                {/* Terms Popup */}
+                <Dialog open={showTermsPopup} onOpenChange={setShowTermsPopup}>
+                  <DialogContent className="max-w-sm max-h-[70vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Terms &amp; Conditions</DialogTitle>
+                    </DialogHeader>
+                    <div className="text-sm text-gray-600 space-y-3 leading-relaxed">
+                      <p>By using Arangkada, you agree to use the platform lawfully, treat all users respectfully, and provide accurate information.</p>
+                      <p>Passengers must pay agreed fares and must not damage driver vehicles. Drivers must hold valid licenses, comply with safety standards, and complete accepted rides.</p>
+                      <p>Driver accounts require admin approval before accepting rides. Arangkada may suspend accounts that violate these Terms.</p>
+                      <p>Arangkada is a technology intermediary and is not liable for the conduct of drivers or passengers.</p>
+                      <button
+                        type="button"
+                        className="text-[#4B0F14] hover:underline text-sm font-medium"
+                        onClick={() => { setShowTermsPopup(false); navigate("/terms"); }}
+                      >
+                        Read the full Terms &amp; Conditions →
+                      </button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                {/* Privacy Policy Popup */}
+                <Dialog open={showPrivacyPopup} onOpenChange={setShowPrivacyPopup}>
+                  <DialogContent className="max-w-sm max-h-[70vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Privacy Policy</DialogTitle>
+                    </DialogHeader>
+                    <div className="text-sm text-gray-600 space-y-3 leading-relaxed">
+                      <p>Arangkada collects your name, phone number, location data, and ride history to provide our services.</p>
+                      <p>Your location is shared with your matched driver or passenger only during an active ride. We do not sell your personal data.</p>
+                      <p>Driver documents are used solely for identity verification and admin approval. You may access, correct, or delete your data through the app settings or by contacting us.</p>
+                      <p>We retain ride records for at least 3 years for legal compliance.</p>
+                      <button
+                        type="button"
+                        className="text-[#4B0F14] hover:underline text-sm font-medium"
+                        onClick={() => { setShowPrivacyPopup(false); navigate("/privacy"); }}
+                      >
+                        Read the full Privacy Policy →
+                      </button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={loading}
+                >
+                  {loading ? "Completing Registration..." : "Complete Registration"}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setStep("passengerOtp")}
+                  className="w-full"
+                >
+                  Back
                 </Button>
               </form>
             </CardContent>

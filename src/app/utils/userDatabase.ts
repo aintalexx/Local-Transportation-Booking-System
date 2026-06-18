@@ -97,7 +97,7 @@ export function registerUser(userData: UserData): { success: boolean; message: s
       ...userData,
       username: userData.username.trim(),
       phoneNumber: formatPHPhoneInput(userData.phoneNumber),
-      email: userData.email.trim(),
+      email: (userData.email || "").trim(),
       displayName: normalizeDisplayName(userData.displayName),
       suffix: normalizeOptionalSuffix(userData.suffix),
     };
@@ -110,11 +110,6 @@ export function registerUser(userData: UserData): { success: boolean; message: s
     const phoneCheck = validatePHPhone(normalizedUser.phoneNumber);
     if (!phoneCheck.valid) {
       return { success: false, message: phoneCheck.message };
-    }
-
-    const emailCheck = validateEmail(normalizedUser.email);
-    if (!emailCheck.valid) {
-      return { success: false, message: emailCheck.message };
     }
 
     const passwordCheck = validatePassword(normalizedUser.password);
@@ -132,8 +127,14 @@ export function registerUser(userData: UserData): { success: boolean; message: s
       return { success: false, message: "Phone number already registered" };
     }
 
-    if (emailExists(normalizedUser.email)) {
-      return { success: false, message: "Email already registered" };
+    if (normalizedUser.role !== "driver") {
+      const emailCheck = validateEmail(normalizedUser.email);
+      if (!emailCheck.valid) {
+        return { success: false, message: emailCheck.message };
+      }
+      if (emailExists(normalizedUser.email)) {
+        return { success: false, message: "This email is already used. Please try a different email address." };
+      }
     }
 
     // Add new user to database
