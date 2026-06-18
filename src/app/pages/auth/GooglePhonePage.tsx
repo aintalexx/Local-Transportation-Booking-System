@@ -7,6 +7,7 @@ import { Label } from "../../components/ui/label";
 import { Navigation, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
+import logoImg from "../../../imports/logo.png";
 import { createDemoOtp } from "../../utils/demoOtp";
 import { phoneExists } from "../../utils/userDatabase";
 import { formatPHPhoneInput, validatePHPhone } from "../../utils/validators";
@@ -68,7 +69,9 @@ export default function GooglePhonePage() {
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <div className="mb-4 flex justify-center">
-            <Navigation className="h-12 w-12 text-[#4B0F14]" />
+            <div className="flex items-center justify-center overflow-hidden w-12 h-12 rounded-2xl bg-white border border-[#D4AF37]/30 shadow-sm">
+              <img src={logoImg} alt="Arangkada Logo" className="w-full h-full object-contain p-1" />
+            </div>
           </div>
           <h1 className="text-3xl font-bold text-gray-900">Add Phone Number</h1>
           <p className="mt-2 text-gray-600">Verify a Philippine mobile number to finish your Google sign-up.</p>

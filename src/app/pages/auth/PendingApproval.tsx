@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { Clock, CheckCircle, Phone, ArrowLeft, AlertTriangle, XCircle, LogOut, RefreshCw } from "lucide-react";
 import { useUser } from "../../context/UserContext";
+import logoImg from "../../../imports/logo.png";
 import { getSupabaseDriverByPhone } from "../../utils/supabaseDrivers";
 import { findUser } from "../../utils/userDatabase";
 import { formatPHPhoneInput } from "../../utils/validators";
@@ -165,10 +166,10 @@ export default function PendingApproval() {
       >
         <div className="flex items-center gap-3 mb-6">
           <div
-            className="h-10 w-10 rounded-xl flex items-center justify-center"
-            style={{ background: "rgba(212,175,55,0.2)", border: "1px solid rgba(212,175,55,0.3)" }}
+            className="h-10 w-10 rounded-xl flex items-center justify-center overflow-hidden"
+            style={{ background: "white", border: "1px solid rgba(212,175,55,0.3)" }}
           >
-            <span style={{ fontSize: 20 }}>🛺</span>
+            <img src={logoImg} alt="Arangkada Logo" className="w-full h-full object-contain p-1" />
           </div>
           <div>
             <p style={{ color: "#FFF8E7", fontSize: 16, fontWeight: 900, lineHeight: 1 }}>Arangkada</p>

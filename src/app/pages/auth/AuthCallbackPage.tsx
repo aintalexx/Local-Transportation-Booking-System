@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
-import { Navigation } from "lucide-react";
+import logoImg from "../../../imports/logo.png";
 import { getSupabaseConfigMessage, supabase } from "../../lib/supabase";
 import { useUser } from "../../context/UserContext";
 import {
@@ -90,7 +90,9 @@ export default function AuthCallbackPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-[#FFF8E7] to-white p-4">
       <div className="w-full max-w-sm rounded-2xl border bg-white p-6 text-center shadow-sm">
-        <Navigation className="mx-auto mb-4 h-10 w-10 text-[#4B0F14]" />
+        <div className="flex items-center justify-center overflow-hidden mx-auto mb-4 w-10 h-10 rounded-xl bg-white border border-[#D4AF37]/30 shadow-sm">
+          <img src={logoImg} alt="Arangkada Logo" className="w-full h-full object-contain p-1" />
+        </div>
         <h1 className="text-xl font-bold text-gray-900">Account Verification</h1>
         <p className="mt-2 text-sm text-gray-600">{message}</p>
       </div>

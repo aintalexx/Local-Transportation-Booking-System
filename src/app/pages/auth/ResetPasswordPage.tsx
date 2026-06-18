@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { ArrowLeft, Eye, EyeOff, KeyRound, Navigation } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, KeyRound } from "lucide-react";
 import { toast } from "sonner";
+import logoImg from "../../../imports/logo.png";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "../../components/ui/input-otp";
@@ -151,7 +152,9 @@ export default function ResetPasswordPage() {
           <ArrowLeft size={18} />
           <span style={{ fontSize: 14 }}>Back to Login</span>
         </button>
-        <Navigation className="mb-4 h-11 w-11 text-[#D4AF37]" />
+        <div className="flex items-center justify-center overflow-hidden mb-4" style={{ width: 44, height: 44, borderRadius: 14, background: "white", border: "1.5px solid rgba(212,175,55,0.3)" }}>
+          <img src={logoImg} alt="Arangkada Logo" className="w-full h-full object-contain p-1" />
+        </div>
         <h1 style={{ color: "#FFF8E7", fontSize: 26, fontWeight: 800, lineHeight: 1.1 }}>Set new password</h1>
         <p style={{ color: "rgba(255,248,231,0.68)", fontSize: 14, marginTop: 6 }}>
           {isLocalReset ? `Recovering ${state.accountLabel || "your account"}` : "Complete your Supabase password reset."}

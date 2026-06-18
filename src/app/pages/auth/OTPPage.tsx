@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "../../components/ui/input-otp";
 import { Navigation } from "lucide-react";
 import { toast } from "sonner";
+import logoImg from "../../../imports/logo.png";
 import { useUser } from "../../context/UserContext";
 import { DEMO_OTP_RESEND_SECONDS, createDemoOtp } from "../../utils/demoOtp";
 import { registerUser, updateUser, type UserData } from "../../utils/userDatabase";
@@ -244,7 +245,9 @@ export default function OTPPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
-            <Navigation className="h-12 w-12 text-[#4B0F14]" />
+            <div className="flex items-center justify-center overflow-hidden w-12 h-12 rounded-2xl bg-white border border-[#D4AF37]/30 shadow-sm">
+              <img src={logoImg} alt="Arangkada Logo" className="w-full h-full object-contain p-1" />
+            </div>
           </div>
           <h1 className="text-3xl font-bold text-gray-900">Verify Your Number</h1>
           <p className="text-gray-600 mt-2">

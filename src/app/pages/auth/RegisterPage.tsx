@@ -40,6 +40,20 @@ import { signInWithGoogle, signUpWithEmailPassword } from "../../utils/supabaseA
 import { registerSupabaseDriver, uploadBase64ToStorage } from "../../utils/supabaseDrivers";
 import { profileContactExists } from "../../utils/supabaseProfiles";
 import { useUser } from "../../context/UserContext";
+import logoImg from "../../../imports/logo.png";
+
+const RegisterLogo = ({ size = 48 }: { size?: number }) => (
+  <div
+    className="flex items-center justify-center overflow-hidden mx-auto bg-white border border-[#D4AF37]/30 shadow-sm"
+    style={{
+      width: size,
+      height: size,
+      borderRadius: size / 3,
+    }}
+  >
+    <img src={logoImg} alt="Arangkada Logo" className="w-full h-full object-contain p-1" />
+  </div>
+);
 
 const MAX_DRIVER_UPLOAD_SIZE = 400; // Reduced from 900 to prevent localStorage quota exceeded
 const DRIVER_UPLOAD_QUALITY = 0.5; // Reduced from 0.72
@@ -881,7 +895,7 @@ export default function RegisterPage() {
         <div className="w-full max-w-2xl">
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
-              <Navigation className="h-12 w-12 text-[#4B0F14]" />
+              <RegisterLogo />
             </div>
             <h1 className="text-3xl font-bold text-gray-900">Join Arangkada</h1>
             <p className="text-gray-600 mt-2">Choose how you want to use our service</p>
@@ -995,7 +1009,7 @@ export default function RegisterPage() {
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
-              <Navigation className="h-12 w-12 text-[#4B0F14]" />
+              <RegisterLogo />
             </div>
             <h1 className="text-3xl font-bold text-gray-900">Driver Sign-Up</h1>
             <p className="text-gray-600 mt-2">Enter your phone number to begin</p>
@@ -1053,7 +1067,7 @@ export default function RegisterPage() {
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
-              <Navigation className="h-12 w-12 text-[#4B0F14]" />
+              <RegisterLogo />
             </div>
             <h1 className="text-3xl font-bold text-gray-900">Verify Number</h1>
             <p className="text-gray-600 mt-2">Enter the demo OTP sent to your phone</p>
@@ -1134,7 +1148,7 @@ export default function RegisterPage() {
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
-              <Navigation className="h-12 w-12 text-[#4B0F14]" />
+              <RegisterLogo />
             </div>
             <h1 className="text-3xl font-bold text-gray-900">Driver Profile</h1>
             <p className="text-gray-600 mt-2">Please enter your basic information</p>
@@ -1372,7 +1386,7 @@ export default function RegisterPage() {
         <div className="w-full max-w-md">
           <div className="text-center mb-6">
             <div className="flex justify-center mb-4">
-              <Navigation className="h-10 w-10 text-[#4B0F14]" />
+              <RegisterLogo size={40} />
             </div>
             <h1 className="text-2xl font-bold text-gray-900">Driver Sign-Up</h1>
             <p className="text-gray-600 mt-1 text-sm">Step 2 of 2 — Document Submission</p>
@@ -1657,7 +1671,7 @@ export default function RegisterPage() {
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
-              <Navigation className="h-12 w-12 text-[#4B0F14]" />
+              <RegisterLogo />
             </div>
             <h1 className="text-3xl font-bold text-gray-900">Passenger Sign-Up</h1>
             <p className="text-gray-600 mt-2">Enter your phone number to begin</p>
@@ -1715,7 +1729,7 @@ export default function RegisterPage() {
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
-              <Navigation className="h-12 w-12 text-[#4B0F14]" />
+              <RegisterLogo />
             </div>
             <h1 className="text-3xl font-bold text-gray-900">Verify Number</h1>
             <p className="text-gray-600 mt-2">Enter the demo OTP sent to your phone</p>
@@ -1801,7 +1815,7 @@ export default function RegisterPage() {
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
-              <Navigation className="h-12 w-12 text-[#4B0F14]" />
+              <RegisterLogo />
             </div>
             <h1 className="text-3xl font-bold text-gray-900">Passenger Profile</h1>
             <p className="text-gray-600 mt-2">Please enter your basic information</p>
@@ -2175,7 +2189,7 @@ export default function RegisterPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
-            <Navigation className="h-12 w-12 text-[#4B0F14]" />
+            <RegisterLogo />
           </div>
           <h1 className="text-3xl font-bold text-gray-900">Create Account</h1>
           <p className="text-gray-600 mt-2">

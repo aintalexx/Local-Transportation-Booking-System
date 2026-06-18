@@ -4,6 +4,7 @@ import { Bike, Navigation, MapPin, Shield, Star, Info, ArrowRight, ArrowLeft } f
 import { Button } from "../components/ui/button";
 
 // Static imports of developer assets from src/imports
+import logoImg from "../../imports/logo.png";
 import alegarbesImg from "../../imports/alegarbes.png";
 import roblesImg from "../../imports/robles.png";
 import tatelImg from "../../imports/tatel.png";
@@ -114,7 +115,7 @@ export default function OnboardingPage() {
       {/* Top Header */}
       <div className="flex justify-between items-center max-w-6xl mx-auto w-full mb-4">
         <div className="flex items-center gap-2">
-          <Navigation className="h-6 w-6 text-[#D4AF37]" />
+          <img src={logoImg} alt="Arangkada Logo" className="h-8 w-8 object-contain rounded-full bg-white p-0.5" />
           <span className="font-extrabold text-xl tracking-wider text-[#FFF8E7]">ARANGKADA</span>
         </div>
         {currentSlide < slides.length - 1 && (

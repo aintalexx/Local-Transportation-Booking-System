@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { ArrowLeft, Mail, Navigation, UserRound } from "lucide-react";
 import { toast } from "sonner";
+import logoImg from "../../../imports/logo.png";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { createDemoOtp } from "../../utils/demoOtp";
@@ -71,7 +72,9 @@ export default function ForgotPasswordPage() {
           <ArrowLeft size={18} />
           <span style={{ fontSize: 14 }}>Back to Login</span>
         </button>
-        <Navigation className="mb-4 h-11 w-11 text-[#D4AF37]" />
+        <div className="flex items-center justify-center overflow-hidden mb-4" style={{ width: 44, height: 44, borderRadius: 14, background: "white", border: "1.5px solid rgba(212,175,55,0.3)" }}>
+          <img src={logoImg} alt="Arangkada Logo" className="w-full h-full object-contain p-1" />
+        </div>
         <h1 style={{ color: "#FFF8E7", fontSize: 26, fontWeight: 800, lineHeight: 1.1 }}>Recover password</h1>
         <p style={{ color: "rgba(255,248,231,0.68)", fontSize: 14, marginTop: 6 }}>
           Reset access for passenger, driver, or admin accounts.

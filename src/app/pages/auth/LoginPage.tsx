@@ -11,6 +11,7 @@ import { getSupabaseDriverByPhone } from "../../utils/supabaseDrivers";
 import { createDemoOtp } from "../../utils/demoOtp";
 import { Phone } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import logoImg from "../../../imports/logo.png";
 
 const DEFAULT_ADMIN_EMAIL = "admin@arangkada.ph";
 const DEFAULT_ADMIN_USERNAME = "admin";
@@ -420,8 +421,8 @@ export default function LoginPage() {
           <span style={{ fontSize: 14 }}>Back</span>
         </button>
         <div className="flex items-center gap-3 mb-1">
-          <div className="flex items-center justify-center" style={{ width: 44, height: 44, borderRadius: 14, background: "rgba(212,175,55,0.18)", border: "1.5px solid rgba(212,175,55,0.3)" }}>
-            <span style={{ fontSize: 22 }}>🛺</span>
+          <div className="flex items-center justify-center overflow-hidden" style={{ width: 44, height: 44, borderRadius: 14, background: "white", border: "1.5px solid rgba(212,175,55,0.3)" }}>
+            <img src={logoImg} alt="Arangkada Logo" className="w-full h-full object-contain p-1" />
           </div>
           <div>
             <p style={{ color: "#FFF8E7", fontSize: 20, fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1 }}>Arangkada</p>
