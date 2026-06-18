@@ -19,7 +19,7 @@ import {
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "../../components/ui/utils";
-import { emailExists, usernameExists, phoneExists, registerUser, getAllUsers, updateUser, type UserData } from "../../utils/userDatabase";
+import { emailExists, usernameExists, phoneExists, registerUser, getAllUsers, updateUser, deleteUser, type UserData } from "../../utils/userDatabase";
 import {
   calculateAge,
   firstInvalid,
@@ -125,6 +125,28 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 export default function RegisterPage() {
   const navigate = useNavigate();
   const { setUser } = useUser();
+  const syncLocalDuplicates = async (email: string, phone: string) => {
+    try {
+      const contactCheck = await profileContactExists(email, phone);
+      const localUsers = getAllUsers();
+      
+      if (phone && !contactCheck.phoneExists) {
+        const duplicatePhoneUser = localUsers.find(u => formatPHPhoneInput(u.phoneNumber) === phone);
+        if (duplicatePhoneUser) {
+          deleteUser(duplicatePhoneUser.username);
+        }
+      }
+      
+      if (email && !contactCheck.emailExists) {
+        const duplicateEmailUser = localUsers.find(u => u.email?.trim().toLowerCase() === email.trim().toLowerCase());
+        if (duplicateEmailUser) {
+          deleteUser(duplicateEmailUser.username);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to sync local storage duplicate checking with Supabase:", e);
+    }
+  };
   const [step, setStep] = useState<"role" | "details" | "driverPhone" | "driverOtp" | "driverInfo" | "driverDocs" | "passengerPhone" | "passengerOtp" | "passengerInfo">("role");
   const [role, setRole] = useState<"passenger" | "driver">("passenger");
   const [demoOtp, setDemoOtp] = useState("");
@@ -271,7 +293,7 @@ export default function RegisterPage() {
     }
   };
 
-  const handlePassengerPhoneSubmit = (e: React.FormEvent) => {
+  const handlePassengerPhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
     const phoneCheck = validatePHPhone(normalizedPhone);
@@ -279,6 +301,8 @@ export default function RegisterPage() {
       toast.error(phoneCheck.message);
       return;
     }
+
+    await syncLocalDuplicates("", normalizedPhone);
 
     if (phoneExists(normalizedPhone)) {
       toast.error("Phone number already registered. Please login or use a different number.");
@@ -341,15 +365,17 @@ export default function RegisterPage() {
       return;
     }
 
-    if (phoneExists(normalizedPhone)) {
-      toast.error("Phone number already registered. Please login or use a different number.");
-      return;
-    }
-
     const normalizedEmail = formData.email.trim().toLowerCase();
     const emailCheck = validateAuthEmail(normalizedEmail);
     if (!emailCheck.valid) {
       toast.error(emailCheck.message);
+      return;
+    }
+
+    await syncLocalDuplicates(normalizedEmail, normalizedPhone);
+
+    if (phoneExists(normalizedPhone)) {
+      toast.error("Phone number already registered. Please login or use a different number.");
       return;
     }
 
@@ -613,14 +639,18 @@ export default function RegisterPage() {
 
     // For passengers: block duplicate phone/email. For drivers: allow re-submission
     // (their existing record will be updated with new document photos)
-    if (role === "passenger" && phoneExists(normalizedPhone)) {
-      toast.error("Phone number already registered. Please login or use a different number.");
-      return;
-    }
+    if (role === "passenger") {
+      await syncLocalDuplicates(normalizedEmail, normalizedPhone);
+      
+      if (phoneExists(normalizedPhone)) {
+        toast.error("Phone number already registered. Please login or use a different number.");
+        return;
+      }
 
-    if (role === "passenger" && emailExists(normalizedEmail)) {
-      toast.error(EMAIL_ALREADY_REGISTERED_MESSAGE);
-      return;
+      if (emailExists(normalizedEmail)) {
+        toast.error(EMAIL_ALREADY_REGISTERED_MESSAGE);
+        return;
+      }
     }
 
     if (!agreedToTerms) {
