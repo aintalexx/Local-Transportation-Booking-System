@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
 import { authenticateUser, findUser, getAllUsers } from "../../utils/userDatabase";
 import { formatPHPhoneInput } from "../../utils/validators";
-import { resolveAuthEmailForLogin, signInWithEmailPassword, signInWithGoogle } from "../../utils/supabaseAuth";
+import { resolveAuthEmailForLogin, signInWithEmailPassword } from "../../utils/supabaseAuth";
 import { getRoleHomePath } from "../../utils/roleRouting";
 import { getSupabaseDriverByPhone } from "../../utils/supabaseDrivers";
 import { createDemoOtp } from "../../utils/demoOtp";
@@ -20,7 +20,6 @@ export default function LoginPage() {
   const [driverPhone, setDriverPhone] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -251,18 +250,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleGoogleLogin = async () => {
-    setGoogleLoading(true);
-    try {
-      await signInWithGoogle("passenger");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Google login failed. Please try again.";
-      toast.error(message);
-    } finally {
-      setGoogleLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#FFF8E7" }}>
       {/* Maroon header */}
@@ -407,29 +394,6 @@ export default function LoginPage() {
           >
             <span style={{ color: "#D4AF37", fontSize: 16, fontWeight: 800 }}>{loading ? "Logging in..." : "Login to Account"}</span>
           </button>
-
-          {loginType !== "driver" && (
-            <>
-              <div className="flex items-center gap-3">
-                <div className="h-px flex-1 bg-[rgba(75,15,20,0.16)]" />
-                <span style={{ color: "#7a6a5a", fontSize: 12, fontWeight: 700 }}>or</span>
-                <div className="h-px flex-1 bg-[rgba(75,15,20,0.16)]" />
-              </div>
-
-              <button
-                type="button"
-                onClick={handleGoogleLogin}
-                disabled={googleLoading}
-                className="flex h-14 w-full items-center justify-center gap-3 rounded-2xl border-2 bg-white"
-                style={{ borderColor: "rgba(75,15,20,0.12)", color: "#4B0F14", fontWeight: 800 }}
-              >
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-sm font-bold">
-                  G
-                </span>
-                {googleLoading ? "Opening Google..." : "Continue with Google"}
-              </button>
-            </>
-          )}
 
           <p className="text-center" style={{ color: "#7a6a5a", fontSize: 12, lineHeight: 1.5 }}>
             By signing in, you agree to the{" "}
