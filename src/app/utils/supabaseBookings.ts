@@ -81,6 +81,7 @@ export async function createSupabaseBooking(input: CreateSupabaseBookingInput): 
       ride_type: input.rideType || "solo",
       passenger_count: input.passengerCount || 1,
       reserve_entire: input.reserveEntire || false,
+      status: "pending",
       discount_type: input.discount?.type || null,
       discount_amount: input.discount?.amount ?? null,
     })
@@ -88,7 +89,7 @@ export async function createSupabaseBooking(input: CreateSupabaseBookingInput): 
     .single();
 
   if (error) {
-    console.info("Supabase booking insert failed. Falling back to local booking:", error.message);
+    console.info("Supabase booking insert failed:", error.message);
     return null;
   }
 

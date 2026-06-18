@@ -27,6 +27,7 @@ export default function DriverDashboard() {
   const [isOnline, setIsOnline] = useState(true);
   const [pendingBookings, setPendingBookings] = useState<BookingData[]>([]);
   const [dismissedBookingIds, setDismissedBookingIds] = useState<Set<string>>(new Set());
+  const canReceiveRequests = isApprovedActiveDriver(currentUser);
 
   // Check for active booking on mount
   useEffect(() => {
@@ -49,7 +50,7 @@ export default function DriverDashboard() {
 
   // Load pending bookings
   useEffect(() => {
-    if (!isOnline || !currentUser) {
+    if (!isOnline || !currentUser || !canReceiveRequests) {
       setPendingBookings([]);
       return;
     }
@@ -65,7 +66,7 @@ export default function DriverDashboard() {
     });
 
     return unsubscribe;
-  }, [isOnline, currentUser, activeBooking, dismissedBookingIds]);
+  }, [isOnline, currentUser, activeBooking, dismissedBookingIds, canReceiveRequests]);
 
   const driver = {
     name: currentUser ? formatPersonName(currentUser, "Driver") : "Driver",
@@ -151,8 +152,16 @@ export default function DriverDashboard() {
           </Alert>
         )}
 
+        {isOnline && !canReceiveRequests && (
+          <Alert className="mb-4 border-2 border-amber-300 bg-gradient-to-br from-amber-50 to-amber-100/50 shadow-sm animate-slide-down">
+            <AlertDescription className="text-amber-900 font-medium">
+              Your driver account must be approved and active before receiving ride requests.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Incoming Ride Requests */}
-        {pendingBookings.length > 0 && isOnline && (
+        {pendingBookings.length > 0 && isOnline && canReceiveRequests && (
           <div className="mb-4 space-y-3 animate-scale-in">
             <h2 className="text-lg font-bold text-gray-900">Incoming Ride Requests</h2>
             {pendingBookings.map((booking) => (
@@ -250,7 +259,7 @@ export default function DriverDashboard() {
         )}
 
         {/* No Requests Message */}
-        {pendingBookings.length === 0 && isOnline && (
+        {pendingBookings.length === 0 && isOnline && canReceiveRequests && (
           <Card className="mb-4 animate-fade-in shadow-sm">
             <CardContent className="pt-8 pb-8 text-center">
               <div className="h-20 w-20 bg-gradient-to-br from-green-100 to-green-200 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-sm animate-pulse-slow">
@@ -343,6 +352,12 @@ export default function DriverDashboard() {
       </div>
     </div>
   );
+}
+
+function isApprovedActiveDriver(user: ReturnType<typeof useUser>["user"]): boolean {
+  if (!user || user.role !== "driver") return false;
+  const accountStatus = user.accountStatus || "Active";
+  return user.approvalStatus === "approved" && accountStatus === "Active";
 }
 
 function removeDuplicateBookings(bookings: BookingData[]): BookingData[] {
