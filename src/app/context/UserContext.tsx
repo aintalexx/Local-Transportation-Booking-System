@@ -4,7 +4,6 @@ interface UserData {
   supabaseId?: string;
   displayName?: string;
   username: string;
-  password: string;
   phoneNumber: string;
   surname: string;
   firstName: string;
@@ -22,10 +21,16 @@ interface UserData {
   vehicleType?: string;
   plateNumber?: string;
   driverLicensePhoto?: string;
+  licenseNumber?: string;
+  validIdPhoto?: string;
+  orCrPhoto?: string;
+  clearancePhoto?: string;
+  vehiclePhoto?: string;
   vehicleColor?: string;
   memberSince?: string;
   approvalStatus?: "pending" | "approved" | "rejected";
   profilePhoto?: string;
+  accountStatus?: "Active" | "Blocked" | "Archived" | "Suspended";
 }
 
 interface UserContextType {
@@ -36,13 +41,6 @@ interface UserContextType {
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
-function sanitizeSessionUser(userData: UserData): UserData {
-  return {
-    ...userData,
-    password: "",
-  };
-}
-
 export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<UserData | null>(() => {
     try {
@@ -50,11 +48,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       if (!currentUser) return null;
 
       const parsedUser = JSON.parse(currentUser) as UserData;
-      const sanitizedUser = sanitizeSessionUser(parsedUser);
-      if (parsedUser.password) {
-        localStorage.setItem("current_user", JSON.stringify(sanitizedUser));
-      }
-      return sanitizedUser;
+      return parsedUser;
     } catch {
       localStorage.removeItem("current_user");
       return null;
@@ -64,8 +58,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const setUser = useCallback((userData: UserData | null) => {
     setUserState(userData);
     if (userData) {
-      // Store current logged-in user
-      localStorage.setItem("current_user", JSON.stringify(sanitizeSessionUser(userData)));
+      // Store current logged-in user (without password field)
+      localStorage.setItem("current_user", JSON.stringify(userData));
       console.log("Current user set:", userData.username);
     } else {
       localStorage.removeItem("current_user");

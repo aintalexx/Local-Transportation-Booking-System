@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { BookingData, getBooking, getPassengerActiveBooking, getDriverActiveBooking, getPendingBookings } from "../utils/bookingDatabase";
+import { dedupePendingBookings } from "../utils/bookingDeduplication";
 import {
   getSupabaseBooking,
   getSupabaseDriverActiveBooking,
@@ -16,50 +17,6 @@ interface BookingContextType {
 
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
 
-function getBookingCreatedTime(booking: BookingData): number {
-  const value = new Date(booking.createdAt || 0).getTime();
-  return Number.isFinite(value) ? value : 0;
-}
-
-function getPendingBookingKey(booking: BookingData): string {
-  const passengerKey = [
-    booking.passengerUsername,
-    booking.passengerPhone,
-    booking.passengerName,
-  ]
-    .filter(Boolean)
-    .join("|")
-    .trim()
-    .toLowerCase();
-
-  return passengerKey || booking.id;
-}
-
-function dedupePendingBookings(bookings: BookingData[]): BookingData[] {
-  const latestByPassenger = new Map<string, BookingData>();
-
-  [...bookings]
-    .sort((a, b) => getBookingCreatedTime(b) - getBookingCreatedTime(a))
-    .forEach((booking) => {
-      const key = getPendingBookingKey(booking);
-      const existing = latestByPassenger.get(key);
-
-      if (!existing) {
-        latestByPassenger.set(key, booking);
-        return;
-      }
-
-      const bookingLooksSupabase = booking.id.includes("-");
-      const existingLooksLocal = !existing.id.includes("-");
-      if (bookingLooksSupabase && existingLooksLocal) {
-        latestByPassenger.set(key, booking);
-      }
-    });
-
-  return Array.from(latestByPassenger.values())
-    .sort((a, b) => getBookingCreatedTime(b) - getBookingCreatedTime(a));
-}
-
 export function BookingProvider({ children }: { children: ReactNode }) {
   const [activeBooking, setActiveBookingState] = useState<BookingData | null>(null);
   const [pendingBookings, setPendingBookings] = useState<BookingData[]>([]);
@@ -73,14 +30,14 @@ export function BookingProvider({ children }: { children: ReactNode }) {
     setActiveBookingState(booking);
   }, []);
 
-  // Poll for booking updates every 2 seconds
+  // Poll for booking updates every 7 seconds (with some variance to avoid thundering herd)
   useEffect(() => {
     const interval = setInterval(() => {
       refreshBooking();
-    }, 2000);
+    }, 5000 + Math.random() * 3000); // 5-8 second interval with random variance
 
     return () => clearInterval(interval);
-  }, []);
+  }, [refreshBooking]);
 
   // Refresh booking data when trigger changes
   useEffect(() => {

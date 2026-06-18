@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
 import { useBooking } from "../../context/BookingContext";
 import { getPendingBookings, acceptBooking, getDriverActiveBooking } from "../../utils/bookingDatabase";
+import { dedupePendingBookings } from "../../utils/bookingDeduplication";
 import {
   acceptSupabaseBooking,
   getSupabaseDriverActiveBooking,
@@ -18,37 +19,6 @@ import {
 } from "../../utils/supabaseBookings";
 import { setDriverOnlineStatus, syncSupabaseProfile } from "../../utils/supabaseProfiles";
 import { formatPersonName } from "../../utils/nameFormatting";
-
-function getPassengerRequestKey(booking: any): string {
-  const name = String(booking.passengerName || "").trim().toLowerCase();
-  if (name) return `name:${name}`;
-
-  const phone = String(booking.passengerPhone || "").replace(/\D/g, "");
-  if (phone) return `phone:${phone}`;
-
-  return `booking:${booking.id}`;
-}
-
-function getCreatedTime(booking: any): number {
-  const value = new Date(booking.createdAt || 0).getTime();
-  return Number.isFinite(value) ? value : 0;
-}
-
-function dedupePendingBookings(bookings: any[]): any[] {
-  const latestByPassenger = new Map<string, any>();
-
-  [...bookings]
-    .sort((a, b) => getCreatedTime(b) - getCreatedTime(a))
-    .forEach((booking) => {
-      const key = getPassengerRequestKey(booking);
-      if (!latestByPassenger.has(key)) {
-        latestByPassenger.set(key, booking);
-      }
-    });
-
-  return Array.from(latestByPassenger.values())
-    .sort((a, b) => getCreatedTime(b) - getCreatedTime(a));
-}
 
 export default function DriverDashboard() {
   const navigate = useNavigate();

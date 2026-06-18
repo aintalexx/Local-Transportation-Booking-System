@@ -1,13 +1,93 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { Clock, CheckCircle, Phone, ArrowLeft, AlertTriangle, XCircle, LogOut } from "lucide-react";
+import { Clock, CheckCircle, Phone, ArrowLeft, AlertTriangle, XCircle, LogOut, RefreshCw } from "lucide-react";
 import { useUser } from "../../context/UserContext";
+import { getSupabaseDriverByPhone } from "../../utils/supabaseDrivers";
+import { findUser } from "../../utils/userDatabase";
+import { formatPHPhoneInput } from "../../utils/validators";
+import { toast } from "sonner";
 
 export default function PendingApproval() {
   const { user, setUser } = useUser();
   const navigate = useNavigate();
+  const [isChecking, setIsChecking] = useState(false);
+  const [lastCheck, setLastCheck] = useState<Date | null>(null);
 
   const approvalStatus = user?.approvalStatus || "pending";
   const accountStatus = user?.accountStatus || "Active";
+
+  // Auto-refresh approval status every 10 seconds
+  useEffect(() => {
+    if (!user || user.role !== "driver") return;
+
+    const checkApprovalStatus = async () => {
+      setIsChecking(true);
+      try {
+        // Check Supabase first
+        const normalizedPhone = formatPHPhoneInput(user.phoneNumber);
+        let dbDriver = await getSupabaseDriverByPhone(normalizedPhone);
+
+        // Fallback to local database
+        if (!dbDriver) {
+          const localDriver = findUser(normalizedPhone);
+          if (localDriver && localDriver.role === "driver") {
+            dbDriver = {
+              approval_status: localDriver.approvalStatus,
+              account_status: localDriver.accountStatus || "Active",
+            } as any;
+          }
+        }
+
+        if (!dbDriver) {
+          setIsChecking(false);
+          setLastCheck(new Date());
+          return;
+        }
+
+        setLastCheck(new Date());
+
+        // If driver is now approved, redirect to driver dashboard
+        if (dbDriver.approval_status === "approved" && dbDriver.account_status === "Active") {
+          const updatedUser = { ...user, approvalStatus: "approved", accountStatus: "Active" };
+          setUser(updatedUser);
+          toast.success("🎉 Your account has been approved! Welcome aboard!");
+          navigate("/driver", { replace: true });
+          return;
+        }
+
+        // If driver is rejected, show rejection message
+        if (dbDriver.approval_status === "rejected") {
+          const updatedUser = { ...user, approvalStatus: "rejected" };
+          setUser(updatedUser);
+          toast.error("Your application was rejected. Please contact support for more information.");
+          return;
+        }
+
+        // If account is blocked/archived, show that status
+        if (dbDriver.account_status === "Blocked" || dbDriver.account_status === "Archived" || dbDriver.account_status === "Suspended") {
+          const updatedUser = { ...user, accountStatus: dbDriver.account_status };
+          setUser(updatedUser);
+          return;
+        }
+
+        // Still pending, update UI to show we just checked
+        setIsChecking(false);
+      } catch (error) {
+        console.info("Error checking approval status:", error);
+        setIsChecking(false);
+      }
+    };
+
+    // Check immediately on mount
+    void checkApprovalStatus();
+
+    // Then check every 10 seconds
+    const interval = setInterval(() => {
+      void checkApprovalStatus();
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [user, setUser, navigate]);
 
   const handleLogout = () => {
     setUser(null);
@@ -139,6 +219,21 @@ export default function PendingApproval() {
               </div>
             ))}
           </div>
+
+          {/* Auto-check status indicator */}
+          {user?.role === "driver" && (
+            <div
+              className="p-3 rounded-2xl mb-4 flex items-center justify-between"
+              style={{ background: "rgba(46,125,50,0.08)", border: "1.5px solid rgba(46,125,50,0.25)" }}
+            >
+              <div className="flex items-center gap-2">
+                <RefreshCw size={14} color={isChecking ? "#2E7D32" : "#9a8a7a"} className={isChecking ? "animate-spin" : ""} />
+                <span style={{ color: "#2E7D32", fontSize: 12, fontWeight: 600 }}>
+                  {isChecking ? "Checking approval status..." : (lastCheck ? `Last checked: ${lastCheck.toLocaleTimeString()}` : "Auto-checking every 10 seconds")}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Info box */}
           <div

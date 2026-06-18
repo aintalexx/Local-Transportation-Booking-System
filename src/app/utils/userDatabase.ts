@@ -8,7 +8,7 @@ export interface UserData {
   supabaseId?: string;
   displayName?: string;
   username: string;
-  password: string;
+  password?: string; // Optional - only used during authentication
   phoneNumber: string;
   surname: string;
   firstName: string;
