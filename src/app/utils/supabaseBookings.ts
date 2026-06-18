@@ -166,6 +166,31 @@ export async function getSupabasePendingBookings(vehicleType?: string): Promise<
   return (data as SupabaseBookingRow[]).map(mapSupabaseBooking);
 }
 
+export function subscribeToSupabasePendingBookings(
+  onChange: () => void
+): () => void {
+  if (!supabase) return () => undefined;
+
+  const channel = supabase
+    .channel("driver-pending-bookings-realtime")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "bookings",
+      },
+      () => {
+        onChange();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}
+
 export async function getSupabasePassengerBookingHistory(user: UserData): Promise<BookingData[]> {
   if (!supabase) return [];
 

@@ -10,12 +10,12 @@ import { Alert, AlertDescription } from "../../components/ui/alert";
 import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
 import { useBooking } from "../../context/BookingContext";
-import { getPendingBookings, acceptBooking, getDriverActiveBooking } from "../../utils/bookingDatabase";
-import { dedupePendingBookings } from "../../utils/bookingDeduplication";
+import { type BookingData } from "../../utils/bookingDatabase";
 import {
   acceptSupabaseBooking,
   getSupabaseDriverActiveBooking,
   getSupabasePendingBookings,
+  subscribeToSupabasePendingBookings,
 } from "../../utils/supabaseBookings";
 import { setDriverOnlineStatus, syncSupabaseProfile } from "../../utils/supabaseProfiles";
 import { formatPersonName } from "../../utils/nameFormatting";
@@ -25,7 +25,8 @@ export default function DriverDashboard() {
   const { user: currentUser } = useUser();
   const { activeBooking, setActiveBooking, refreshBooking } = useBooking();
   const [isOnline, setIsOnline] = useState(true);
-  const [pendingBookings, setPendingBookings] = useState<any[]>([]);
+  const [pendingBookings, setPendingBookings] = useState<BookingData[]>([]);
+  const [dismissedBookingIds, setDismissedBookingIds] = useState<Set<string>>(new Set());
 
   // Check for active booking on mount
   useEffect(() => {
@@ -36,7 +37,7 @@ export default function DriverDashboard() {
 
     const checkActiveBooking = async () => {
       await syncSupabaseProfile(currentUser);
-      const driverActiveBooking = await getSupabaseDriverActiveBooking(currentUser) || getDriverActiveBooking(currentUser.username);
+      const driverActiveBooking = await getSupabaseDriverActiveBooking(currentUser);
       if (driverActiveBooking) {
         setActiveBooking(driverActiveBooking);
         navigate("/driver/active-ride");
@@ -55,17 +56,16 @@ export default function DriverDashboard() {
 
     const loadBookings = async () => {
       const supabaseBookings = await getSupabasePendingBookings(currentUser.vehicleType || "Tricycle");
-      const localBookings = getPendingBookings(currentUser.vehicleType?.toLowerCase());
-      setPendingBookings(dedupePendingBookings([...supabaseBookings, ...localBookings]));
+      setPendingBookings(removeDuplicateBookings(supabaseBookings).filter(booking => !dismissedBookingIds.has(booking.id)));
     };
 
     void loadBookings();
-    const interval = setInterval(() => {
+    const unsubscribe = subscribeToSupabasePendingBookings(() => {
       void loadBookings();
-    }, 2500);
+    });
 
-    return () => clearInterval(interval);
-  }, [isOnline, currentUser, activeBooking]);
+    return unsubscribe;
+  }, [isOnline, currentUser, activeBooking, dismissedBookingIds]);
 
   const driver = {
     name: currentUser ? formatPersonName(currentUser, "Driver") : "Driver",
@@ -100,30 +100,13 @@ export default function DriverDashboard() {
       return;
     }
 
-    const driverName = formatPersonName(currentUser, currentUser.username);
-    const success = acceptBooking(
-      bookingId,
-      currentUser.username,
-      driverName,
-      currentUser.phoneNumber,
-      currentUser.vehicleType || "Tricycle",
-      currentUser.plateNumber || ""
-    );
-
-    if (success) {
-      const acceptedBooking = getDriverActiveBooking(currentUser.username);
-      if (acceptedBooking) setActiveBooking(acceptedBooking);
-      toast.success("Ride accepted! Navigate to pickup location.");
-      refreshBooking();
-      navigate("/driver/active-ride");
-    } else {
-      toast.error("Failed to accept booking. It may have been taken by another driver.");
-    }
+    toast.error("Failed to accept booking. It may have been taken by another driver.");
   };
 
   const handleRejectRequest = (bookingId: string) => {
-    setPendingBookings(pendingBookings.filter(b => b.id !== bookingId));
-    toast.info("Ride request declined");
+    setDismissedBookingIds(prev => new Set(prev).add(bookingId));
+    setPendingBookings(prev => prev.filter(b => b.id !== bookingId));
+    toast.info("Ride request declined. It remains available for other drivers.");
   };
 
   return (
@@ -219,7 +202,7 @@ export default function DriverDashboard() {
                   <div className="p-3 rounded-lg text-xs border border-gray-100" style={{ background: "#fcfcfc" }}>
                     {booking.rideType === "group" ? (
                       <p style={{ color: "#b45309" }} className="leading-relaxed">
-                        <span className="font-bold">Group Ride:</span> Traveling with companions. Number of companions: {booking.passengerCount || 1}. Do not match other passengers.
+                        <span className="font-bold">Group Ride:</span> Passenger count: {booking.reserveEntire ? 5 : (booking.passengerCount || 1)}. Do not match other passengers.
                       </p>
                     ) : (
                       <p style={{ color: "#1e3a8a" }} className="leading-relaxed">
@@ -359,5 +342,16 @@ export default function DriverDashboard() {
         </Card>
       </div>
     </div>
+  );
+}
+
+function removeDuplicateBookings(bookings: BookingData[]): BookingData[] {
+  const byId = new Map<string, BookingData>();
+  bookings.forEach((booking) => {
+    byId.set(booking.id, booking);
+  });
+
+  return Array.from(byId.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 }

@@ -9,9 +9,8 @@ import {
 import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
 import { useBooking } from "../../context/BookingContext";
-import { createBooking, getPassengerActiveBooking } from "../../utils/bookingDatabase";
+import { getPassengerActiveBooking } from "../../utils/bookingDatabase";
 import { createSupabaseBooking, getSupabasePassengerActiveBooking } from "../../utils/supabaseBookings";
-import { formatPersonName } from "../../utils/nameFormatting";
 import { applyRideDiscounts, calculateFare } from "../../utils/fareCalculator";
 import {
   Dialog, DialogPortal,
@@ -527,7 +526,6 @@ function BookingPage() {
         return;
       }
 
-      const passengerName = formatPersonName(user, user.username);
       const discount = appliedPromo
         ? { type: appliedPromo.code, amount: appliedPromo.discount }
         : undefined;
@@ -558,27 +556,7 @@ function BookingPage() {
         return;
       }
 
-      const booking = createBooking({
-        passengerUsername: user.username,
-        passengerName,
-        passengerPhone: user.phoneNumber,
-        pickupLocation: pickup,
-        destination: { lat: dropoff.lat, lng: dropoff.lng, address: dropoff.address },
-        distance: distanceKm,
-        basePrice: basePrice,
-        finalPrice,
-        paymentMethod: paymentMethod === "epayment" ? "E-Payment" : "Cash",
-        vehicleType: "Tricycle",
-        rideType,
-        passengerCount: pCount,
-        reserveEntire: resEntire,
-        discount,
-      });
-
-      setActiveBooking(booking);
-      refreshBooking();
-      toast.success("Booking sent! Waiting for a driver to accept.");
-      navigate("/passenger/finding-driver");
+      toast.error("Booking was not saved online. Please check Supabase connection and try again.");
     } catch {
       toast.error("Booking failed. Please try again.");
     } finally {

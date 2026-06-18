@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
-import { BookingData, getBooking, getPassengerActiveBooking, getDriverActiveBooking, getPendingBookings } from "../utils/bookingDatabase";
-import { dedupePendingBookings } from "../utils/bookingDeduplication";
+import { BookingData, getBooking, getPassengerActiveBooking, getDriverActiveBooking } from "../utils/bookingDatabase";
 import {
   getSupabaseBooking,
   getSupabaseDriverActiveBooking,
@@ -77,8 +76,7 @@ export function BookingProvider({ children }: { children: ReactNode }) {
       }
 
       const supabasePending = await getSupabasePendingBookings();
-      const localPending = getPendingBookings();
-      if (!cancelled) setPendingBookings(dedupePendingBookings([...supabasePending, ...localPending]));
+      if (!cancelled) setPendingBookings(supabasePending);
     };
 
     void refreshData();
