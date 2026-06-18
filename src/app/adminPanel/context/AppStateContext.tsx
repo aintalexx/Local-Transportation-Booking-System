@@ -18,6 +18,34 @@ export type BookingStatus = "Completed" | "Ongoing" | "Cancelled" | "Pending";
 export type NotifType     = "success" | "warning" | "info" | "error";
 
 const ARCHIVED_KEY = "ridestamesa_archived_drivers";
+const USERS_KEY = "ridestamesa_users";
+const ADMIN_DRIVER_RESET_KEY = "ridestamesa_admin_driver_reset_2026_06_18_v1";
+
+function clearStoredLocalDriversOnce(): { clearedArchive: boolean } {
+  try {
+    if (localStorage.getItem(ADMIN_DRIVER_RESET_KEY)) {
+      return { clearedArchive: false };
+    }
+
+    const rawUsers = localStorage.getItem(USERS_KEY);
+    if (rawUsers) {
+      const users = JSON.parse(rawUsers);
+      if (Array.isArray(users)) {
+        const usersWithoutDrivers = users.filter((user: any) => user?.role !== "driver");
+        if (usersWithoutDrivers.length !== users.length) {
+          localStorage.setItem(USERS_KEY, JSON.stringify(usersWithoutDrivers));
+        }
+      }
+    }
+
+    localStorage.removeItem(ARCHIVED_KEY);
+    localStorage.setItem(ADMIN_DRIVER_RESET_KEY, new Date().toISOString());
+    return { clearedArchive: true };
+  } catch (error) {
+    console.error("Unable to clear stored local drivers:", error);
+    return { clearedArchive: false };
+  }
+}
 
 function getArchivedDrivers(): Driver[] {
   try {
@@ -344,6 +372,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   // Fetch initial data and set up real-time subscriptions
   useEffect(() => {
+    const localReset = clearStoredLocalDriversOnce();
+    if (localReset.clearedArchive) {
+      setArchivedDrivers([]);
+    }
 
     async function loadDrivers() {
       let supabaseDrivers: Driver[] = [];
