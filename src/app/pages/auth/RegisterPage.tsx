@@ -1455,11 +1455,11 @@ export default function RegisterPage() {
 
             <CardContent>
               <form onSubmit={handleRegister} noValidate className="space-y-5">
-                {/* Info banner: documents are optional */}
-                <div className="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5 text-xs text-blue-700">
+                {/* Required document reminder */}
+                <div className="flex items-start gap-2 rounded-xl border border-red-100 bg-red-50/70 px-3 py-2.5 text-xs text-red-700">
                   <span className="mt-0.5 shrink-0 text-base leading-none">ℹ️</span>
                   <p className="leading-relaxed">
-                    <span className="font-bold">Document photos are optional.</span> You can submit now and upload them later. The admin will review and verify your documents before approving your account.
+                    <span className="font-bold">Document photos are required.</span> Please upload clear photos of all required documents. The admin will review and verify them before approving your account.
                   </p>
                 </div>
 
