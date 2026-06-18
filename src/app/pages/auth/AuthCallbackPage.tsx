@@ -52,12 +52,15 @@ export default function AuthCallbackPage() {
         }
 
         const appUser = isGoogleCallback
-          ? createLocalUserFromGoogle(supabaseUser, getPendingGoogleRole())
+          ? await createLocalUserFromGoogle(supabaseUser, getPendingGoogleRole())
           : await createLocalUserFromSupabaseUser(supabaseUser);
 
         clearPendingGoogleRole();
         setUser(appUser);
         toast.success(isGoogleCallback ? "Google account connected successfully!" : "Email confirmed successfully!");
+
+        // Ensure passenger record is created/updated in Supabase immediately
+        await syncSupabaseProfile(appUser);
 
         const phoneCheck = validatePHPhone(formatPHPhoneInput(appUser.phoneNumber || ""));
         if (appUser.role !== "admin" && !phoneCheck.valid) {
@@ -66,7 +69,6 @@ export default function AuthCallbackPage() {
           return;
         }
 
-        await syncSupabaseProfile(appUser);
         setMessage("Redirecting to your account...");
         window.setTimeout(() => {
           window.location.replace(getRoleHomePath(appUser));

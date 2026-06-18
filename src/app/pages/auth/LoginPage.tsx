@@ -156,9 +156,9 @@ export default function LoginPage() {
       return;
     }
 
-    const loginIdentifier = usernameOrPhone.trim();
+    const trimmedIdentifier = usernameOrPhone.trim();
     const cleanPassword = password.trim();
-    if (!loginIdentifier) {
+    if (!trimmedIdentifier) {
       toast.error("Please enter your email or phone number");
       return;
     }
@@ -166,6 +166,13 @@ export default function LoginPage() {
       toast.error("Please enter your password");
       return;
     }
+    const isEmail = trimmedIdentifier.includes("@");
+    const isPhone = !isEmail && /^[+\d\s()-]*$/.test(trimmedIdentifier) && trimmedIdentifier.replace(/\D/g, "").length >= 9;
+    const loginIdentifier = isEmail 
+      ? trimmedIdentifier.toLowerCase() 
+      : isPhone 
+        ? formatPHPhoneInput(trimmedIdentifier) 
+        : trimmedIdentifier;
 
     if (loginType === "admin") {
       setLoading(true);

@@ -27,7 +27,9 @@ type SupabaseBookingRow = {
   final_price: number | string;
   payment_method: string;
   vehicle_type: string;
-  ride_type: "solo" | "shared" | null;
+  ride_type: "solo" | "group" | "shared" | null;
+  passenger_count?: number | null;
+  reserve_entire?: boolean | null;
   status: BookingStatus;
   discount_type: string | null;
   discount_amount: number | string | null;
@@ -45,7 +47,9 @@ export type CreateSupabaseBookingInput = {
   finalPrice: number;
   paymentMethod: string;
   vehicleType: string;
-  rideType?: "solo" | "shared";
+  rideType?: "solo" | "group" | "shared";
+  passengerCount?: number;
+  reserveEntire?: boolean;
   discount?: BookingData["discount"];
 };
 
@@ -75,6 +79,8 @@ export async function createSupabaseBooking(input: CreateSupabaseBookingInput): 
       payment_method: input.paymentMethod,
       vehicle_type: input.vehicleType,
       ride_type: input.rideType || "solo",
+      passenger_count: input.passengerCount || 1,
+      reserve_entire: input.reserveEntire || false,
       discount_type: input.discount?.type || null,
       discount_amount: input.discount?.amount ?? null,
     })
@@ -296,6 +302,8 @@ function mapSupabaseBooking(row: SupabaseBookingRow): BookingData {
     paymentMethod: row.payment_method,
     vehicleType: row.vehicle_type,
     rideType: row.ride_type || undefined,
+    passengerCount: row.passenger_count || undefined,
+    reserveEntire: row.reserve_entire || undefined,
     status: row.status,
     createdAt: row.created_at,
     acceptedAt: row.accepted_at || undefined,

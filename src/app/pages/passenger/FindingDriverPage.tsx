@@ -101,6 +101,44 @@ export default function FindingDriverPage() {
 
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [showNoDriversCard, setShowNoDriversCard] = useState(false);
+
+  useEffect(() => {
+    if (driverFound) {
+      setShowNoDriversCard(false);
+    }
+  }, [driverFound]);
+
+  useEffect(() => {
+    if (!activeBooking || driverFound || showNoDriversCard) return;
+
+    const timeout = setTimeout(() => {
+      setShowNoDriversCard(true);
+    }, 15000); // 15 seconds timeout
+
+    return () => clearTimeout(timeout);
+  }, [activeBooking, driverFound, showNoDriversCard]);
+
+  const handleTryAgain = () => {
+    setShowNoDriversCard(false);
+    toast.success("Retrying to find a driver...");
+  };
+
+  const handleModifyBooking = async () => {
+    if (!activeBooking) return;
+    try {
+      if (activeBooking.id.startsWith("BK")) {
+        cancelBooking(activeBooking.id);
+      } else {
+        await updateSupabaseBookingStatus(activeBooking.id, "cancelled");
+      }
+      setActiveBooking(null);
+      navigate("/passenger/book", { replace: true });
+    } catch {
+      toast.error("Failed to update booking. Please try again.");
+    }
+  };
+
 
   const handleCancelBooking = async () => {
     if (!activeBooking) return;
@@ -317,29 +355,60 @@ export default function FindingDriverPage() {
       </div>
 
       {!driverFound ? (
-        <div className="absolute inset-x-0 top-[18%] z-20 flex flex-col items-center px-6 text-center">
-          <p className="mb-5 text-xl font-black text-[#0756A8]">Finding you a Driver...</p>
-
-          <div className="relative h-44 w-44 animate-pulse">
-            <div className="absolute left-3 top-3 h-32 w-32 rounded-full border-[13px] border-[#0756A8] bg-white/10 shadow-[0_12px_35px_rgba(7,86,168,0.18)]" />
-            <div className="absolute left-[116px] top-[120px] h-20 w-5 rotate-[-45deg] rounded-full bg-[#0756A8] shadow-[0_10px_25px_rgba(7,86,168,0.22)]" />
-          </div>
-
-          <div className="mt-8 rounded-2xl bg-white/90 px-5 py-4 text-left shadow-sm backdrop-blur">
-            <p className="text-sm font-bold text-[#111827]">Waiting for nearby drivers</p>
-            <p className="mt-1 max-w-[260px] text-xs leading-relaxed text-[#5B6472]">
-              Your booking request is visible to available drivers. This page will update automatically when one accepts.
+        showNoDriversCard ? (
+          <div className="absolute inset-x-6 top-[18%] z-20 flex flex-col items-center px-6 py-6 text-center rounded-3xl bg-white/95 shadow-xl border border-red-100 backdrop-blur animate-scale-in">
+            <p className="mb-3 text-lg font-black text-[#4B0F14]">No drivers are currently available for this booking</p>
+            <p className="mb-6 text-xs leading-relaxed text-[#5B6472]">
+              All available drivers are currently busy or declined the request. You can try searching again, modify your ride options, or cancel the request.
             </p>
+            
+            <div className="w-full space-y-3">
+              <button
+                onClick={handleTryAgain}
+                className="w-full h-12 rounded-2xl bg-[#4B0F14] font-bold text-[#D4AF37] shadow-md transition-all active:scale-95"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={handleModifyBooking}
+                className="w-full h-12 rounded-2xl bg-white font-bold text-[#0756A8] border-2 border-[#0756A8] transition-all active:scale-95"
+              >
+                Modify Booking
+              </button>
+              <button
+                onClick={handleCancelBooking}
+                disabled={cancelLoading}
+                className="w-full h-12 rounded-2xl bg-[#f3f4f6] font-bold text-[#4B0F14] border border-[#e5e7eb] transition-all active:scale-95"
+              >
+                Cancel Request
+              </button>
+            </div>
           </div>
+        ) : (
+          <div className="absolute inset-x-0 top-[18%] z-20 flex flex-col items-center px-6 text-center">
+            <p className="mb-5 text-xl font-black text-[#0756A8]">Finding you a Driver...</p>
 
-          <button
-            onClick={() => setShowCancelDialog(true)}
-            className="mt-6 h-12 w-full max-w-[260px] rounded-2xl bg-[#f3f4f6] font-bold text-[#4B0F14] shadow-sm transition-opacity"
-            style={{ border: "2px solid #e5e7eb" }}
-          >
-            Cancel Booking
-          </button>
-        </div>
+            <div className="relative h-44 w-44 animate-pulse">
+              <div className="absolute left-3 top-3 h-32 w-32 rounded-full border-[13px] border-[#0756A8] bg-white/10 shadow-[0_12px_35px_rgba(7,86,168,0.18)]" />
+              <div className="absolute left-[116px] top-[120px] h-20 w-5 rotate-[-45deg] rounded-full bg-[#0756A8] shadow-[0_10px_25px_rgba(7,86,168,0.22)]" />
+            </div>
+
+            <div className="mt-8 rounded-2xl bg-white/90 px-5 py-4 text-left shadow-sm backdrop-blur">
+              <p className="text-sm font-bold text-[#111827]">Waiting for nearby drivers</p>
+              <p className="mt-1 max-w-[260px] text-xs leading-relaxed text-[#5B6472]">
+                Your booking request is visible to available drivers. This page will update automatically when one accepts.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowCancelDialog(true)}
+              className="mt-6 h-12 w-full max-w-[260px] rounded-2xl bg-[#f3f4f6] font-bold text-[#4B0F14] shadow-sm transition-opacity"
+              style={{ border: "2px solid #e5e7eb" }}
+            >
+              Cancel Booking
+            </button>
+          </div>
+        )
       ) : (
         <div className="absolute inset-x-4 top-20 z-20 rounded-3xl bg-white/95 p-5 text-center shadow-lg backdrop-blur">
           <p className="text-lg font-black text-[#0756A8]">Driver Found</p>

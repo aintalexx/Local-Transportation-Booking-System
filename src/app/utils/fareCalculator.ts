@@ -70,7 +70,6 @@ export function applyRideDiscounts(
   let total = fare;
 
   if (options.rideType === "shared") total *= 0.7;
-  if (options.passengerType === "student" || options.passengerType === "pwd") total *= 0.9;
   if (options.promoDiscount) total *= 1 - options.promoDiscount / 100;
 
   return Math.max(1, Math.round(total));

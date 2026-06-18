@@ -548,7 +548,7 @@ export default function RegisterPage() {
     setShowValidationErrors(true);
 
     const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
-    const normalizedEmail = role === "passenger" ? formData.email.trim() : "";
+    const normalizedEmail = role === "passenger" ? formData.email.trim().toLowerCase() : "";
     const normalizedPlate = formData.plateNumber.trim().toUpperCase();
     const normalizedPhoneDigits = normalizedPhone.replace(/\D/g, "");
     const finalUsername = role === "passenger" 

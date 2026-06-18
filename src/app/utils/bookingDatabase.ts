@@ -32,7 +32,9 @@ export interface BookingData {
   finalPrice: number;
   paymentMethod: string;
   vehicleType: string;
-  rideType?: "solo" | "shared";
+  rideType?: "solo" | "group" | "shared";
+  passengerCount?: number;
+  reserveEntire?: boolean;
   status: BookingStatus;
   createdAt: string;
   acceptedAt?: string;

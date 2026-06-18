@@ -201,6 +201,7 @@ export default function OTPPage() {
         await handleVerifiedRegistration();
       } else if (state.mode === "login" && state.role === "driver") {
         const userData = state.userData as UserData;
+        updateUser(userData.username, userData);
         setUser(userData);
         toast.success("Login successful!");
         if (userData.approvalStatus === "approved" && userData.accountStatus === "Active") {

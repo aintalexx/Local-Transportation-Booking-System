@@ -187,7 +187,12 @@ export default function DriverDashboard() {
                         </CardDescription>
                       </div>
                     </div>
-                    <Badge className="bg-green-500">{booking.vehicleType}</Badge>
+                    <div className="flex gap-1.5 shrink-0">
+                      <Badge className="bg-green-500">{booking.vehicleType}</Badge>
+                      <Badge className={booking.rideType === "group" ? "bg-amber-600" : "bg-blue-600"}>
+                        {booking.rideType === "group" ? "GROUP" : "SOLO"}
+                      </Badge>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -210,11 +215,30 @@ export default function DriverDashboard() {
                     </div>
                   </div>
 
+                  {/* Solo/Group Helper Notes */}
+                  <div className="p-3 rounded-lg text-xs border border-gray-100" style={{ background: "#fcfcfc" }}>
+                    {booking.rideType === "group" ? (
+                      <p style={{ color: "#b45309" }} className="leading-relaxed">
+                        <span className="font-bold">Group Ride:</span> Traveling with companions. Number of companions: {booking.passengerCount || 1}. Do not match other passengers.
+                      </p>
+                    ) : (
+                      <p style={{ color: "#1e3a8a" }} className="leading-relaxed">
+                        <span className="font-bold">Solo Ride:</span> Exclusive tricycle service, no companions allowed.
+                      </p>
+                    )}
+                  </div>
+
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-gray-50 p-3">
                     <div className="min-w-0">
                       <p className="text-sm text-gray-600">Distance</p>
                       <p className="break-words font-semibold">{booking.distance.toFixed(1)} km</p>
                     </div>
+                    {booking.rideType === "group" && (
+                      <div className="min-w-0">
+                        <p className="text-sm text-gray-600">Passengers</p>
+                        <p className="break-words font-semibold">{booking.reserveEntire ? "5 (Reserved)" : (booking.passengerCount || 1)}</p>
+                      </div>
+                    )}
                     <div className="min-w-0 text-left sm:text-right">
                       <p className="text-sm text-gray-600">Fare</p>
                       <p className="break-words text-xl font-bold text-green-600">₱{booking.finalPrice}</p>

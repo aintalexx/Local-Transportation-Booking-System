@@ -178,7 +178,9 @@ export default function BookingPage() {
   const navigate     = useNavigate();
   const { user }     = useUser();
   const { setActiveBooking, refreshBooking } = useBooking();
-  const rideType: RideType = "solo";
+  const [rideType, setRideType] = useState<"solo" | "group">("solo");
+  const [passengerCount, setPassengerCount] = useState<number>(1);
+  const [reserveEntire, setReserveEntire] = useState<boolean>(false);
 
   // Map refs
   const mapContainerRef  = useRef<HTMLDivElement>(null);
@@ -192,7 +194,6 @@ export default function BookingPage() {
   const [pinMode, setPinMode]           = useState<PinMode>("pickup");
   const [pickup,  setPickup]            = useState<LatLng | null>(null);
   const [dropoff, setDropoff]           = useState<LatLng | null>(null);
-  const [passengerType, setPassengerType] = useState<PassengerType>("regular");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [promoCode,  setPromoCode]      = useState("");
   const [appliedPromo, setAppliedPromo] = useState<typeof AVAILABLE_PROMOS[0] | null>(null);
@@ -214,8 +215,21 @@ export default function BookingPage() {
 
   const distanceKm  = routeData?.distanceKm ?? 0;
   const durationMin = routeData?.durationMin ?? 0;
-  const fareEst     = calculateFare(distanceKm);
-  const finalPrice  = calcFinalPrice(fareEst.finalFare, rideType, passengerType, appliedPromo?.discount);
+  const standardFare = calculateFare(distanceKm).finalFare;
+
+  let basePrice = 0;
+  if (rideType === "solo") {
+    basePrice = Math.max(50, standardFare);
+  } else {
+    const effectiveCount = reserveEntire ? 5 : passengerCount;
+    basePrice = effectiveCount * standardFare;
+  }
+
+  let finalPrice = basePrice;
+  if (appliedPromo) {
+    finalPrice = Math.max(1, Math.round(basePrice * (1 - appliedPromo.discount / 100)));
+  }
+
 
   const setLocationByMode = useCallback((mode: PinMode, loc: LatLng, mapZoom = 17) => {
     if (mode === "pickup") {
@@ -451,16 +465,21 @@ export default function BookingPage() {
         ? { type: appliedPromo.code, amount: appliedPromo.discount }
         : undefined;
 
+      const pCount = rideType === "solo" ? 1 : passengerCount;
+      const resEntire = rideType === "solo" ? false : reserveEntire;
+
       const supabaseBooking = await createSupabaseBooking({
         passenger: user,
         pickupLocation: pickup,
         destination: { lat: dropoff.lat, lng: dropoff.lng, address: dropoff.address },
         distance: distanceKm,
-        basePrice: fareEst.finalFare,
+        basePrice: basePrice,
         finalPrice,
         paymentMethod: paymentMethod === "epayment" ? "E-Payment" : "Cash",
         vehicleType: "Tricycle",
         rideType,
+        passengerCount: pCount,
+        reserveEntire: resEntire,
         discount,
       });
 
@@ -479,11 +498,13 @@ export default function BookingPage() {
         pickupLocation: pickup,
         destination: { lat: dropoff.lat, lng: dropoff.lng, address: dropoff.address },
         distance: distanceKm,
-        basePrice: fareEst.finalFare,
+        basePrice: basePrice,
         finalPrice,
         paymentMethod: paymentMethod === "epayment" ? "E-Payment" : "Cash",
         vehicleType: "Tricycle",
         rideType,
+        passengerCount: pCount,
+        reserveEntire: resEntire,
         discount,
       });
 
@@ -666,7 +687,7 @@ export default function BookingPage() {
             style={{ background: "rgba(255,255,255,0.95)" }}>
             <p className="text-xs font-semibold" style={{ color: "#6b7280" }}>Book a Tricycle</p>
             <p className="text-sm font-bold" style={{ color: MAROON }}>
-              Solo Ride
+              {rideType === "solo" ? "Solo Ride" : "Group Ride"}
             </p>
           </div>
         </div>
@@ -778,6 +799,76 @@ export default function BookingPage() {
           </div>
         )}
 
+        {/* ── Ride Type Selector ── */}
+        <div className="mx-4 mb-3 p-3 rounded-2xl" style={{ background: "#f9fafb", border: "1px solid #e5e7eb" }}>
+          <p className="text-xs font-bold mb-2 uppercase tracking-wider" style={{ color: "#6b7280" }}>Ride Type</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setRideType("solo");
+              }}
+              className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex flex-col items-center"
+              style={{
+                background: rideType === "solo" ? "rgba(75,15,20,0.1)" : "#fff",
+                color: rideType === "solo" ? MAROON : "#4b5563",
+                border: rideType === "solo" ? `2px solid ${MAROON}` : "2px solid #e5e7eb",
+              }}
+            >
+              <span>Solo Ride</span>
+              <span className="text-[10px] font-normal opacity-85 mt-0.5">₱50 min • Exclusive</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setRideType("group");
+              }}
+              className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex flex-col items-center"
+              style={{
+                background: rideType === "group" ? "rgba(75,15,20,0.1)" : "#fff",
+                color: rideType === "group" ? MAROON : "#4b5563",
+                border: rideType === "group" ? `2px solid ${MAROON}` : "2px solid #e5e7eb",
+              }}
+            >
+              <span>Group Ride</span>
+              <span className="text-[10px] font-normal opacity-85 mt-0.5">Companions • Max 5</span>
+            </button>
+          </div>
+
+          {/* Group details if selected */}
+          {rideType === "group" && (
+            <div className="mt-3 pt-3 border-t space-y-3" style={{ borderColor: "#e5e7eb" }}>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold" style={{ color: "#374151" }}>Number of Passengers:</label>
+                <select
+                  value={passengerCount}
+                  onChange={(e) => setPassengerCount(Number(e.target.value))}
+                  disabled={reserveEntire}
+                  className="px-3 py-1.5 rounded-xl border text-sm font-bold outline-none bg-white"
+                  style={{ borderColor: "#d1d5db" }}
+                >
+                  {[1, 2, 3, 4, 5].map(n => (
+                    <option key={n} value={n}>{n} Passenger{n > 1 ? "s" : ""}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="reserveEntire"
+                  checked={reserveEntire}
+                  onChange={(e) => setReserveEntire(e.target.checked)}
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                />
+                <label htmlFor="reserveEntire" className="text-xs font-bold cursor-pointer" style={{ color: "#4b5563" }}>
+                  Reserve Entire Vehicle (Bill for 5 seats)
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* ── Options toggle ── */}
         <button
           onClick={() => setShowOptions(v => !v)}
@@ -791,21 +882,6 @@ export default function BookingPage() {
         {/* ── Collapsible options ── */}
         {showOptions && (
           <div className="px-4 pb-2 space-y-3 animate-in slide-in-from-bottom-2">
-            {/* Passenger type */}
-            <div className="flex gap-2">
-              {(["regular", "student", "pwd"] as PassengerType[]).map(pt => (
-                <button key={pt} onClick={() => setPassengerType(pt)}
-                  className="flex-1 py-2 rounded-xl text-xs font-bold transition-all"
-                  style={{
-                    background: passengerType === pt ? "rgba(75,15,20,0.1)" : "#f3f4f6",
-                    color:      passengerType === pt ? MAROON : "#6b7280",
-                    border:     passengerType === pt ? `1.5px solid ${MAROON}` : "1.5px solid #e5e7eb",
-                  }}>
-                  {pt === "regular" ? "Regular" : pt === "student" ? "Student -10%" : "PWD -10%"}
-                </button>
-              ))}
-            </div>
-
             {/* Payment */}
             <div className="flex gap-2">
               {([
@@ -917,8 +993,8 @@ export default function BookingPage() {
                 { label: "Drop-off",  value: dropoff?.address    ?? "—" },
                 { label: "Distance",  value: distanceKm >= 1 ? `${distanceKm.toFixed(2)} km` : `${Math.round(distanceKm * 1000)} m` },
                 { label: "Duration",  value: `${durationMin} mins` },
-                { label: "Ride",      value: "Solo" },
-                { label: "Passenger", value: passengerType === "regular" ? "Regular" : passengerType === "student" ? "Student" : "PWD" },
+                { label: "Ride",      value: rideType === "solo" ? "Solo Ride" : `Group Ride (${reserveEntire ? "Entire Vehicle" : `${passengerCount} Pax`})` },
+                { label: "Passengers", value: rideType === "solo" ? "1" : (reserveEntire ? "5 (Reserved)" : String(passengerCount)) },
                 { label: "Payment",   value: paymentMethod === "cash" ? "Cash" : "E-Payment" },
               ].map((row) => (
                 <div key={row.label} className="flex items-start justify-between gap-3 py-1.5"

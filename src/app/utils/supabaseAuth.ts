@@ -81,48 +81,60 @@ export async function resolveAuthEmailForLogin(identifier: string): Promise<stri
   return profileEmail || null;
 }
 
-export function createLocalUserFromGoogle(supabaseUser: SupabaseUser, role: PublicSignupRole): UserData {
+export async function createLocalUserFromGoogle(supabaseUser: SupabaseUser, role: PublicSignupRole): Promise<UserData> {
   const email = supabaseUser.email?.trim().toLowerCase() || "";
   const metadata = supabaseUser.user_metadata || {};
-  const fullName = normalizeDisplayName(metadata.full_name || metadata.name || email.split("@")[0] || "Google User");
+
+  const { data: profile } = supabase
+    ? await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", supabaseUser.id)
+        .maybeSingle()
+    : { data: null };
+
+  const fullName = normalizeDisplayName(profile?.full_name || metadata.full_name || metadata.name || email.split("@")[0] || "Google User");
   const nameParts = fullName.split(/\s+/).filter(Boolean);
-  const firstName = normalizeDisplayName(metadata.given_name) || nameParts[0] || "Google";
-  const surname = normalizeDisplayName(metadata.family_name) || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : "User");
-  const middleName = nameParts.length > 2 ? nameParts.slice(1, -1).join(" ") : "";
-  const existingUser = getAllUsers().find(user => user.email?.trim().toLowerCase() === email);
-  const username = existingUser?.username || `google_${supabaseUser.id.replace(/-/g, "").slice(0, 16)}`;
+  const firstName = metadata.first_name || normalizeDisplayName(metadata.given_name) || nameParts[0] || "Google";
+  const surname = metadata.surname || normalizeDisplayName(metadata.family_name) || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : "User");
+  const middleName = metadata.middle_name || (nameParts.length > 2 ? nameParts.slice(1, -1).join(" ") : "");
+  const existingUser = getAllUsers().find(user =>
+    user.supabaseId === supabaseUser.id ||
+    (email && user.email?.trim().toLowerCase() === email)
+  );
+  const username = profile?.username || existingUser?.username || metadata.username || `google_${supabaseUser.id.replace(/-/g, "").slice(0, 16)}`;
 
   const userData: UserData = {
     supabaseId: supabaseUser.id,
     displayName: fullName,
     username,
     password: existingUser?.password || "",
-    phoneNumber: existingUser?.phoneNumber || "",
+    phoneNumber: profile?.phone || existingUser?.phoneNumber || metadata.phone || "",
     surname: existingUser?.surname || surname,
     firstName: existingUser?.firstName || firstName,
     middleName: existingUser?.middleName || middleName,
-    suffix: normalizeOptionalSuffix(existingUser?.suffix),
+    suffix: normalizeOptionalSuffix(existingUser?.suffix || metadata.suffix),
     email,
     emailConfirmed: true,
-    birthdate: existingUser?.birthdate || "",
-    role: existingUser?.role || role,
-    guardianName: existingUser?.guardianName || "",
-    guardianPhone: existingUser?.guardianPhone || "",
+    birthdate: existingUser?.birthdate || metadata.birthdate || "",
+    role: profile?.role || existingUser?.role || role,
+    guardianName: existingUser?.guardianName || metadata.guardian_name || "",
+    guardianPhone: existingUser?.guardianPhone || metadata.guardian_phone || "",
     rating: existingUser?.rating || 5,
     totalTrips: existingUser?.totalTrips || 0,
     totalEarnings: existingUser?.totalEarnings || 0,
-    vehicleType: existingUser?.vehicleType || "",
-    plateNumber: existingUser?.plateNumber || "",
-    driverLicensePhoto: existingUser?.driverLicensePhoto || "",
-    licenseNumber: existingUser?.licenseNumber || "",
-    validIdPhoto: existingUser?.validIdPhoto || "",
-    orCrPhoto: existingUser?.orCrPhoto || "",
-    clearancePhoto: existingUser?.clearancePhoto || "",
-    vehiclePhoto: existingUser?.vehiclePhoto || "",
+    vehicleType: profile?.vehicle_type || existingUser?.vehicleType || "",
+    plateNumber: profile?.plate_number || existingUser?.plateNumber || "",
+    driverLicensePhoto: profile?.driver_license_photo || existingUser?.driverLicensePhoto || "",
+    licenseNumber: profile?.license_number || existingUser?.licenseNumber || "",
+    validIdPhoto: profile?.valid_id_photo || existingUser?.validIdPhoto || "",
+    orCrPhoto: profile?.or_cr_photo || existingUser?.orCrPhoto || "",
+    clearancePhoto: profile?.clearance_photo || existingUser?.clearancePhoto || "",
+    vehiclePhoto: profile?.vehicle_photo || existingUser?.vehiclePhoto || "",
     vehicleColor: existingUser?.vehicleColor || "",
     memberSince: existingUser?.memberSince || new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
-    approvalStatus: existingUser?.approvalStatus || (role === "driver" ? "pending" : "approved"),
-    profilePhoto: existingUser?.profilePhoto || String(metadata.avatar_url || metadata.picture || ""),
+    approvalStatus: profile?.approval_status || existingUser?.approvalStatus || (role === "driver" ? "pending" : "approved"),
+    profilePhoto: profile?.profile_photo || existingUser?.profilePhoto || String(metadata.avatar_url || metadata.picture || ""),
   };
 
   updateUser(username, userData);
@@ -195,7 +207,7 @@ export async function signInWithEmailPassword(identifier: string, password: stri
   }
 
   if (!data.user) return null;
-  return createLocalUserFromSupabaseUser(data.user);
+  return createLocalUserFromSupabaseUser(data.user, "passenger", password);
 }
 
 export async function requestSupabasePasswordReset(email: string): Promise<void> {
@@ -248,7 +260,11 @@ export async function updateSupabasePassword(nextPassword: string): Promise<void
   }
 }
 
-export async function createLocalUserFromSupabaseUser(supabaseUser: SupabaseUser, fallbackRole: AppRole = "passenger"): Promise<UserData> {
+export async function createLocalUserFromSupabaseUser(
+  supabaseUser: SupabaseUser,
+  fallbackRole: AppRole = "passenger",
+  password?: string
+): Promise<UserData> {
   const email = supabaseUser.email?.trim().toLowerCase() || "";
   const metadata = supabaseUser.user_metadata || {};
   const existingUser = getAllUsers().find(user =>
@@ -266,9 +282,11 @@ export async function createLocalUserFromSupabaseUser(supabaseUser: SupabaseUser
 
   const fullName = normalizeDisplayName(profile?.full_name || metadata.full_name || metadata.name || email.split("@")[0] || "Supabase User");
   const nameParts = fullName.split(/\s+/).filter(Boolean);
-  const firstName = existingUser?.firstName || nameParts[0] || "User";
-  const surname = existingUser?.surname || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : "");
-  const middleName = existingUser?.middleName || (nameParts.length > 2 ? nameParts.slice(1, -1).join(" ") : "");
+  const firstName = existingUser?.firstName || metadata.first_name || nameParts[0] || "User";
+  const surname = existingUser?.surname || metadata.surname || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : "");
+  const middleName = existingUser?.middleName || metadata.middle_name || (nameParts.length > 2 ? nameParts.slice(1, -1).join(" ") : "");
+  const birthdate = existingUser?.birthdate || metadata.birthdate || "";
+  const phoneNumber = profile?.phone || existingUser?.phoneNumber || metadata.phone || metadata.phone_number || "";
   const isAdminEmail = email === "admin@arangkada.ph";
   const role = isAdminEmail
     ? "admin"
@@ -280,18 +298,18 @@ export async function createLocalUserFromSupabaseUser(supabaseUser: SupabaseUser
     supabaseId: supabaseUser.id,
     displayName: normalizeDisplayName(existingUser?.displayName || metadata.full_name || metadata.name || profile?.full_name || fullName),
     username: profile?.username || existingUser?.username || metadata.username || `user_${supabaseUser.id.replace(/-/g, "").slice(0, 16)}`,
-    password: existingUser?.password || "",
-    phoneNumber: profile?.phone || existingUser?.phoneNumber || metadata.phone || "",
+    password: password || existingUser?.password || "",
+    phoneNumber,
     surname,
     firstName,
     middleName,
-    suffix: normalizeOptionalSuffix(existingUser?.suffix),
+    suffix: normalizeOptionalSuffix(existingUser?.suffix || metadata.suffix),
     email: profile?.email || email,
     emailConfirmed: Boolean(supabaseUser.email_confirmed_at || supabaseUser.confirmed_at || existingUser?.emailConfirmed),
-    birthdate: existingUser?.birthdate || "",
+    birthdate,
     role,
-    guardianName: existingUser?.guardianName || "",
-    guardianPhone: existingUser?.guardianPhone || "",
+    guardianName: existingUser?.guardianName || metadata.guardian_name || "",
+    guardianPhone: existingUser?.guardianPhone || metadata.guardian_phone || "",
     rating: existingUser?.rating || 5,
     totalTrips: existingUser?.totalTrips || 0,
     totalEarnings: existingUser?.totalEarnings || 0,
