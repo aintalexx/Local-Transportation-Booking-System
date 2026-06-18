@@ -10,6 +10,7 @@ import { getRoleHomePath } from "../../utils/roleRouting";
 import { getSupabaseDriverByPhone } from "../../utils/supabaseDrivers";
 import { createDemoOtp } from "../../utils/demoOtp";
 import { Phone } from "lucide-react";
+import { supabase } from "../../lib/supabase";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -115,11 +116,12 @@ export default function LoginPage() {
     }
 
     const loginIdentifier = usernameOrPhone.trim();
+    const cleanPassword = password.trim();
     if (!loginIdentifier) {
       toast.error("Please enter your email or phone number");
       return;
     }
-    if (!password) {
+    if (!cleanPassword) {
       toast.error("Please enter your password");
       return;
     }
@@ -130,9 +132,8 @@ export default function LoginPage() {
       let exists = false;
       let isPassenger = false;
       let localUser = getAllUsers().find(user => 
-        (user.email && user.email.toLowerCase() === loginIdentifier.toLowerCase()) ||
-        (user.phoneNumber && formatPHPhoneInput(user.phoneNumber) === normalizedPhone) ||
-        (user.username && user.username.toLowerCase() === loginIdentifier.toLowerCase())
+        (user.email && user.email.toLowerCase().trim() === loginIdentifier.toLowerCase()) ||
+        (user.phoneNumber && formatPHPhoneInput(user.phoneNumber) === normalizedPhone)
       );
 
       let targetEmail = localUser?.email || null;
@@ -168,7 +169,7 @@ export default function LoginPage() {
       // Authenticate with Supabase if online and targetEmail is available
       if (supabase && targetEmail) {
         try {
-          const supabaseUser = await signInWithEmailPassword(targetEmail, password);
+          const supabaseUser = await signInWithEmailPassword(targetEmail, cleanPassword);
           if (supabaseUser) {
             supabaseUser.emailConfirmed = true; // Bypassing confirmation check
             setUser(supabaseUser);
@@ -192,7 +193,7 @@ export default function LoginPage() {
                   supabaseId: profile.id,
                   displayName: profile.full_name || "",
                   username: profile.username || `passenger_${profile.phone?.replace(/\D/g, "")}`,
-                  password: password,
+                  password: cleanPassword,
                   phoneNumber: profile.phone || "",
                   surname: profile.surname || "",
                   firstName: profile.first_name || "",
@@ -231,7 +232,7 @@ export default function LoginPage() {
       }
 
       // Local fallback
-      const localAuthed = authenticateUser(targetEmail || loginIdentifier, password);
+      const localAuthed = authenticateUser(targetEmail || loginIdentifier, cleanPassword);
       if (localAuthed && localAuthed.role === "passenger") {
         localAuthed.emailConfirmed = true;
         setUser(localAuthed);

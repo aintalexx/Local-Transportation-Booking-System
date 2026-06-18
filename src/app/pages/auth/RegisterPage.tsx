@@ -1731,7 +1731,7 @@ export default function RegisterPage() {
   // 3.3. Passenger Step 3: Passenger Information Form
   if (step === "passengerInfo") {
     const firstNameInvalid = showValidationErrors && !validatePassengerName(formData.firstName).valid;
-    const middleNameInvalid = showValidationErrors && !validatePassengerName(formData.middleName, false).valid;
+    const middleNameInvalid = showValidationErrors && !formData.noMiddleName && !validatePassengerName(formData.middleName, false).valid;
     const lastNameInvalid = showValidationErrors && !validatePassengerName(formData.surname).valid;
     const birthdateInvalid = showValidationErrors && (!formData.birthdate || passengerAge === null || passengerAge < 18);
 
@@ -1742,50 +1742,23 @@ export default function RegisterPage() {
             <div className="flex justify-center mb-4">
               <Navigation className="h-12 w-12 text-[#4B0F14]" />
             </div>
-            <h1 className="text-3xl font-bold text-gray-900">Create Account</h1>
-            <p className="text-gray-600 mt-2">Complete your passenger information to continue</p>
+            <h1 className="text-3xl font-bold text-gray-900">Passenger Profile</h1>
+            <p className="text-gray-600 mt-2">Please enter your basic information</p>
           </div>
 
           <Card>
             <CardHeader>
-              <CardTitle>Passenger Information</CardTitle>
-              <CardDescription>Use the same phone number verified by Demo OTP</CardDescription>
+              <CardTitle>Personal Details</CardTitle>
+              <CardDescription>All fields are required unless marked optional</CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handlePassengerRegisterSubmit} className="space-y-5">
+              <form onSubmit={handlePassengerRegisterSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="passengerFirstName">First Name</Label>
+                  <Label htmlFor="passengerSurname">Surname</Label>
                   <Input
-                    id="passengerFirstName"
+                    id="passengerSurname"
                     type="text"
-                    placeholder="Enter first name"
-                    value={formData.firstName}
-                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                    className={firstNameInvalid ? "border-red-400" : ""}
-                    required
-                  />
-                  {firstNameInvalid && <p className="text-xs text-red-600">Names must contain letters only.</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="passengerMiddleName">Middle Name <span className="text-gray-400">(Optional)</span></Label>
-                  <Input
-                    id="passengerMiddleName"
-                    type="text"
-                    placeholder="Enter middle name"
-                    value={formData.middleName}
-                    onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
-                    className={middleNameInvalid ? "border-red-400" : ""}
-                  />
-                  {middleNameInvalid && <p className="text-xs text-red-600">Names must contain letters only.</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="passengerLastName">Last Name</Label>
-                  <Input
-                    id="passengerLastName"
-                    type="text"
-                    placeholder="Enter last name"
+                    placeholder="Doe"
                     value={formData.surname}
                     onChange={(e) => setFormData({ ...formData, surname: e.target.value })}
                     className={lastNameInvalid ? "border-red-400" : ""}
@@ -1795,31 +1768,148 @@ export default function RegisterPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="passengerSuffix">Suffix <span className="text-gray-400">(Optional)</span></Label>
+                  <Label htmlFor="passengerFirstName">First Name</Label>
                   <Input
-                    id="passengerSuffix"
+                    id="passengerFirstName"
                     type="text"
-                    placeholder="Jr., Sr., III"
-                    value={formData.suffix}
-                    onChange={(e) => setFormData({ ...formData, suffix: e.target.value })}
+                    placeholder="John"
+                    value={formData.firstName}
+                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                    className={firstNameInvalid ? "border-red-400" : ""}
+                    required
                   />
+                  {firstNameInvalid && <p className="text-xs text-red-600">Names must contain letters only.</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="passengerMiddleName">Middle Name</Label>
+                  <Input
+                    id="passengerMiddleName"
+                    type="text"
+                    placeholder="Middle"
+                    value={formData.middleName}
+                    onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
+                    className={middleNameInvalid ? "border-red-400" : ""}
+                    disabled={formData.noMiddleName}
+                    required={!formData.noMiddleName}
+                  />
+                  {middleNameInvalid && <p className="text-xs text-red-600">Names must contain letters only.</p>}
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="noMiddleName"
+                      checked={formData.noMiddleName}
+                      onCheckedChange={(checked) => {
+                        setFormData({ ...formData, noMiddleName: checked as boolean, middleName: "" });
+                      }}
+                    />
+                    <label htmlFor="noMiddleName" className="text-sm text-gray-600 cursor-pointer select-none">
+                      No Middle Name
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="passengerSuffix">Suffix (Optional)</Label>
+                  <Select
+                    value={formData.suffix || "none"}
+                    onValueChange={(value) => setFormData({ ...formData, suffix: normalizeOptionalSuffix(value) })}
+                  >
+                    <SelectTrigger id="passengerSuffix">
+                      <SelectValue placeholder="Select suffix" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="Jr.">Jr.</SelectItem>
+                      <SelectItem value="Sr.">Sr.</SelectItem>
+                      <SelectItem value="II">II</SelectItem>
+                      <SelectItem value="III">III</SelectItem>
+                      <SelectItem value="IV">IV</SelectItem>
+                      <SelectItem value="V">V</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="grid grid-cols-[1fr_96px] gap-3">
                   <div className="space-y-2">
-                    <Label htmlFor="passengerBirthdate">Date of Birth</Label>
-                    <Input
-                      id="passengerBirthdate"
-                      type="date"
-                      value={formatDateInputValue(formData.birthdate)}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        const date = value ? new Date(`${value}T00:00:00`) : undefined;
-                        setFormData({ ...formData, birthdate: date });
-                      }}
-                      className={birthdateInvalid ? "border-red-400" : ""}
-                      required
-                    />
+                    <Label htmlFor="passengerBirthdate">Birthdate</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="passengerBirthdate"
+                        type="text"
+                        placeholder="MM/DD/YYYY"
+                        value={birthdateInput || (formData.birthdate ? format(formData.birthdate, "MM/dd/yyyy") : "")}
+                        onChange={(e) => handleBirthdateInputChange(e.target.value)}
+                        inputMode="numeric"
+                        className={cn("flex-1", birthdateInvalid ? "border-red-400" : "")}
+                        required
+                      />
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className="flex h-10 items-center justify-center rounded-md border border-input bg-background px-3 hover:bg-accent hover:text-accent-foreground"
+                          >
+                            <CalendarIcon className="h-4 w-4" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <div className="p-3 space-y-2">
+                            <div className="flex gap-2">
+                              <Select
+                                value={formData.birthdate ? formData.birthdate.getMonth().toString() : ""}
+                                onValueChange={handleMonthChange}
+                              >
+                                <SelectTrigger className="w-[140px]">
+                                  <SelectValue placeholder="Month" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="0">January</SelectItem>
+                                  <SelectItem value="1">February</SelectItem>
+                                  <SelectItem value="2">March</SelectItem>
+                                  <SelectItem value="3">April</SelectItem>
+                                  <SelectItem value="4">May</SelectItem>
+                                  <SelectItem value="5">June</SelectItem>
+                                  <SelectItem value="6">July</SelectItem>
+                                  <SelectItem value="7">August</SelectItem>
+                                  <SelectItem value="8">September</SelectItem>
+                                  <SelectItem value="9">October</SelectItem>
+                                  <SelectItem value="10">November</SelectItem>
+                                  <SelectItem value="11">December</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Select
+                                value={formData.birthdate ? formData.birthdate.getFullYear().toString() : ""}
+                                onValueChange={handleYearChange}
+                              >
+                                <SelectTrigger className="w-[100px]">
+                                  <SelectValue placeholder="Year" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {Array.from({ length: new Date().getFullYear() - 1900 + 1 }, (_, i) => new Date().getFullYear() - i).map((year) => (
+                                    <SelectItem key={year} value={year.toString()}>
+                                      {year}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          <Calendar
+                            mode="single"
+                            selected={formData.birthdate}
+                            onSelect={handleCalendarSelect}
+                            disabled={(date) => !validateBirthdate(date).valid}
+                            month={formData.birthdate}
+                            onMonthChange={(date) => {
+                              if (date) {
+                                setFormData({ ...formData, birthdate: date });
+                                setBirthdateInput(format(date, "MM/dd/yyyy"));
+                              }
+                            }}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="passengerAge">Age</Label>
@@ -1846,12 +1936,12 @@ export default function RegisterPage() {
                     id="verifiedPhone"
                     value={formatPHPhoneInput(formData.phoneNumber)}
                     readOnly
-                    className="bg-gray-50 font-semibold"
+                    className="bg-gray-50 font-semibold text-gray-500"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">Email Address</Label>
                   <Input
                     id="email"
                     type="email"

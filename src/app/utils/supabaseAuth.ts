@@ -69,7 +69,7 @@ export async function resolveAuthEmailForLogin(identifier: string): Promise<stri
   const { data, error } = await supabase
     .from("profiles")
     .select("email")
-    .or(`username.eq."${normalizedIdentifier}",phone.eq."${normalizedIdentifier}",phone.eq."${normalizedPhone}"`)
+    .or(`username.eq.${normalizedLower},phone.eq.${normalizedLower},phone.eq.${normalizedPhone}`)
     .maybeSingle();
 
   if (error) {
