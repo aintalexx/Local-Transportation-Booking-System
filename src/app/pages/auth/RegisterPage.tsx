@@ -357,11 +357,26 @@ export default function RegisterPage() {
         }
       }
 
-      const localResult = registerUser(userData);
-      if (!localResult.success) {
-        toast.error(localResult.message);
-        setLoading(false);
-        return;
+      const existingLocalUser = getAllUsers().find(
+        user =>
+          user.username === userData.username ||
+          Boolean(userData.supabaseId && user.supabaseId === userData.supabaseId)
+      );
+
+      if (existingLocalUser) {
+        const updated = updateUser(existingLocalUser.username, userData);
+        if (!updated) {
+          toast.error("Account was created, but local profile sync failed. Please try logging in.");
+          setLoading(false);
+          return;
+        }
+      } else {
+        const localResult = registerUser(userData);
+        if (!localResult.success) {
+          toast.error(localResult.message);
+          setLoading(false);
+          return;
+        }
       }
 
       setUser(userData);
