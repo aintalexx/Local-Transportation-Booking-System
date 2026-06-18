@@ -185,7 +185,7 @@ export default function EditProfile() {
               onChange={handlePhotoChange}
             />
           </div>
-          <p style={{ color: "#7a6a5a", fontSize: 12, marginTop: 8 }}>I-tap para palitan ang larawan</p>
+          <p style={{ color: "#7a6a5a", fontSize: 12, marginTop: 8 }}>Tap to change photo</p>
         </div>
 
         <Card>

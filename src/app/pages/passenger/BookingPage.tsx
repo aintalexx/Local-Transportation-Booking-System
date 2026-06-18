@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -169,12 +169,12 @@ const AVAILABLE_PROMOS = [
   { code: "ARANGKADA",   description: "Welcome to Arangkada! 20% off",       discount: 20 },
   { code: "STAMESARIDE", description: "Sta. Mesa pride! 15% off your ride",  discount: 15 },
   { code: "PUPSAKAY",    description: "PUP x Arangkada - 12% off",           discount: 12 },
-  { code: "SAKTOLANG",   description: "Sarap ng biyahe! 10% off",            discount: 10 },
+  { code: "SAKTOLANG",   description: "Enjoy your ride! 10% off",            discount: 10 },
   { code: "FLASH30",     description: "Flash promo! 30% off today only",     discount: 30 },
 ];
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function BookingPage() {
+function BookingPage() {
   const navigate     = useNavigate();
   const { user }     = useUser();
   const { setActiveBooking, refreshBooking } = useBooking();
@@ -979,7 +979,13 @@ export default function BookingPage() {
                 { key: "cash"     as PaymentMethod, label: "Cash",       icon: <span>₱</span> },
                 { key: "epayment" as PaymentMethod, label: "E-Payment",   icon: <CreditCard size={12}/> },
               ]).map(m => (
-                <button key={m.key} onClick={() => setPaymentMethod(m.key)}
+                <button key={m.key} onClick={() => {
+                  if (m.key === "epayment") {
+                    toast.info("E-Payment is currently unavailable. Please use Cash for now.");
+                    return;
+                  }
+                  setPaymentMethod(m.key);
+                }}
                   className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all"
                   style={{
                     background: paymentMethod === m.key ? "rgba(212,175,55,0.1)" : "#f3f4f6",
@@ -1118,5 +1124,47 @@ export default function BookingPage() {
         </DialogPortal>
       </Dialog>
     </div>
+  );
+}
+
+class BookingErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("BookingPage Error caught by boundary:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex h-screen w-screen flex-col items-center justify-center bg-[#FFF8E7] p-6 text-center" style={{ fontFamily: "'Inter', sans-serif" }}>
+          <h2 className="text-xl font-black text-[#4B0F14] mb-2">Something went wrong</h2>
+          <p className="text-sm text-gray-600 mb-6">We encountered an unexpected error on this page.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-6 py-3 rounded-2xl bg-[#4B0F14] text-[#D4AF37] font-bold shadow-md"
+          >
+            Reload Page
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+export default function SafeBookingPage() {
+  return (
+    <BookingErrorBoundary>
+      <BookingPage />
+    </BookingErrorBoundary>
   );
 }

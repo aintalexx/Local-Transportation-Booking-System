@@ -31,7 +31,7 @@ export default function PassengerDashboard() {
   const [loadingRecentRides, setLoadingRecentRides] = useState(true);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
 
-  const firstName = currentUser?.firstName || "Pasahero";
+  const firstName = currentUser?.firstName || "Passenger";
   const profilePhoto = currentUser?.profilePhoto;
 
   useEffect(() => {
@@ -143,7 +143,7 @@ export default function PassengerDashboard() {
             )}
           </div>
           <div className="min-w-0">
-            <p style={{ color: "rgba(255,248,231,0.65)", fontSize: 13 }}>Magandang araw,</p>
+            <p style={{ color: "rgba(255,248,231,0.65)", fontSize: 13 }}>Good day,</p>
             <p style={{ color: CREAM, fontSize: 20, fontWeight: 800, lineHeight: 1.1 }}>{firstName}! </p>
           </div>
         </div>
@@ -158,8 +158,8 @@ export default function PassengerDashboard() {
             <MapPin size={22} color={MAROON} />
           </div>
           <div className="min-w-0 flex-1 text-left">
-            <p style={{ color: "#9a8a7a", fontSize: 12, fontWeight: 500 }}>Saan ka pupunta?</p>
-            <p className="truncate" style={{ color: MAROON, fontSize: 15, fontWeight: 700, marginTop: 1 }}>I-book ang iyong sakay</p>
+            <p style={{ color: "#9a8a7a", fontSize: 12, fontWeight: 500 }}>Where are you going?</p>
+            <p className="truncate" style={{ color: MAROON, fontSize: 15, fontWeight: 700, marginTop: 1 }}>Book your ride</p>
           </div>
           <div className="h-9 w-9 shrink-0 rounded-xl flex items-center justify-center" style={{ background: MAROON }}>
             <Navigation2 size={16} color={GOLD} />
@@ -170,7 +170,7 @@ export default function PassengerDashboard() {
       <div className="px-5 pt-5 pb-36">
 
         {/* Ride type */}
-        <p style={{ color: "#1E1E1E", fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Uri ng Biyahe</p>
+        <p style={{ color: "#1E1E1E", fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Ride Type</p>
         <div className="mb-5">
           <button
             onClick={() => navigate("/passenger/book", { state: { rideType: "solo" } })}
@@ -182,8 +182,8 @@ export default function PassengerDashboard() {
             </div>
             <div className="min-w-0 flex-1">
               <p style={{ color: MAROON, fontSize: 14, fontWeight: 800 }}>Tricycle Ride</p>
-              <p style={{ color: "#7a6a5a", fontSize: 11, marginTop: 1 }}>Pribadong sakay</p>
-              <p style={{ color: "#9a8a7a", fontSize: 10 }}>Buong bayad</p>
+              <p style={{ color: "#7a6a5a", fontSize: 11, marginTop: 1 }}>Private ride</p>
+              <p style={{ color: "#9a8a7a", fontSize: 10 }}>Full fare</p>
             </div>
             <div className="h-9 w-9 shrink-0 rounded-xl flex items-center justify-center" style={{ background: MAROON }}>
               <Navigation2 size={16} color={GOLD} />
@@ -194,9 +194,9 @@ export default function PassengerDashboard() {
         {/* Quick Destinations */}
         <div className="mb-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <p style={{ color: "#1E1E1E", fontSize: 15, fontWeight: 700 }}>Mabilis na Destinasyon</p>
+            <p style={{ color: "#1E1E1E", fontSize: 15, fontWeight: 700 }}>Quick Destinations</p>
             <button className="inline-action" onClick={() => navigate("/passenger/book")} style={{ color: MAROON, fontSize: 12, fontWeight: 600 }}>
-              I-book -&gt;
+              Book -&gt;
             </button>
           </div>
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -216,7 +216,7 @@ export default function PassengerDashboard() {
 
         {/* Promos */}
         <div className="mb-5">
-          <p style={{ color: "#1E1E1E", fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Mga Promo</p>
+          <p style={{ color: "#1E1E1E", fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Promos</p>
           <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
             {promos.map((promo) => (
               <div
@@ -240,14 +240,14 @@ export default function PassengerDashboard() {
         {/* Recent rides */}
         <div className="mb-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <p style={{ color: "#1E1E1E", fontSize: 15, fontWeight: 700 }}>Nakaraang Biyahe</p>
+            <p style={{ color: "#1E1E1E", fontSize: 15, fontWeight: 700 }}>Recent Rides</p>
             <button className="inline-action" onClick={() => navigate("/passenger/history")} style={{ color: MAROON, fontSize: 12, fontWeight: 600 }}>
-              Tingnan lahat -&gt;
+              View all -&gt;
             </button>
           </div>
           <div className="space-y-2.5">
             {loadingRecentRides ? (
-              <RecentRideEmptyState message="Kinukuha ang iyong mga biyahe..." />
+              <RecentRideEmptyState message="Fetching your rides..." />
             ) : recentRides.length > 0 ? (
               recentRides.map((ride) => (
                 <div
@@ -281,7 +281,7 @@ export default function PassengerDashboard() {
                 </div>
               ))
             ) : (
-              <RecentRideEmptyState message="Wala ka pang nakaraang biyahe." />
+              <RecentRideEmptyState message="You have no recent rides." />
             )}
           </div>
         </div>
@@ -295,7 +295,7 @@ export default function PassengerDashboard() {
           <div className="min-w-0">
             <p style={{ color: MAROON, fontSize: 13, fontWeight: 700 }}>Safety First</p>
             <p style={{ color: "#7a6a5a", fontSize: 12, lineHeight: 1.4 }}>
-              Lahat ng driver ay na-verify. May emergency button sa tracking page.
+              All drivers are verified. An emergency button is available on the tracking page.
             </p>
           </div>
         </div>
