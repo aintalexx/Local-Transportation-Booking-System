@@ -12,7 +12,6 @@ import gutierrezImg from "../../imports/gutierrez.png";
 
 interface Developer {
   name: string;
-  role: string;
   image: string;
   initials: string;
 }
@@ -25,31 +24,26 @@ export default function OnboardingPage() {
   const developers: Developer[] = [
     {
       name: "Alegarbes, Alexander Von R.",
-      role: "Lead Full Stack Developer",
       image: alegarbesImg,
       initials: "AV",
     },
     {
       name: "Robles, Nick Justin",
-      role: "Lead UI/UX Designer & Dev",
       image: roblesImg,
       initials: "NJ",
     },
     {
       name: "Tatel, Aristotle C.",
-      role: "Lead Backend & DB Engineer",
       image: tatelImg,
       initials: "AC",
     },
     {
       name: "Forbes, Lian Symon L.",
-      role: "Frontend Engineer & QA",
       image: forbesImg,
       initials: "LF",
     },
     {
       name: "Gutierrez, Darl Akhen S.",
-      role: "System Analyst & Developer",
       image: gutierrezImg,
       initials: "DG",
     },
@@ -109,6 +103,7 @@ export default function OnboardingPage() {
   };
 
   const goToAuthOptions = () => {
+    localStorage.setItem("arangkada_onboarding_completed", "true");
     navigate("/register");
   };
 
@@ -194,9 +189,6 @@ export default function OnboardingPage() {
                       <h4 className="font-bold text-[#FFF8E7] text-xs md:text-sm leading-tight line-clamp-2 min-h-[2rem] flex items-center justify-center">
                         {dev.name}
                       </h4>
-                      <p className="text-[10px] md:text-xs text-[#D4AF37] font-medium mt-1">
-                        {dev.role}
-                      </p>
                     </div>
                   </div>
                 );
