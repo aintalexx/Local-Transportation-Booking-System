@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useState, ReactNode } from "react";
+import { supabase } from "../lib/supabase";
 
 interface UserData {
   supabaseId?: string;
@@ -56,21 +57,31 @@ export function UserProvider({ children }: { children: ReactNode }) {
   });
 
   const setUser = useCallback((userData: UserData | null) => {
-    setUserState(userData);
+    // Clear old session/user state before setting the new logged-in user
+    localStorage.removeItem("current_user");
+    setUserState(null);
+
     if (userData) {
       // Store current logged-in user (without password field)
       localStorage.setItem("current_user", JSON.stringify(userData));
+      setUserState(userData);
       console.log("Current user set:", userData.username);
     } else {
-      localStorage.removeItem("current_user");
-      console.log("User logged out");
+      console.log("User session cleared");
+      if (supabase) {
+        supabase.auth.signOut().catch(err => console.error("SignOut error during setUser(null):", err));
+      }
     }
   }, []);
 
-  const logout = useCallback(() => {
-    setUser(null);
+  const logout = useCallback(async () => {
     localStorage.removeItem("current_user");
-  }, [setUser]);
+    setUserState(null);
+    if (supabase) {
+      await supabase.auth.signOut().catch(err => console.error("Supabase signOut error:", err));
+    }
+    console.log("User logged out and session cleared");
+  }, []);
 
   return (
     <UserContext.Provider value={{ user, setUser, logout }}>

@@ -36,7 +36,7 @@ export default function LandingPage() {
             Fast, safe, and reliable tricycle transportation services across Sta. Mesa, Manila
           </p>
           <div className="flex justify-center">
-            <Button size="lg" className="text-xl px-12 py-6 h-auto shadow-lg" onClick={() => navigate("/register")}>
+            <Button size="lg" className="text-xl px-12 py-6 h-auto shadow-lg" onClick={() => navigate("/onboarding")}>
               Book a Ride Now
             </Button>
           </div>
@@ -178,7 +178,7 @@ export default function LandingPage() {
           <p className="text-xl mb-8 text-[rgba(255,248,231,0.7)]">
             Join thousands of commuters in Sta. Mesa who trust Arangkada for their daily transportation
           </p>
-          <Button size="lg" variant="secondary" className="text-lg px-8" onClick={() => navigate("/register")}>
+          <Button size="lg" variant="secondary" className="text-lg px-8" onClick={() => navigate("/onboarding")}>
             Create Your Account
           </Button>
         </div>

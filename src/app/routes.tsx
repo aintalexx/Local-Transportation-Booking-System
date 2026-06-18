@@ -2,6 +2,7 @@ import { createBrowserRouter } from "react-router";
 import AppFrameLayout from "./components/AppFrameLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LandingPage from "./pages/LandingPage";
+import OnboardingPage from "./pages/OnboardingPage";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
 import OTPPage from "./pages/auth/OTPPage";
@@ -94,6 +95,7 @@ export const router = createBrowserRouter([
     Component: AppFrameLayout,
     children: [
       { index: true, Component: LandingPage },
+      { path: "onboarding", Component: OnboardingPage },
       { path: "login", Component: LoginPage },
       { path: "register", Component: RegisterPage },
       { path: "otp", Component: OTPPage },

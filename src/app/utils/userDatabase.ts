@@ -159,13 +159,14 @@ export function registerUser(userData: UserData): { success: boolean; message: s
 
 // Find user by username, phone number, or email
 export function findUser(identifier: string): UserData | null {
+  if (!identifier || !identifier.trim()) return null;
   const users = getAllUsers();
   const normalizedPhone = formatPHPhoneInput(identifier);
   const normalizedLower = identifier.trim().toLowerCase();
   const user = users.find(
     u => u.username.toLowerCase() === normalizedLower ||
          (u.email && u.email.trim().toLowerCase() === normalizedLower) ||
-         formatPHPhoneInput(u.phoneNumber) === normalizedPhone
+         (u.phoneNumber && formatPHPhoneInput(u.phoneNumber) === normalizedPhone)
   );
   return user || null;
 }

@@ -281,23 +281,13 @@ export default function LoginPage() {
       const normalizedPhone = formatPHPhoneInput(loginIdentifier);
       let exists = false;
       let isPassenger = false;
-      let localUser = getAllUsers().find(user => 
-        (user.email && user.email.toLowerCase().trim() === loginIdentifier.toLowerCase()) ||
-        user.username.toLowerCase() === loginIdentifier.toLowerCase() ||
-        (user.phoneNumber && formatPHPhoneInput(user.phoneNumber) === normalizedPhone)
-      );
+      let targetEmail: string | null = null;
 
-      let targetEmail = localUser?.email || null;
-      if (localUser) {
-        exists = true;
-        isPassenger = localUser.role === "passenger";
-      }
-
-      // Query Supabase profiles if not found or if we want to resolve the email
+      // Query Supabase profiles if online
       let authEmail = await resolveAuthEmailForLogin(loginIdentifier);
       if (authEmail) {
         exists = true;
-        if (!targetEmail) targetEmail = authEmail;
+        targetEmail = authEmail;
         if (supabase) {
           const { data: profile } = await supabase
             .from("profiles")
@@ -307,6 +297,20 @@ export default function LoginPage() {
           if (profile && profile.role === "passenger") {
             isPassenger = true;
           }
+        }
+      }
+
+      // Local fallback (only if offline/no Supabase)
+      if (!supabase || !authEmail) {
+        const localUser = getAllUsers().find(user => 
+          (user.email && user.email.toLowerCase().trim() === loginIdentifier.toLowerCase()) ||
+          user.username.toLowerCase() === loginIdentifier.toLowerCase() ||
+          (user.phoneNumber && formatPHPhoneInput(user.phoneNumber) === normalizedPhone)
+        );
+        if (localUser) {
+          exists = true;
+          isPassenger = localUser.role === "passenger";
+          targetEmail = localUser.email || null;
         }
       }
 
@@ -322,6 +326,11 @@ export default function LoginPage() {
         try {
           const supabaseUser = await signInWithEmailPassword(targetEmail, cleanPassword);
           if (supabaseUser) {
+            if (supabaseUser.role !== "passenger") {
+              toast.error("This account is not registered as a passenger.");
+              setLoading(false);
+              return;
+            }
             supabaseUser.emailConfirmed = true; // Bypassing confirmation check
             setUser(supabaseUser);
             toast.success("Login successful!");
@@ -332,53 +341,50 @@ export default function LoginPage() {
           const msg = supabaseError instanceof Error ? supabaseError.message.toLowerCase() : "";
           if (msg.includes("email not confirmed") || msg.includes("email_not_confirmed")) {
             // Bypassing confirmation check since the password check has passed
-            let userToUse = localUser;
-            if (!userToUse) {
-              const { data: profile } = await supabase
-                .from("profiles")
-                .select("*")
-                .eq("email", targetEmail)
-                .maybeSingle();
-              if (profile) {
-                userToUse = {
-                  supabaseId: profile.id,
-                  displayName: profile.full_name || "",
-                  username: profile.username || `passenger_${profile.phone?.replace(/\D/g, "")}`,
-                  password: cleanPassword,
-                  phoneNumber: profile.phone || "",
-                  surname: profile.surname || "",
-                  firstName: profile.first_name || "",
-                  middleName: profile.middle_name || "",
-                  suffix: profile.suffix || "",
-                  email: profile.email || "",
-                  emailConfirmed: true,
-                  birthdate: profile.birthdate || "",
-                  role: "passenger",
-                  guardianName: "",
-                  guardianPhone: "",
-                  rating: 5,
-                  totalTrips: 0,
-                  totalEarnings: 0,
-                  memberSince: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
-                  approvalStatus: "approved",
-                  profilePhoto: profile.profile_photo || "",
-                };
-              }
-            }
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("email", targetEmail)
+              .maybeSingle();
 
-            if (userToUse) {
-              userToUse.emailConfirmed = true;
+            if (profile && profile.role === "passenger") {
+              const userToUse = {
+                supabaseId: profile.id,
+                displayName: profile.full_name || "",
+                username: profile.username || `passenger_${profile.phone?.replace(/\D/g, "")}`,
+                password: cleanPassword,
+                phoneNumber: profile.phone || "",
+                surname: profile.surname || "",
+                firstName: profile.first_name || "",
+                middleName: profile.middle_name || "",
+                suffix: profile.suffix || "",
+                email: profile.email || "",
+                emailConfirmed: true,
+                birthdate: profile.birthdate || "",
+                role: "passenger" as const,
+                guardianName: "",
+                guardianPhone: "",
+                rating: 5,
+                totalTrips: 0,
+                totalEarnings: 0,
+                memberSince: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+                approvalStatus: "approved" as const,
+                profilePhoto: profile.profile_photo || "",
+              };
               setUser(userToUse);
               toast.success("Login successful!");
               navigate("/passenger");
               return;
+            } else if (profile) {
+              toast.error("This account is not registered as a passenger.");
+              setLoading(false);
+              return;
             }
-          } else {
-            // Incorrect password / auth failed
-            toast.error("Invalid email/phone number or password.");
-            setLoading(false);
-            return;
           }
+
+          toast.error("Invalid email/phone number or password.");
+          setLoading(false);
+          return;
         }
       }
 
@@ -389,6 +395,9 @@ export default function LoginPage() {
         setUser(localAuthed);
         toast.success("Login successful!");
         navigate("/passenger");
+        return;
+      } else if (localAuthed) {
+        toast.error("This account is not registered as a passenger.");
         return;
       } else {
         toast.error("Invalid email/phone number or password.");

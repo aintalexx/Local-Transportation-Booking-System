@@ -55,15 +55,6 @@ export async function resolveAuthEmailForLogin(identifier: string): Promise<stri
 
   const normalizedPhone = formatPHPhoneInput(normalizedIdentifier);
 
-  const localUser = getAllUsers().find(
-    user => user.username.toLowerCase() === normalizedLower ||
-            (user.phoneNumber && formatPHPhoneInput(user.phoneNumber) === normalizedPhone)
-  );
-
-  if (localUser?.email) {
-    return localUser.email.trim().toLowerCase();
-  }
-
   if (!supabase) return null;
 
   const { data, error } = await supabase
@@ -73,7 +64,7 @@ export async function resolveAuthEmailForLogin(identifier: string): Promise<stri
     .maybeSingle();
 
   if (error) {
-    console.info("Username/phone email lookup failed. Falling back to local login:", error.message);
+    console.info("Username/phone email lookup failed in Supabase:", error.message);
     return null;
   }
 
@@ -267,10 +258,6 @@ export async function createLocalUserFromSupabaseUser(
 ): Promise<UserData> {
   const email = supabaseUser.email?.trim().toLowerCase() || "";
   const metadata = supabaseUser.user_metadata || {};
-  const existingUser = getAllUsers().find(user =>
-    user.supabaseId === supabaseUser.id ||
-    (email && user.email?.trim().toLowerCase() === email)
-  );
 
   const { data: profile } = supabase
     ? await supabase
@@ -282,49 +269,49 @@ export async function createLocalUserFromSupabaseUser(
 
   const fullName = normalizeDisplayName(profile?.full_name || metadata.full_name || metadata.name || email.split("@")[0] || "Supabase User");
   const nameParts = fullName.split(/\s+/).filter(Boolean);
-  const firstName = existingUser?.firstName || metadata.first_name || nameParts[0] || "User";
-  const surname = existingUser?.surname || metadata.surname || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : "");
-  const middleName = existingUser?.middleName || metadata.middle_name || (nameParts.length > 2 ? nameParts.slice(1, -1).join(" ") : "");
-  const birthdate = existingUser?.birthdate || metadata.birthdate || "";
-  const phoneNumber = profile?.phone || existingUser?.phoneNumber || metadata.phone || metadata.phone_number || "";
+  const firstName = profile?.first_name || metadata.first_name || nameParts[0] || "User";
+  const surname = profile?.surname || metadata.surname || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : "");
+  const middleName = profile?.middle_name || metadata.middle_name || (nameParts.length > 2 ? nameParts.slice(1, -1).join(" ") : "");
+  const birthdate = profile?.birthdate || metadata.birthdate || "";
+  const phoneNumber = profile?.phone || metadata.phone || metadata.phone_number || "";
   const isAdminEmail = email === "admin@arangkada.ph";
   const role = isAdminEmail
     ? "admin"
-    : (profile?.role === "driver" || existingUser?.role === "driver" || metadata.role === "driver")
+    : (profile?.role === "driver" || metadata.role === "driver")
       ? "driver"
-      : (profile?.role || existingUser?.role || metadata.role || fallbackRole) as AppRole;
+      : (profile?.role || metadata.role || fallbackRole) as AppRole;
 
   const userData: UserData = {
     supabaseId: supabaseUser.id,
-    displayName: normalizeDisplayName(existingUser?.displayName || metadata.full_name || metadata.name || profile?.full_name || fullName),
-    username: profile?.username || existingUser?.username || metadata.username || `user_${supabaseUser.id.replace(/-/g, "").slice(0, 16)}`,
-    password: password || existingUser?.password || "",
+    displayName: normalizeDisplayName(metadata.full_name || metadata.name || profile?.full_name || fullName),
+    username: profile?.username || metadata.username || `user_${supabaseUser.id.replace(/-/g, "").slice(0, 16)}`,
+    password: password || "",
     phoneNumber,
     surname,
     firstName,
     middleName,
-    suffix: normalizeOptionalSuffix(existingUser?.suffix || metadata.suffix),
+    suffix: normalizeOptionalSuffix(profile?.suffix || metadata.suffix),
     email: profile?.email || email,
-    emailConfirmed: Boolean(supabaseUser.email_confirmed_at || supabaseUser.confirmed_at || existingUser?.emailConfirmed),
+    emailConfirmed: Boolean(supabaseUser.email_confirmed_at || supabaseUser.confirmed_at),
     birthdate,
     role,
-    guardianName: existingUser?.guardianName || metadata.guardian_name || "",
-    guardianPhone: existingUser?.guardianPhone || metadata.guardian_phone || "",
-    rating: existingUser?.rating || 5,
-    totalTrips: existingUser?.totalTrips || 0,
-    totalEarnings: existingUser?.totalEarnings || 0,
-    vehicleType: profile?.vehicle_type || existingUser?.vehicleType || metadata.vehicle_type || "",
-    plateNumber: profile?.plate_number || existingUser?.plateNumber || metadata.plate_number || "",
-    driverLicensePhoto: profile?.driver_license_photo || existingUser?.driverLicensePhoto || "",
-    licenseNumber: profile?.license_number || existingUser?.licenseNumber || "",
-    validIdPhoto: profile?.valid_id_photo || existingUser?.validIdPhoto || "",
-    orCrPhoto: profile?.or_cr_photo || existingUser?.orCrPhoto || "",
-    clearancePhoto: profile?.clearance_photo || existingUser?.clearancePhoto || "",
-    vehiclePhoto: profile?.vehicle_photo || existingUser?.vehiclePhoto || "",
-    vehicleColor: existingUser?.vehicleColor || "",
-    memberSince: existingUser?.memberSince || new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
-    approvalStatus: profile?.approval_status || existingUser?.approvalStatus || (role === "driver" ? "pending" : "approved"),
-    profilePhoto: profile?.profile_photo || existingUser?.profilePhoto || String(metadata.avatar_url || metadata.picture || ""),
+    guardianName: metadata.guardian_name || "",
+    guardianPhone: metadata.guardian_phone || "",
+    rating: 5,
+    totalTrips: 0,
+    totalEarnings: 0,
+    vehicleType: profile?.vehicle_type || metadata.vehicle_type || "",
+    plateNumber: profile?.plate_number || metadata.plate_number || "",
+    driverLicensePhoto: profile?.driver_license_photo || "",
+    licenseNumber: profile?.license_number || "",
+    validIdPhoto: profile?.valid_id_photo || "",
+    orCrPhoto: profile?.or_cr_photo || "",
+    clearancePhoto: profile?.clearance_photo || "",
+    vehiclePhoto: profile?.vehicle_photo || "",
+    vehicleColor: "",
+    memberSince: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+    approvalStatus: profile?.approval_status || (role === "driver" ? "pending" : "approved"),
+    profilePhoto: profile?.profile_photo || String(metadata.avatar_url || metadata.picture || ""),
   };
 
   if (profile?.role !== userData.role || profile?.approval_status !== userData.approvalStatus) {
