@@ -325,6 +325,16 @@ export default function LoginPage() {
                   style={{ height: 52, background: "#ffffff", border: showValidation && !driverPhone ? "2px solid #C62828" : "2px solid rgba(75,15,20,0.12)", color: "#1E1E1E", fontSize: 15 }}
                 />
               </div>
+              <div className="mt-2 text-right">
+                <button
+                  type="button"
+                  onClick={() => navigate("/driver-forgot-password")}
+                  className="text-sm font-bold"
+                  style={{ color: "#4B0F14" }}
+                >
+                  Forgot password?
+                </button>
+              </div>
             </div>
           ) : (
             <>

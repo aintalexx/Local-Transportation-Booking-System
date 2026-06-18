@@ -6,6 +6,7 @@ import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
 import OTPPage from "./pages/auth/OTPPage";
 import ForgotPasswordPage from "./pages/auth/ForgotPasswordPage";
+import DriverForgotPasswordPage from "./pages/auth/DriverForgotPasswordPage";
 import ResetPasswordPage from "./pages/auth/ResetPasswordPage";
 import PendingApproval from "./pages/auth/PendingApproval";
 import AuthCallbackPage from "./pages/auth/AuthCallbackPage";
@@ -97,6 +98,7 @@ export const router = createBrowserRouter([
       { path: "register", Component: RegisterPage },
       { path: "otp", Component: OTPPage },
       { path: "forgot-password", Component: ForgotPasswordPage },
+      { path: "driver-forgot-password", Component: DriverForgotPasswordPage },
       { path: "reset-password", Component: ResetPasswordPage },
       { path: "pending-approval", Component: PendingApproval },
       { path: "auth/callback", Component: AuthCallbackPage },

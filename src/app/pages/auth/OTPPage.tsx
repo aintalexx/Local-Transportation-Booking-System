@@ -11,7 +11,7 @@ import { registerUser, updateUser, type UserData } from "../../utils/userDatabas
 import { signUpWithEmailPassword } from "../../utils/supabaseAuth";
 import { syncSupabaseProfile } from "../../utils/supabaseProfiles";
 
-type OtpMode = "login" | "register" | "google-phone";
+type OtpMode = "login" | "register" | "google-phone" | "driver-forgot-password";
 const DEMO_OTP_EXPIRY_MS = DEMO_OTP_RESEND_SECONDS * 1000;
 
 type OtpRouteState = {
@@ -192,7 +192,10 @@ export default function OTPPage() {
         return;
       }
 
-      if (state.mode === "google-phone") {
+      if (state.mode === "driver-forgot-password") {
+        toast.success("Phone number verified successfully. You may now log in again.", { duration: 5000 });
+        navigate("/login", { replace: true });
+      } else if (state.mode === "google-phone") {
         await handleVerifiedGooglePhone();
       } else if (state.mode === "register") {
         await handleVerifiedRegistration();
@@ -232,7 +235,7 @@ export default function OTPPage() {
     }
   }, [otp]);
 
-  const backTarget = state.mode === "google-phone" ? "/auth/phone" : state.mode === "register" ? "/register" : "/login";
+  const backTarget = state.mode === "driver-forgot-password" ? "/driver-forgot-password" : state.mode === "google-phone" ? "/auth/phone" : state.mode === "register" ? "/register" : "/login";
   const isDriverRegistration = state.mode === "register" && state.role === "driver";
 
   return (
