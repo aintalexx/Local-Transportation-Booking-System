@@ -1,6 +1,13 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { Bell, MapPin, Clock, Star, Zap, User, Navigation2, ChevronRight, ShieldCheck } from "lucide-react";
 import { useUser } from "../../context/UserContext";
+import {
+  getPassengerBookingHistory,
+  type BookingData,
+  type BookingStatus,
+} from "../../utils/bookingDatabase";
+import { getSupabasePassengerBookingHistory } from "../../utils/supabaseBookings";
 
 const MAROON = "#4B0F14";
 const GOLD = "#D4AF37";
@@ -13,17 +20,48 @@ const SANTA_MESA_QUICK_DESTINATIONS = [
   { name: "Sta. Mesa Market", icon: "MKT" },
 ];
 
-const SANTA_MESA_RECENT_RIDES = [
-  { pickup: "PUP Sta. Mesa", destination: "SM City Sta. Mesa", fare: 25, date: "Kahapon, 2:30 PM", rating: 5 },
-  { pickup: "Pureza LRT Station", destination: "PUP Sta. Mesa", fare: 30, date: "Lunes, 8:15 AM", rating: 4 },
-];
+const HISTORY_STATUSES: BookingStatus[] = ["completed", "ride_completed", "cancelled"];
+const RECENT_RIDE_LIMIT = 3;
 
 export default function PassengerDashboard() {
   const navigate = useNavigate();
   const { user: currentUser } = useUser();
+  const [recentRides, setRecentRides] = useState<BookingData[]>([]);
+  const [loadingRecentRides, setLoadingRecentRides] = useState(true);
 
   const firstName = currentUser?.firstName || "Pasahero";
   const profilePhoto = currentUser?.profilePhoto;
+
+  useEffect(() => {
+    if (!currentUser) {
+      setRecentRides([]);
+      setLoadingRecentRides(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadRecentRides = async () => {
+      setLoadingRecentRides(true);
+
+      const localRides = getPassengerBookingHistory(currentUser.username, currentUser.supabaseId)
+        .filter(ride => HISTORY_STATUSES.includes(ride.status));
+      const supabaseRides = await getSupabasePassengerBookingHistory(currentUser);
+      const merged = mergeRecentRideHistory([...supabaseRides, ...localRides])
+        .slice(0, RECENT_RIDE_LIMIT);
+
+      if (!cancelled) {
+        setRecentRides(merged);
+        setLoadingRecentRides(false);
+      }
+    };
+
+    void loadRecentRides();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
 
 
 
@@ -176,38 +214,43 @@ export default function PassengerDashboard() {
             </button>
           </div>
           <div className="space-y-2.5">
-            {SANTA_MESA_RECENT_RIDES.map((ride, i) => (
-              <div
-                key={i}
-                className="flex flex-col gap-3 rounded-2xl p-4 sm:flex-row sm:items-center"
-                style={{ background: "#ffffff", border: "1.5px solid rgba(75,15,20,0.08)", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}
-              >
-                <div className="h-11 w-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(75,15,20,0.06)" }}>
-                  <span style={{ fontSize: 20 }}>AR</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="mb-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
-                    <p style={{ color: "#1E1E1E", fontSize: 13, fontWeight: 700 }} className="truncate">{ride.pickup}</p>
-                    <span style={{ color: "#9a8a7a", fontSize: 10 }}>-&gt;</span>
-                    <p style={{ color: "#1E1E1E", fontSize: 13, fontWeight: 700 }} className="truncate">{ride.destination}</p>
+            {loadingRecentRides ? (
+              <RecentRideEmptyState message="Kinukuha ang iyong mga biyahe..." />
+            ) : recentRides.length > 0 ? (
+              recentRides.map((ride) => (
+                <div
+                  key={ride.id}
+                  className="flex flex-col gap-3 rounded-2xl p-4 sm:flex-row sm:items-start"
+                  style={{ background: "#ffffff", border: "1.5px solid rgba(75,15,20,0.08)", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}
+                >
+                  <div className="h-11 w-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(75,15,20,0.06)" }}>
+                    <Clock size={20} color={MAROON} />
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="min-w-0 break-words" style={{ color: "#9a8a7a", fontSize: 11 }}>{ride.date}</p>
-                    <span style={{ color: GOLD, fontSize: 11 }}>{"*".repeat(ride.rating)}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <p className="min-w-0 break-words" style={{ color: "#9a8a7a", fontSize: 11 }}>
+                        {formatRecentRideDateTime(ride)}
+                      </p>
+                      <RecentRideStatus status={ride.status} />
+                    </div>
+                    <div className="space-y-1">
+                      <p style={{ color: "#1E1E1E", fontSize: 13, fontWeight: 700 }} className="break-words">
+                        {ride.pickupLocation.address}
+                      </p>
+                      <p style={{ color: "#9a8a7a", fontSize: 11 }}>to</p>
+                      <p style={{ color: "#1E1E1E", fontSize: 13, fontWeight: 700 }} className="break-words">
+                        {ride.destination.address}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center justify-between gap-3 text-left sm:block sm:text-right">
+                    <p style={{ color: MAROON, fontSize: 16, fontWeight: 800 }}>PHP {ride.finalPrice.toFixed(2)}</p>
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center justify-between gap-3 text-left sm:block sm:text-right">
-                  <p style={{ color: MAROON, fontSize: 16, fontWeight: 800 }}>PHP {ride.fare}</p>
-                  <button
-                    className="inline-action"
-                    style={{ color: MAROON, fontSize: 11, fontWeight: 600 }}
-                    onClick={() => navigate("/passenger/book")}
-                  >
-                    Ulit -&gt;
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <RecentRideEmptyState message="Wala ka pang nakaraang biyahe." />
+            )}
           </div>
         </div>
 
@@ -226,6 +269,60 @@ export default function PassengerDashboard() {
         </div>
 
       </div>
+    </div>
+  );
+}
+
+function mergeRecentRideHistory(rides: BookingData[]): BookingData[] {
+  const byId = new Map<string, BookingData>();
+  rides.forEach((ride) => {
+    const existing = byId.get(ride.id);
+    if (!existing || getRecentRideSortTime(ride) >= getRecentRideSortTime(existing)) {
+      byId.set(ride.id, ride);
+    }
+  });
+
+  return Array.from(byId.values())
+    .sort((a, b) => getRecentRideSortTime(b) - getRecentRideSortTime(a));
+}
+
+function getRecentRideSortTime(ride: BookingData): number {
+  const value = new Date(ride.completedAt || ride.createdAt).getTime();
+  return Number.isFinite(value) ? value : 0;
+}
+
+function formatRecentRideDateTime(ride: BookingData): string {
+  const date = new Date(ride.completedAt || ride.createdAt);
+  if (Number.isNaN(date.getTime())) return "Unknown date";
+  return `${date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}, ${date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+}
+
+function RecentRideStatus({ status }: { status: BookingStatus }) {
+  const isCompleted = status === "completed" || status === "ride_completed";
+  const label = status === "ride_completed"
+    ? "Completed"
+    : status.charAt(0).toUpperCase() + status.slice(1);
+
+  return (
+    <span
+      className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+      style={{
+        background: isCompleted ? "rgba(22, 163, 74, 0.12)" : "rgba(220, 38, 38, 0.12)",
+        color: isCompleted ? "#15803d" : "#b91c1c",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function RecentRideEmptyState({ message }: { message: string }) {
+  return (
+    <div
+      className="rounded-2xl p-4 text-center"
+      style={{ background: "#ffffff", border: "1.5px solid rgba(75,15,20,0.08)", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}
+    >
+      <p style={{ color: "#7a6a5a", fontSize: 13, fontWeight: 600 }}>{message}</p>
     </div>
   );
 }
