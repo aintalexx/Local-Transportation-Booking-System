@@ -37,7 +37,7 @@ import {
 import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
 import { createDemoOtp } from "../../utils/demoOtp";
 import { signInWithGoogle, signUpWithEmailPassword } from "../../utils/supabaseAuth";
-import { registerSupabaseDriver } from "../../utils/supabaseDrivers";
+import { registerSupabaseDriver, uploadBase64ToStorage } from "../../utils/supabaseDrivers";
 import { profileContactExists } from "../../utils/supabaseProfiles";
 import { useUser } from "../../context/UserContext";
 
@@ -695,6 +695,37 @@ export default function RegisterPage() {
       };
 
       if (role === "driver") {
+        // Upload images to Supabase Storage and get their URLs
+        const phoneDigits = normalizedPhone.replace(/\D/g, "");
+        
+        try {
+          if (formData.profilePhoto && formData.profilePhoto.startsWith("data:")) {
+            const url = await uploadBase64ToStorage(formData.profilePhoto, `profiles/${phoneDigits}_profile.jpg`);
+            if (url) userData.profilePhoto = url;
+          }
+          if (formData.validIdPhoto && formData.validIdPhoto.startsWith("data:")) {
+            const url = await uploadBase64ToStorage(formData.validIdPhoto, `documents/${phoneDigits}_valid_id.jpg`);
+            if (url) {
+              userData.validIdPhoto = url;
+              userData.driverLicensePhoto = url;
+            }
+          }
+          if (formData.orCrPhoto && formData.orCrPhoto.startsWith("data:")) {
+            const url = await uploadBase64ToStorage(formData.orCrPhoto, `documents/${phoneDigits}_or_cr.jpg`);
+            if (url) userData.orCrPhoto = url;
+          }
+          if (formData.clearancePhoto && formData.clearancePhoto.startsWith("data:")) {
+            const url = await uploadBase64ToStorage(formData.clearancePhoto, `documents/${phoneDigits}_clearance.jpg`);
+            if (url) userData.clearancePhoto = url;
+          }
+          if (formData.vehiclePhoto && formData.vehiclePhoto.startsWith("data:")) {
+            const url = await uploadBase64ToStorage(formData.vehiclePhoto, `vehicles/${phoneDigits}_vehicle.jpg`);
+            if (url) userData.vehiclePhoto = url;
+          }
+        } catch (uploadErr) {
+          console.error("Failed to upload document to Supabase Storage:", uploadErr);
+        }
+
         // Save in Supabase public.drivers table
         let supabaseId = undefined;
         try {
@@ -946,10 +977,10 @@ export default function RegisterPage() {
 
           <div className="mt-4 text-center">
             <button
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/onboarding")}
               className="text-sm text-gray-600 hover:text-gray-900"
             >
-              ← Back to Home
+              ← Back to Onboarding
             </button>
           </div>
         </div>
@@ -2623,10 +2654,10 @@ export default function RegisterPage() {
 
         <div className="mt-4 text-center">
           <button
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/onboarding")}
             className="text-sm text-gray-600 hover:text-gray-900"
           >
-            ← Back to Home
+            ← Back to Onboarding
           </button>
         </div>
       </div>

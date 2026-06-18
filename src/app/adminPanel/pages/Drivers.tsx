@@ -286,7 +286,7 @@ function DriverDetailModal({
                       ) : (
                         <div className="w-full h-44 flex flex-col items-center justify-center bg-gray-50 text-gray-300">
                           <span className="mb-2 opacity-30 scale-150">{doc.icon}</span>
-                          <p className="text-xs text-gray-400 font-medium">Not uploaded</p>
+                          <p className="text-xs text-gray-400 font-medium">No document uploaded</p>
                         </div>
                       )}
                     </div>

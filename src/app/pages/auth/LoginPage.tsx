@@ -415,7 +415,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col" style={{ background: "#FFF8E7" }}>
       {/* Maroon header */}
       <div className="px-5 pt-12 pb-10" style={{ background: "linear-gradient(160deg, #4B0F14 0%, #6E171D 100%)" }}>
-        <button onClick={() => navigate("/")} className="flex items-center gap-2 mb-6" style={{ color: "rgba(255,248,231,0.65)" }}>
+        <button onClick={() => navigate("/onboarding")} className="flex items-center gap-2 mb-6" style={{ color: "rgba(255,248,231,0.65)" }}>
           <ArrowLeft size={18} />
           <span style={{ fontSize: 14 }}>Back</span>
         </button>

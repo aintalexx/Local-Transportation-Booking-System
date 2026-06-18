@@ -266,12 +266,12 @@ export default function PendingApproval() {
         </button>
 
         <button
-          onClick={() => navigate("/")}
+          onClick={() => navigate("/onboarding")}
           className="w-full h-12 rounded-2xl flex items-center justify-center gap-2"
           style={{ background: "transparent" }}
         >
           <ArrowLeft size={16} color="#9a8a7a" />
-          <span style={{ color: "#9a8a7a", fontSize: 14, fontWeight: 600 }}>Back to Home</span>
+          <span style={{ color: "#9a8a7a", fontSize: 14, fontWeight: 600 }}>Back to Onboarding</span>
         </button>
       </div>
     </div>

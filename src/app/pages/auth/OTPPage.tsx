@@ -337,10 +337,10 @@ export default function OTPPage() {
 
         <div className="mt-4 text-center">
           <button
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/onboarding")}
             className="text-sm text-gray-600 hover:text-gray-900"
           >
-            Back to Home
+            Back to Onboarding
           </button>
         </div>
       </div>

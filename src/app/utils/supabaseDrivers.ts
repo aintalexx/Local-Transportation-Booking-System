@@ -155,3 +155,54 @@ export async function getAllSupabaseDrivers(): Promise<SupabaseDriverRow[]> {
 
   return data as SupabaseDriverRow[];
 }
+
+/**
+ * Upload a Base64-encoded image directly to a Supabase storage bucket,
+ * ensuring the bucket exists first, and returning the public URL.
+ */
+export async function uploadBase64ToStorage(base64Data: string, filePath: string): Promise<string | null> {
+  if (!supabase) return null;
+
+  try {
+    // 1. Ensure the bucket exists
+    try {
+      await supabase.storage.createBucket("driver-documents", { public: true });
+    } catch (bucketErr) {
+      // Ignore bucket creation error if it already exists or fails to run (policies, etc.)
+    }
+
+    // 2. Convert base64 data URL to Blob
+    const arr = base64Data.split(",");
+    const mime = arr[0].match(/:(.*?);/)?.[1] || "image/jpeg";
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    const blob = new Blob([u8arr], { type: mime });
+
+    // 3. Upload to Supabase storage
+    const { data, error } = await supabase.storage
+      .from("driver-documents")
+      .upload(filePath, blob, {
+        contentType: mime,
+        upsert: true,
+      });
+
+    if (error) {
+      console.error("Error uploading file to storage:", error.message);
+      return null;
+    }
+
+    // 4. Get public URL
+    const { data: urlData } = supabase.storage
+      .from("driver-documents")
+      .getPublicUrl(filePath);
+
+    return urlData.publicUrl;
+  } catch (err) {
+    console.error("Failed base64 upload helper:", err);
+    return null;
+  }
+}
