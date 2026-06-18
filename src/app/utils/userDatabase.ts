@@ -133,7 +133,7 @@ export function registerUser(userData: UserData): { success: boolean; message: s
         return { success: false, message: emailCheck.message };
       }
       if (emailExists(normalizedUser.email)) {
-        return { success: false, message: "This email is already used. Please try a different email address." };
+        return { success: false, message: "This email is already registered. Please sign in or use Forgot password." };
       }
     }
 

@@ -107,42 +107,8 @@ export function validateEmail(email: string | null | undefined, required = false
   return ok;
 }
 
-const BLOCKED_AUTH_EMAIL_DOMAINS = new Set([
-  "example.com",
-  "example.net",
-  "example.org",
-  "test.com",
-  "fake.com",
-  "mailinator.com",
-  "tempmail.com",
-  "10minutemail.com",
-  "guerrillamail.com",
-  "yopmail.com",
-  "trashmail.com",
-]);
-
 export function validateAuthEmail(email: string | null | undefined): ValidationResult {
-  const basicCheck = validateEmail(email, true);
-  if (!basicCheck.valid) return basicCheck;
-
-  const normalized = safeText(email).trim().toLowerCase();
-  const domain = normalized.split("@")[1] || "";
-  const domainParts = domain.split(".");
-  const tld = domainParts[domainParts.length - 1] || "";
-
-  if (BLOCKED_AUTH_EMAIL_DOMAINS.has(domain)) {
-    return fail("Please use a real personal email address, not a test or temporary email.");
-  }
-
-  if (domainParts.length < 2 || !/^[a-z]{2,}$/.test(tld)) {
-    return fail("Email domain looks invalid. Please use a real email address.");
-  }
-
-  if (/(^|\.)invalid$/.test(domain) || domain.includes("..")) {
-    return fail("Email domain looks invalid. Please use a real email address.");
-  }
-
-  return ok;
+  return validateEmail(email, true);
 }
 
 export function validatePassword(password: string): ValidationResult {

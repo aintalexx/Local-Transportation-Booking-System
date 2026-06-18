@@ -42,6 +42,21 @@ import { useUser } from "../../context/UserContext";
 
 const MAX_DRIVER_UPLOAD_SIZE = 400; // Reduced from 900 to prevent localStorage quota exceeded
 const DRIVER_UPLOAD_QUALITY = 0.5; // Reduced from 0.72
+const EMAIL_ALREADY_REGISTERED_MESSAGE = "This email is already registered. Please sign in or use Forgot password.";
+const EMAIL_CANNOT_BE_USED_MESSAGE = "This email cannot be used for registration. Please use a valid email address that you own.";
+
+function isSupabaseDuplicateEmailError(message: string): boolean {
+  return message.includes("already registered") ||
+    message.includes("already exists") ||
+    message.includes("email_taken") ||
+    message.includes("user already registered");
+}
+
+function isSupabaseInvalidEmailError(message: string): boolean {
+  return message.includes("invalid email") ||
+    message.includes("email address is invalid") ||
+    message.includes("invalid login credentials");
+}
 
 async function compressImageFile(file: File): Promise<string> {
   const originalDataUrl = await readFileAsDataUrl(file);
@@ -278,7 +293,7 @@ export default function RegisterPage() {
     }
 
     if (emailExists(normalizedEmail)) {
-      toast.error("This email is already used. Please try a different email address.");
+      toast.error(EMAIL_ALREADY_REGISTERED_MESSAGE);
       return;
     }
 
@@ -348,8 +363,13 @@ export default function RegisterPage() {
           }
         } catch (supabaseError) {
           const errMsg = supabaseError instanceof Error ? supabaseError.message.toLowerCase() : "";
-          if (errMsg.includes("already registered") || errMsg.includes("already exists") || errMsg.includes("email_taken")) {
-            toast.error("This email is already used. Please try a different email address.");
+          if (isSupabaseDuplicateEmailError(errMsg)) {
+            toast.error("This email cannot be used for a new account. If this is your email, please sign in or use Forgot password.");
+            setLoading(false);
+            return;
+          }
+          if (isSupabaseInvalidEmailError(errMsg)) {
+            toast.error(EMAIL_CANNOT_BE_USED_MESSAGE);
             setLoading(false);
             return;
           }
@@ -526,7 +546,7 @@ export default function RegisterPage() {
     }
 
     if (role === "passenger" && emailExists(normalizedEmail)) {
-      toast.error("Email already registered. Please use a different email.");
+      toast.error(EMAIL_ALREADY_REGISTERED_MESSAGE);
       return;
     }
 
