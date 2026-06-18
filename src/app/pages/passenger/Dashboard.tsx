@@ -8,6 +8,7 @@ import {
   type BookingStatus,
 } from "../../utils/bookingDatabase";
 import { getSupabasePassengerBookingHistory } from "../../utils/supabaseBookings";
+import { getUnreadNotificationCount } from "../../utils/supabaseNotifications";
 
 const MAROON = "#4B0F14";
 const GOLD = "#D4AF37";
@@ -28,6 +29,7 @@ export default function PassengerDashboard() {
   const { user: currentUser } = useUser();
   const [recentRides, setRecentRides] = useState<BookingData[]>([]);
   const [loadingRecentRides, setLoadingRecentRides] = useState(true);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   const firstName = currentUser?.firstName || "Pasahero";
   const profilePhoto = currentUser?.profilePhoto;
@@ -36,6 +38,7 @@ export default function PassengerDashboard() {
     if (!currentUser) {
       setRecentRides([]);
       setLoadingRecentRides(false);
+      setUnreadNotifications(0);
       return;
     }
 
@@ -57,6 +60,28 @@ export default function PassengerDashboard() {
     };
 
     void loadRecentRides();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setUnreadNotifications(0);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadUnreadNotifications = async () => {
+      const count = await getUnreadNotificationCount(currentUser);
+      if (!cancelled) {
+        setUnreadNotifications(count);
+      }
+    };
+
+    void loadUnreadNotifications();
 
     return () => {
       cancelled = true;
@@ -93,7 +118,14 @@ export default function PassengerDashboard() {
             style={{ background: "rgba(255,248,231,0.15)" }}
           >
             <Bell size={18} color={CREAM} />
-            <div className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full" style={{ background: GOLD }} />
+            {unreadNotifications > 0 && (
+              <div
+                className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1"
+                style={{ background: GOLD, color: MAROON, fontSize: 10, fontWeight: 900 }}
+              >
+                {unreadNotifications > 9 ? "9+" : unreadNotifications}
+              </div>
+            )}
           </button>
         </div>
 
