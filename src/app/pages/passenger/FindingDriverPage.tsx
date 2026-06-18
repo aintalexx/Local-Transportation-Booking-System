@@ -103,6 +103,15 @@ export default function FindingDriverPage() {
   const [cancelLoading, setCancelLoading] = useState(false);
   const [showNoDriversCard, setShowNoDriversCard] = useState(false);
 
+  const driverFound = useMemo(() => {
+    if (!activeBooking) return false;
+    return Boolean(
+      activeBooking.driverName ||
+      activeBooking.driverUsername ||
+      DRIVER_FOUND_STATUSES.has(activeBooking.status)
+    );
+  }, [activeBooking]);
+
   useEffect(() => {
     if (driverFound) {
       setShowNoDriversCard(false);
@@ -159,15 +168,6 @@ export default function FindingDriverPage() {
       setShowCancelDialog(false);
     }
   };
-
-  const driverFound = useMemo(() => {
-    if (!activeBooking) return false;
-    return Boolean(
-      activeBooking.driverName ||
-      activeBooking.driverUsername ||
-      DRIVER_FOUND_STATUSES.has(activeBooking.status)
-    );
-  }, [activeBooking]);
 
   useEffect(() => {
     if (!user) {
