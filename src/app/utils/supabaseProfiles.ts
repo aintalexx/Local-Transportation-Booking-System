@@ -7,6 +7,11 @@ export type SupabaseProfile = {
   username: string | null;
   email?: string | null;
   full_name: string;
+  first_name?: string | null;
+  middle_name?: string | null;
+  surname?: string | null;
+  suffix?: string | null;
+  birthdate?: string | null;
   phone: string | null;
   role: "passenger" | "driver" | "admin";
   vehicle_type: string | null;
@@ -20,6 +25,8 @@ export type SupabaseProfile = {
   profile_photo?: string | null;
   is_online: boolean;
   approval_status?: "pending" | "approved" | "rejected";
+  registration_date?: string | null;
+  account_status?: "Active" | "Blocked" | "Archived" | "Suspended" | null;
 };
 
 export async function getCurrentSupabaseUserId(): Promise<string | null> {
@@ -28,6 +35,33 @@ export async function getCurrentSupabaseUserId(): Promise<string | null> {
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) return null;
   return data.user.id;
+}
+
+export async function profileContactExists(email: string, phone: string): Promise<{
+  emailExists: boolean;
+  phoneExists: boolean;
+}> {
+  if (!supabase) return { emailExists: false, phoneExists: false };
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  try {
+    const [emailResult, phoneResult] = await Promise.all([
+      normalizedEmail
+        ? supabase.from("profiles").select("id").eq("email", normalizedEmail).limit(1)
+        : Promise.resolve({ data: [], error: null }),
+      phone
+        ? supabase.from("profiles").select("id").eq("phone", phone).limit(1)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    return {
+      emailExists: !emailResult.error && Boolean(emailResult.data?.length),
+      phoneExists: !phoneResult.error && Boolean(phoneResult.data?.length),
+    };
+  } catch {
+    return { emailExists: false, phoneExists: false };
+  }
 }
 
 export async function syncSupabaseProfile(user: UserData): Promise<SupabaseProfile | null> {
@@ -48,7 +82,7 @@ export async function syncSupabaseProfile(user: UserData): Promise<SupabaseProfi
     user.approvalStatus ||
     (user.role === "driver" ? "pending" : "approved");
 
-  const profilePayload = {
+  const baseProfilePayload = {
     id: userId,
     username: user.username,
     email: user.email?.trim().toLowerCase() || null,
@@ -67,6 +101,19 @@ export async function syncSupabaseProfile(user: UserData): Promise<SupabaseProfi
     approval_status: approvalStatus,
     updated_at: new Date().toISOString(),
   };
+  const optionalPassengerPayload = {
+    first_name: user.firstName || null,
+    middle_name: user.middleName || null,
+    surname: user.surname || null,
+    suffix: user.suffix || null,
+    birthdate: user.birthdate || null,
+    registration_date: user.registrationDate || new Date().toISOString(),
+    account_status: user.accountStatus || "Active",
+  };
+  const profilePayload = {
+    ...baseProfilePayload,
+    ...optionalPassengerPayload,
+  };
 
   const { data, error } = await supabase
     .from("profiles")
@@ -77,11 +124,17 @@ export async function syncSupabaseProfile(user: UserData): Promise<SupabaseProfi
     .select()
     .single();
 
-  if (error && error.message.toLowerCase().includes("email")) {
-    const { email: _email, ...payloadWithoutEmail } = profilePayload;
+  if (error && (
+    error.message.toLowerCase().includes("email") ||
+    error.message.toLowerCase().includes("column") ||
+    error.message.toLowerCase().includes("schema cache")
+  )) {
+    const retryPayload = error.message.toLowerCase().includes("email")
+      ? (({ email: _email, ...payload }) => payload)(baseProfilePayload)
+      : baseProfilePayload;
     const { data: retryData, error: retryError } = await supabase
       .from("profiles")
-      .upsert(payloadWithoutEmail, { onConflict: "id" })
+      .upsert(retryPayload, { onConflict: "id" })
       .select()
       .single();
 

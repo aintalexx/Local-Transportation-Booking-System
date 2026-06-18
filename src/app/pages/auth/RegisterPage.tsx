@@ -38,6 +38,7 @@ import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
 import { createDemoOtp } from "../../utils/demoOtp";
 import { signInWithGoogle, signUpWithEmailPassword } from "../../utils/supabaseAuth";
 import { registerSupabaseDriver } from "../../utils/supabaseDrivers";
+import { profileContactExists } from "../../utils/supabaseProfiles";
 import { useUser } from "../../context/UserContext";
 
 const MAX_DRIVER_UPLOAD_SIZE = 400; // Reduced from 900 to prevent localStorage quota exceeded
@@ -56,6 +57,29 @@ function isSupabaseInvalidEmailError(message: string): boolean {
   return message.includes("invalid email") ||
     message.includes("email address is invalid") ||
     message.includes("invalid login credentials");
+}
+
+function validatePassengerName(value: string, required = true) {
+  const normalized = normalizeSpaces(value);
+
+  if (!normalized) {
+    return required ? { valid: false, message: "Names must contain letters only." } : ok;
+  }
+
+  if (!/^[\p{L}]+(?:\s+[\p{L}]+)*$/u.test(normalized)) {
+    return { valid: false, message: "Names must contain letters only." };
+  }
+
+  return ok;
+}
+
+function formatDateInputValue(date: Date | undefined): string {
+  if (!date || Number.isNaN(date.getTime())) return "";
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 async function compressImageFile(file: File): Promise<string> {
@@ -145,6 +169,9 @@ export default function RegisterPage() {
   const [zoomModal, setZoomModal] = useState<{ url: string; title: string } | null>(null);
 
   const isMinor = formData.birthdate ? calculateAge(formData.birthdate) < 18 : false;
+  const passengerAge = formData.birthdate && !Number.isNaN(formData.birthdate.getTime())
+    ? calculateAge(formData.birthdate)
+    : null;
 
   useEffect(() => {
     if (step !== "driverOtp" && step !== "passengerOtp") return;
@@ -285,6 +312,40 @@ export default function RegisterPage() {
     e.preventDefault();
     setShowValidationErrors(true);
 
+    const firstNameCheck = validatePassengerName(formData.firstName);
+    const middleNameCheck = validatePassengerName(formData.middleName, false);
+    const lastNameCheck = validatePassengerName(formData.surname);
+    const nameCheck = firstInvalid([firstNameCheck, middleNameCheck, lastNameCheck]);
+    if (!nameCheck.valid) {
+      toast.error("Names must contain letters only.");
+      return;
+    }
+
+    const birthdateCheck = validateBirthdate(formData.birthdate, "Date of birth");
+    if (!birthdateCheck.valid) {
+      toast.error(birthdateCheck.message);
+      return;
+    }
+
+    if (!formData.birthdate) return;
+    const age = calculateAge(formData.birthdate);
+    if (age < 18) {
+      toast.error("You must be at least 18 years old to create an account.");
+      return;
+    }
+
+    const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
+    const phoneCheck = validatePHPhone(normalizedPhone);
+    if (!phoneCheck.valid) {
+      toast.error(phoneCheck.message);
+      return;
+    }
+
+    if (phoneExists(normalizedPhone)) {
+      toast.error("Phone number already registered. Please login or use a different number.");
+      return;
+    }
+
     const normalizedEmail = formData.email.trim().toLowerCase();
     const emailCheck = validateAuthEmail(normalizedEmail);
     if (!emailCheck.valid) {
@@ -293,6 +354,16 @@ export default function RegisterPage() {
     }
 
     if (emailExists(normalizedEmail)) {
+      toast.error(EMAIL_ALREADY_REGISTERED_MESSAGE);
+      return;
+    }
+
+    const existingSupabaseContact = await profileContactExists(normalizedEmail, normalizedPhone);
+    if (existingSupabaseContact.phoneExists) {
+      toast.error("Phone number already registered. Please login or use a different number.");
+      return;
+    }
+    if (existingSupabaseContact.emailExists) {
       toast.error(EMAIL_ALREADY_REGISTERED_MESSAGE);
       return;
     }
@@ -316,19 +387,19 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
       const normalizedPhoneDigits = normalizedPhone.replace(/\D/g, "");
       const finalUsername = `passenger_${normalizedPhoneDigits}`;
-      const birthdateString = new Date(2000, 0, 1).toISOString();
+      const birthdateString = formData.birthdate.toISOString();
+      const registrationDate = new Date().toISOString();
 
       const userData: UserData = {
         username: finalUsername,
         password: formData.password,
         phoneNumber: normalizedPhone,
-        surname: "Passenger",
-        firstName: "User",
-        middleName: "",
-        suffix: "",
+        surname: normalizeSpaces(formData.surname),
+        firstName: normalizeSpaces(formData.firstName),
+        middleName: normalizeSpaces(formData.middleName),
+        suffix: normalizeOptionalSuffix(formData.suffix),
         email: normalizedEmail,
         emailConfirmed: true, // Auto confirmed
         birthdate: birthdateString,
@@ -350,6 +421,8 @@ export default function RegisterPage() {
         vehicleColor: "",
         memberSince: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
         approvalStatus: "approved",
+        registrationDate,
+        accountStatus: "Active",
       };
 
       // Attempt Supabase registration if online
@@ -1655,8 +1728,13 @@ export default function RegisterPage() {
     );
   }
 
-  // 3.3. Passenger Step 3: Signup Form (Email + Password)
+  // 3.3. Passenger Step 3: Passenger Information Form
   if (step === "passengerInfo") {
+    const firstNameInvalid = showValidationErrors && !validatePassengerName(formData.firstName).valid;
+    const middleNameInvalid = showValidationErrors && !validatePassengerName(formData.middleName, false).valid;
+    const lastNameInvalid = showValidationErrors && !validatePassengerName(formData.surname).valid;
+    const birthdateInvalid = showValidationErrors && (!formData.birthdate || passengerAge === null || passengerAge < 18);
+
     return (
       <div className="min-h-screen bg-gradient-to-b from-[#FFF8E7] to-white flex items-center justify-center p-4">
         <div className="w-full max-w-md">
@@ -1665,16 +1743,113 @@ export default function RegisterPage() {
               <Navigation className="h-12 w-12 text-[#4B0F14]" />
             </div>
             <h1 className="text-3xl font-bold text-gray-900">Create Account</h1>
-            <p className="text-gray-600 mt-2">Enter your email and password to complete registration</p>
+            <p className="text-gray-600 mt-2">Complete your passenger information to continue</p>
           </div>
 
           <Card>
             <CardHeader>
-              <CardTitle>Account Details</CardTitle>
-              <CardDescription>Fill in your information to continue</CardDescription>
+              <CardTitle>Passenger Information</CardTitle>
+              <CardDescription>Use the same phone number verified by Demo OTP</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handlePassengerRegisterSubmit} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="passengerFirstName">First Name</Label>
+                  <Input
+                    id="passengerFirstName"
+                    type="text"
+                    placeholder="Enter first name"
+                    value={formData.firstName}
+                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                    className={firstNameInvalid ? "border-red-400" : ""}
+                    required
+                  />
+                  {firstNameInvalid && <p className="text-xs text-red-600">Names must contain letters only.</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="passengerMiddleName">Middle Name <span className="text-gray-400">(Optional)</span></Label>
+                  <Input
+                    id="passengerMiddleName"
+                    type="text"
+                    placeholder="Enter middle name"
+                    value={formData.middleName}
+                    onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
+                    className={middleNameInvalid ? "border-red-400" : ""}
+                  />
+                  {middleNameInvalid && <p className="text-xs text-red-600">Names must contain letters only.</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="passengerLastName">Last Name</Label>
+                  <Input
+                    id="passengerLastName"
+                    type="text"
+                    placeholder="Enter last name"
+                    value={formData.surname}
+                    onChange={(e) => setFormData({ ...formData, surname: e.target.value })}
+                    className={lastNameInvalid ? "border-red-400" : ""}
+                    required
+                  />
+                  {lastNameInvalid && <p className="text-xs text-red-600">Names must contain letters only.</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="passengerSuffix">Suffix <span className="text-gray-400">(Optional)</span></Label>
+                  <Input
+                    id="passengerSuffix"
+                    type="text"
+                    placeholder="Jr., Sr., III"
+                    value={formData.suffix}
+                    onChange={(e) => setFormData({ ...formData, suffix: e.target.value })}
+                  />
+                </div>
+
+                <div className="grid grid-cols-[1fr_96px] gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="passengerBirthdate">Date of Birth</Label>
+                    <Input
+                      id="passengerBirthdate"
+                      type="date"
+                      value={formatDateInputValue(formData.birthdate)}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        const date = value ? new Date(`${value}T00:00:00`) : undefined;
+                        setFormData({ ...formData, birthdate: date });
+                      }}
+                      className={birthdateInvalid ? "border-red-400" : ""}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="passengerAge">Age</Label>
+                    <Input
+                      id="passengerAge"
+                      value={passengerAge ?? ""}
+                      readOnly
+                      placeholder="Auto"
+                      className="bg-gray-50 text-center font-semibold"
+                    />
+                  </div>
+                </div>
+                {birthdateInvalid && (
+                  <p className="text-xs text-red-600">
+                    {passengerAge !== null && passengerAge < 18
+                      ? "You must be at least 18 years old to create an account."
+                      : "Date of birth is required."}
+                  </p>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="verifiedPhone">Verified Phone Number</Label>
+                  <Input
+                    id="verifiedPhone"
+                    value={formatPHPhoneInput(formData.phoneNumber)}
+                    readOnly
+                    className="bg-gray-50 font-semibold"
+                  />
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
                   <Input

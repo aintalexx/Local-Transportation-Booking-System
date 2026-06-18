@@ -35,6 +35,8 @@ export interface UserData {
   memberSince?: string;
   approvalStatus?: "pending" | "approved" | "rejected";
   profilePhoto?: string;
+  registrationDate?: string;
+  accountStatus?: "Active" | "Blocked" | "Archived" | "Suspended";
 }
 
 const USERS_KEY = "ridestamesa_users";

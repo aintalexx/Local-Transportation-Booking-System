@@ -142,6 +142,11 @@ export async function signUpWithEmailPassword(userData: UserData): Promise<UserD
       data: {
         username: userData.username,
         full_name: fullName,
+        first_name: userData.firstName,
+        middle_name: userData.middleName || "",
+        surname: userData.surname,
+        suffix: userData.suffix || "",
+        birthdate: userData.birthdate || "",
         phone: userData.phoneNumber,
         role: userData.role,
         vehicle_type: userData.vehicleType || "",
@@ -154,6 +159,8 @@ export async function signUpWithEmailPassword(userData: UserData): Promise<UserD
         vehicle_photo: userData.vehiclePhoto || "",
         profile_photo: userData.profilePhoto || "",
         approval_status: userData.approvalStatus || (userData.role === "driver" ? "pending" : "approved"),
+        registration_date: userData.registrationDate || new Date().toISOString(),
+        account_status: userData.accountStatus || "Active",
       },
     },
   });
