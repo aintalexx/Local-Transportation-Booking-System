@@ -113,7 +113,7 @@ function DriverDetailModal({
             {/* Avatar */}
             <div
               className="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-xl font-black shrink-0 shadow-lg border-2 border-white/30"
-              style={{ background: driver.bg }}
+              style={{ background: driver.bg || MAROON }}
             >
               {driver.profilePhoto ? (
                 <img src={driver.profilePhoto} alt={driver.name} className="w-full h-full object-cover rounded-2xl" />
@@ -582,7 +582,7 @@ export function Drivers() {
                         <div className="flex items-center gap-3">
                           <div
                             className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 overflow-hidden"
-                            style={{ background: d.bg }}
+                            style={{ background: d.bg || MAROON }}
                           >
                             {d.profilePhoto
                               ? <img src={d.profilePhoto} alt={d.name} className="w-full h-full object-cover" />

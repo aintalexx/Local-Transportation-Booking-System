@@ -60,7 +60,7 @@ function ArchiveDetailModal({
           <div className="flex items-center gap-4 px-6 py-4 border-b" style={{ background: "linear-gradient(135deg, #374151 0%, #1f2937 100%)" }}>
             <div
               className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-lg font-black shrink-0 border-2 border-white/20 overflow-hidden"
-              style={{ background: driver.bg }}
+              style={{ background: driver.bg || "#6B0E1A" }}
             >
               {driver.profilePhoto
                 ? <img src={driver.profilePhoto} alt={driver.name} className="w-full h-full object-cover" />
@@ -292,7 +292,7 @@ export function Archives() {
                       <div className="flex items-center gap-3">
                         <div
                           className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 overflow-hidden opacity-70 grayscale"
-                          style={{ background: d.bg }}
+                          style={{ background: d.bg || "#6B0E1A" }}
                         >
                           {d.profilePhoto
                             ? <img src={d.profilePhoto} alt={d.name} className="w-full h-full object-cover" />

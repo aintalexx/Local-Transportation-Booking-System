@@ -21,6 +21,7 @@ export type NotifType     = "success" | "warning" | "info" | "error";
 const ARCHIVED_KEY = "ridestamesa_archived_drivers";
 const USERS_KEY = "ridestamesa_users";
 const ADMIN_DRIVER_RESET_KEY = "ridestamesa_admin_driver_reset_2026_06_18_v1";
+const FALLBACK_DRIVER_BG = "#6B0E1A";
 
 function clearStoredLocalDriversOnce(): { clearedArchive: boolean } {
   try {
@@ -51,7 +52,10 @@ function clearStoredLocalDriversOnce(): { clearedArchive: boolean } {
 function getArchivedDrivers(): Driver[] {
   try {
     const raw = localStorage.getItem(ARCHIVED_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.map(normalizeDriverTheme).filter(Boolean)
+      : [];
   } catch { return []; }
 }
 
@@ -104,6 +108,32 @@ function normalizePhone(value?: string): string {
 function hasMeaningfulValue(value?: string): boolean {
   const normalized = String(value || "").trim().toLowerCase();
   return Boolean(normalized && normalized !== "n/a" && normalized !== "none" && normalized !== "-");
+}
+
+function normalizeDriverTheme(driver: any): Driver {
+  if (!driver) return driver;
+
+  const name = String(driver.name || "").trim();
+  const id = String(driver.id || "").trim();
+  const source = `${name} ${id}`.trim() || "driver";
+  const colors = ["#6B0E1A", "#C49A1A", "#7c3aed", "#15803d", "#b45309", "#0e7490", "#9f1239"];
+  const charCodeSum = source.split("").reduce((sum: number, char: string) => sum + char.charCodeAt(0), 0);
+
+  return {
+    ...driver,
+    name: name || "Unnamed Driver",
+    photo: driver.photo || "DR",
+    bg: driver.bg || colors[charCodeSum % colors.length] || FALLBACK_DRIVER_BG,
+    vehicle: driver.vehicle || "Tricycle",
+    plate: driver.plate || "N/A",
+    route: driver.route || "Sta. Mesa Local Route",
+    rides: Number.isFinite(Number(driver.rides)) ? Number(driver.rides) : 0,
+    rating: Number.isFinite(Number(driver.rating)) ? Number(driver.rating) : 0,
+    status: driver.status || "Pending",
+    license: driver.license || "Pending",
+    joined: driver.joined || new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    phone: driver.phone || "",
+  } as Driver;
 }
 
 function sameDriverRecord(a: Partial<Driver>, b: Partial<Driver>): boolean {
@@ -194,7 +224,7 @@ function mapLocalUserToDriver(u: any): Driver {
     clearancePhoto: u.clearancePhoto || "",
     vehiclePhoto: u.vehiclePhoto || "",
     profilePhoto: u.profilePhoto || "",
-  };
+  } satisfies Driver;
 }
 
 // Helper to map Supabase db driver row to Driver
@@ -249,7 +279,7 @@ function mapDbDriverToAdminDriver(p: any): Driver {
     clearancePhoto: p.clearance_photo || "",
     vehiclePhoto: p.vehicle_photo || "",
     profilePhoto: p.profile_photo || "",
-  };
+  } satisfies Driver;
 }
 
 async function syncDriverToProfile(driverId: string) {
@@ -404,10 +434,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           .select("*")
           .order("created_at", { ascending: false });
 
-        if (!error && data) {
-          const archivedSnapshot = getArchivedDrivers();
-          supabaseDrivers = data
+      if (!error && data) {
+        const archivedSnapshot = getArchivedDrivers();
+        supabaseDrivers = data
             .map(mapDbDriverToAdminDriver)
+            .map(normalizeDriverTheme)
             .map(driver => {
               const summary = ratingSummaries[driver.id];
               if (!summary) return { ...driver, rating: 0, ratingCount: 0 };
@@ -426,6 +457,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       const localDrivers = localUsers
         .filter(u => u.role === "driver")
         .map(mapLocalUserToDriver)
+        .map(normalizeDriverTheme)
         .filter(driver => !isArchivedDriver(driver));
 
       // Deduplicate: prefer Supabase record if the same driver exists in both
