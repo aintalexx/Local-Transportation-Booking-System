@@ -83,6 +83,7 @@ export default function LoginPage() {
       setLoading(true);
       try {
         const normalizedPhone = formatPHPhoneInput(phoneInput);
+        const localUser = findUser(normalizedPhone);
         const { data: driverProfile } = supabase
           ? await supabase
               .from("profiles")
@@ -94,7 +95,6 @@ export default function LoginPage() {
 
         let dbDriver = await getSupabaseDriverByPhone(normalizedPhone);
         if (!dbDriver) {
-          const localUser = findUser(normalizedPhone);
           if (localUser && localUser.role === "driver") {
             dbDriver = {
               id: localUser.supabaseId || localUser.username,
@@ -121,7 +121,7 @@ export default function LoginPage() {
           }
         }
 
-        const driverRecord = driverProfile || dbDriver;
+        const driverRecord = dbDriver || driverProfile;
 
         if (!driverRecord) {
           toast.error("Driver account not found. Please register first.");
@@ -151,46 +151,23 @@ export default function LoginPage() {
           return;
         }
 
-        const authEmail = typeof driverRecord.email === "string" && driverRecord.email.trim()
-          ? driverRecord.email.trim().toLowerCase()
-          : await resolveAuthEmailForLogin(normalizedPhone);
-
-        if (!authEmail) {
-          toast.error("Unable to find the driver's registered email. Please sign up again with a real email or contact support.");
-          return;
-        }
-
-        let authenticatedDriver: UserData | null = null;
-        try {
-          authenticatedDriver = await signInWithEmailPassword(authEmail, password, "driver");
-        } catch (authError) {
-          const message = authError instanceof Error ? authError.message.toLowerCase() : "";
-          if (message.includes("email not confirmed") || message.includes("email_not_confirmed")) {
-            toast.error("Driver account is approved, but the auth account still needs syncing. Please ask the admin to approve it again.");
-            return;
-          }
-          if (message.includes("invalid login credentials")) {
-            toast.error("Invalid driver credentials.");
-            return;
-          }
-          throw authError;
-        }
-
-        if (!authenticatedDriver) {
+        const driverPassword = String((driverRecord as { password?: string }).password || localUser?.password || "");
+        if (driverPassword !== password) {
           toast.error("Invalid driver credentials.");
           return;
         }
 
-        if (authenticatedDriver.role !== "driver") {
-          toast.error("This account does not have driver access.");
-          return;
-        }
-
         const driverSession = {
-          ...authenticatedDriver,
+          ...localUser,
+          ...driverRecord,
+          username: localUser?.username || (driverRecord as { username?: string }).username || `driver_${normalizedPhone.replace(/\D/g, "")}`,
+          password,
+          email: "",
+          emailConfirmed: false,
           approvalStatus: "approved" as const,
           accountStatus: "Active" as const,
           phoneNumber: normalizedPhone,
+          role: "driver" as const,
         };
 
         const otp = createDemoOtp();
@@ -204,7 +181,6 @@ export default function LoginPage() {
             generatedOtp: otp,
             userData: {
               ...driverSession,
-              password,
               role: "driver" as const,
             }
           }

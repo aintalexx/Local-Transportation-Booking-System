@@ -556,7 +556,6 @@ export default function RegisterPage() {
       validateName(formData.firstName, "First name"),
       formData.noMiddleName ? { valid: true, message: "" } : validateName(formData.middleName, "Middle name"),
       validateBirthdate(formData.birthdate),
-      validateAuthEmail(formData.email.trim().toLowerCase()),
       validatePassword(formData.password),
     ]);
 
@@ -583,7 +582,7 @@ export default function RegisterPage() {
     setShowValidationErrors(true);
 
     const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
-    const normalizedEmail = formData.email.trim().toLowerCase();
+    const normalizedEmail = role === "passenger" ? formData.email.trim().toLowerCase() : "";
     const normalizedPlate = formData.plateNumber.trim().toUpperCase();
     const normalizedPhoneDigits = normalizedPhone.replace(/\D/g, "");
     const finalUsername = role === "passenger" 
@@ -598,7 +597,7 @@ export default function RegisterPage() {
       validateBirthdate(formData.birthdate),
       validatePHPhone(normalizedPhone),
       role === "passenger" ? validateUsername(formData.username.trim()) : ok,
-      validateAuthEmail(normalizedEmail),
+      role === "passenger" ? validateAuthEmail(normalizedEmail) : ok,
       validatePassword(formData.password),
     ]);
 
@@ -736,31 +735,15 @@ export default function RegisterPage() {
         }
 
         try {
-          const authUser = await signUpWithEmailPassword(userData);
-          if (authUser?.supabaseId) {
-            userData.supabaseId = authUser.supabaseId;
-            userData.emailConfirmed = true;
-          }
-        } catch (authError) {
-          const authMessage = authError instanceof Error ? authError.message.toLowerCase() : String(authError).toLowerCase();
-          if (isSupabaseDuplicateEmailError(authMessage)) {
-            throw new Error("This email is already used. Please sign in with the same email or use a different one.");
-          } else {
-            throw authError;
-          }
-        }
-
-        // Save in Supabase public.drivers table
-        let supabaseId = undefined;
-        try {
           const dbDriver = await registerSupabaseDriver(userData);
           if (dbDriver) {
-            supabaseId = dbDriver.id;
-            userData.supabaseId = supabaseId;
+            userData.supabaseId = dbDriver.id;
           }
         } catch (error) {
           console.error("Supabase driver table sync failed:", error);
         }
+
+        const supabaseId = userData.supabaseId;
 
         // Check if driver already has a local account
         const existingLocalDriver = getAllUsers().find(
@@ -981,7 +964,7 @@ export default function RegisterPage() {
 
               {role === "driver" && (
                 <p className="mt-2 text-center text-xs text-gray-500">
-                  Driver applicants must use a real email address so the approved account can log in later.
+                  Driver applicants use phone number + password login with demo OTP for testing.
                 </p>
               )}
 
@@ -1157,7 +1140,6 @@ export default function RegisterPage() {
     const firstNameInvalid = showValidationErrors && !validateName(formData.firstName, "First name").valid;
     const middleNameInvalid = showValidationErrors && !formData.noMiddleName && !validateName(formData.middleName, "Middle name").valid;
     const birthdateInvalid = showValidationErrors && (!formData.birthdate || calculateAge(formData.birthdate) < 18);
-    const emailInvalid = showValidationErrors && !validateAuthEmail(formData.email.trim().toLowerCase()).valid;
     const passwordInvalid = showValidationErrors && !validatePassword(formData.password).valid;
 
     return (
@@ -1360,23 +1342,6 @@ export default function RegisterPage() {
                     </button>
                   </div>
                   {passwordInvalid && <p className="text-xs text-red-600">Password must be at least 8 characters.</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="driver.email@example.com"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value.trim() })}
-                    className={emailInvalid ? "border-red-400" : ""}
-                    required
-                  />
-                  <p className="text-xs text-gray-500">
-                    Use your real email address. It will be used for driver login after admin approval.
-                  </p>
-                  {emailInvalid && <p className="text-xs text-red-600">Please enter a valid email address.</p>}
                 </div>
 
                 <div className="space-y-2">
