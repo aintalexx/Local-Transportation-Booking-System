@@ -500,8 +500,9 @@ export default function DriverDashboard() {
 
 function isApprovedActiveDriver(user: ReturnType<typeof useUser>["user"]): boolean {
   if (!user || user.role !== "driver") return false;
-  const accountStatus = user.accountStatus || "Active";
-  return user.approvalStatus === "approved" && accountStatus === "Active";
+  const approvalStatus = String(user.approvalStatus || "").trim().toLowerCase();
+  const accountStatus = String(user.accountStatus || "active").trim().toLowerCase();
+  return approvalStatus === "approved" && accountStatus === "active";
 }
 
 function getEmptyDashboardSummary(): DriverDashboardSummary {
