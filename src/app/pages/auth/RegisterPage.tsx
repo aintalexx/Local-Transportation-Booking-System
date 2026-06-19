@@ -36,7 +36,7 @@ import {
 } from "../../utils/validators";
 import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
 import { createDemoOtp } from "../../utils/demoOtp";
-import { signInWithGoogle, signUpWithEmailPassword } from "../../utils/supabaseAuth";
+import { signInWithGoogle, signInWithEmailPassword, signUpWithEmailPassword } from "../../utils/supabaseAuth";
 import { registerSupabaseDriver, uploadBase64ToStorage } from "../../utils/supabaseDrivers";
 import { profileContactExists } from "../../utils/supabaseProfiles";
 import { useUser } from "../../context/UserContext";
@@ -94,6 +94,11 @@ function formatDateInputValue(date: Date | undefined): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function buildDriverAuthEmail(phoneDigits: string): string {
+  const safeDigits = phoneDigits.replace(/\D/g, "").slice(0, 11) || "00000000000";
+  return `driver_${safeDigits}@arangkada.local`;
 }
 
 async function compressImageFile(file: File): Promise<string> {
@@ -709,6 +714,10 @@ export default function RegisterPage() {
       };
 
       if (role === "driver") {
+        const driverAuthEmail = buildDriverAuthEmail(normalizedPhoneDigits);
+        userData.email = driverAuthEmail;
+        userData.emailConfirmed = false;
+
         // Upload images to Supabase Storage and get their URLs
         const phoneDigits = normalizedPhone.replace(/\D/g, "");
         
@@ -738,6 +747,31 @@ export default function RegisterPage() {
           }
         } catch (uploadErr) {
           console.error("Failed to upload document to Supabase Storage:", uploadErr);
+        }
+
+        try {
+          const authUser = await signUpWithEmailPassword(userData);
+          if (authUser?.supabaseId) {
+            userData.supabaseId = authUser.supabaseId;
+            userData.emailConfirmed = true;
+          } else {
+            const authFallback = await signInWithEmailPassword(driverAuthEmail, userData.password);
+            if (authFallback?.supabaseId) {
+              userData.supabaseId = authFallback.supabaseId;
+            }
+          }
+        } catch (authError) {
+          const authMessage = authError instanceof Error ? authError.message.toLowerCase() : String(authError).toLowerCase();
+          if (isSupabaseDuplicateEmailError(authMessage)) {
+            const authFallback = await signInWithEmailPassword(driverAuthEmail, userData.password);
+            if (authFallback?.supabaseId) {
+              userData.supabaseId = authFallback.supabaseId;
+            } else {
+              throw new Error("Unable to verify the driver auth account. Please try again.");
+            }
+          } else {
+            throw authError;
+          }
         }
 
         // Save in Supabase public.drivers table

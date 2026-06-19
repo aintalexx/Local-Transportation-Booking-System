@@ -31,6 +31,7 @@ export async function registerSupabaseDriver(user: UserData): Promise<SupabaseDr
   if (!supabase) return null;
 
   const payload = {
+    ...(user.supabaseId ? { id: user.supabaseId } : {}),
     phone: user.phoneNumber,
     first_name: user.firstName,
     middle_name: user.middleName || null,
