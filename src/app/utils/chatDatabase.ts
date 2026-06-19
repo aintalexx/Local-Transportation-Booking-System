@@ -41,8 +41,10 @@ export function canUseRideChat(status: BookingStatus): boolean {
   return [
     "accepted",
     "driver_found",
+    "driver_arriving",
     "en_route",
     "driver_to_pickup",
+    "passenger_picked_up",
     "arrived",
     "driver_arrived",
     "ride_started",
@@ -69,6 +71,22 @@ export async function getChatMessages(bookingId: string): Promise<ChatMessage[]>
   }
 
   return getLocalChatMessages(bookingId);
+}
+
+export async function getDriverChatMessages(bookingId: string, driver: UserData): Promise<ChatMessage[]> {
+  if (supabase && isUuid(bookingId) && driver.phoneNumber && driver.password) {
+    const { data, error } = await supabase.rpc("get_chat_messages_for_driver", {
+      p_booking_id: bookingId,
+      p_driver_phone: driver.phoneNumber,
+      p_driver_password: driver.password,
+    });
+
+    if (!error && data) {
+      return (data as SupabaseChatMessageRow[]).map(mapSupabaseMessage);
+    }
+  }
+
+  return getChatMessages(bookingId);
 }
 
 export async function sendChatMessage(input: SendChatMessageInput): Promise<ChatMessage> {
@@ -109,6 +127,30 @@ export async function sendChatMessage(input: SendChatMessageInput): Promise<Chat
     senderUsername: input.user.username,
     text,
   });
+}
+
+export async function sendDriverChatMessage(input: SendChatMessageInput): Promise<ChatMessage> {
+  const text = sanitizeMessage(input.text);
+  if (!text) {
+    throw new Error("Message cannot be empty.");
+  }
+
+  if (supabase && isUuid(input.bookingId) && input.user.phoneNumber && input.user.password) {
+    const { data, error } = await supabase.rpc("send_chat_message_as_driver", {
+      p_booking_id: input.bookingId,
+      p_driver_phone: input.user.phoneNumber,
+      p_driver_password: input.user.password,
+      p_sender_name: input.senderName,
+      p_sender_username: input.user.username || null,
+      p_message: text,
+    });
+
+    if (!error && data) {
+      return mapSupabaseMessage(data as SupabaseChatMessageRow);
+    }
+  }
+
+  return sendChatMessage(input);
 }
 
 export function subscribeToChatMessages(

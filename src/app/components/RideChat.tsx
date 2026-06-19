@@ -11,7 +11,9 @@ import { getBooking, type BookingData } from "../utils/bookingDatabase";
 import {
   canUseRideChat,
   getChatMessages,
+  getDriverChatMessages,
   sendChatMessage,
+  sendDriverChatMessage,
   subscribeToChatMessages,
   type ChatMessage,
   type ChatSenderRole,
@@ -113,7 +115,11 @@ export default function RideChat({ currentRole }: RideChatProps) {
 
       setBooking(localBooking);
       setActiveBooking(localBooking);
-      setMessages(await getChatMessages(localBooking.id));
+      setMessages(
+        currentRole === "driver"
+          ? await getDriverChatMessages(localBooking.id, user)
+          : await getChatMessages(localBooking.id)
+      );
       setIsLoading(false);
     };
 
@@ -126,8 +132,20 @@ export default function RideChat({ currentRole }: RideChatProps) {
 
   useEffect(() => {
     if (!rideId) return;
-    return subscribeToChatMessages(rideId, upsertMessage);
-  }, [rideId, upsertMessage]);
+
+    const unsubscribe = subscribeToChatMessages(rideId, upsertMessage);
+    const poll = currentRole === "driver" && user
+      ? window.setInterval(async () => {
+          const latestMessages = await getDriverChatMessages(rideId, user);
+          latestMessages.forEach(upsertMessage);
+        }, 3000)
+      : null;
+
+    return () => {
+      unsubscribe();
+      if (poll) window.clearInterval(poll);
+    };
+  }, [currentRole, rideId, upsertMessage, user]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -145,13 +163,16 @@ export default function RideChat({ currentRole }: RideChatProps) {
     setMessage("");
 
     try {
-      const sentMessage = await sendChatMessage({
+      const messageInput = {
         bookingId: booking.id,
         user,
         senderRole: currentRole,
         senderName: formatPersonName(user, user.username),
         text: trimmed,
-      });
+      };
+      const sentMessage = currentRole === "driver"
+        ? await sendDriverChatMessage(messageInput)
+        : await sendChatMessage(messageInput);
       upsertMessage(sentMessage);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to send message.");

@@ -7,7 +7,9 @@ export type BookingFlowStatus =
   | "route_preview"
   | "finding_driver"
   | "driver_found"
+  | "driver_arriving"
   | "driver_to_pickup"
+  | "passenger_picked_up"
   | "driver_arrived"
   | "ride_started"
   | "ride_ongoing"
@@ -22,10 +24,13 @@ export function getBookingFlowStatus(status: BookingData["status"] | undefined):
       return "finding_driver";
     case "accepted":
       return "driver_found";
+    case "driver_arriving":
     case "en_route":
       return "driver_to_pickup";
     case "arrived":
       return "driver_arrived";
+    case "passenger_picked_up":
+      return "ride_started";
     case "in_progress":
       return "ride_ongoing";
     case "completed":

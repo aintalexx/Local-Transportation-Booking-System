@@ -53,7 +53,9 @@ export type BookingStatus =
   | "searching"
   | "available"
   | "driver_found"
+  | "driver_arriving"
   | "driver_to_pickup"
+  | "passenger_picked_up"
   | "driver_arrived"
   | "ride_started"
   | "ride_ongoing"
@@ -73,8 +75,10 @@ const ACTIVE_BOOKING_STATUSES: BookingStatus[] = [
   "finding_driver",
   "accepted",
   "driver_found",
+  "driver_arriving",
   "en_route",
   "driver_to_pickup",
+  "passenger_picked_up",
   "arrived",
   "driver_arrived",
   "ride_started",

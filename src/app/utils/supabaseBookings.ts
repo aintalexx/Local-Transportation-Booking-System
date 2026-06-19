@@ -7,6 +7,25 @@ import type { UserData } from "./userDatabase";
 type BookingStatus = BookingData["status"];
 type DriverDashboardStatus = BookingStatus | "rejected";
 const AVAILABLE_BOOKING_STATUSES: BookingStatus[] = ["pending", "searching", "available"];
+const ACTIVE_BOOKING_STATUSES: BookingStatus[] = [
+  "pending",
+  "searching",
+  "available",
+  "accepted",
+  "driver_arriving",
+  "en_route",
+  "passenger_picked_up",
+  "arrived",
+  "in_progress",
+];
+const DRIVER_ACTIVE_BOOKING_STATUSES: BookingStatus[] = [
+  "accepted",
+  "driver_arriving",
+  "en_route",
+  "passenger_picked_up",
+  "arrived",
+  "in_progress",
+];
 
 type SupabaseBookingRow = {
   id: string;
@@ -131,7 +150,7 @@ export async function getSupabasePassengerActiveBooking(user: UserData): Promise
     .from("bookings")
     .select("*")
     .eq("passenger_id", userId)
-    .in("status", ["pending", "searching", "available", "accepted", "en_route", "arrived", "in_progress"])
+    .in("status", ACTIVE_BOOKING_STATUSES)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -144,18 +163,18 @@ export async function getSupabaseDriverActiveBooking(user: UserData): Promise<Bo
   if (!supabase) return null;
 
   const userId = user.supabaseId || await getCurrentSupabaseUserId();
-  if (!userId) return null;
+  if (!userId) return getActiveBookingForDriver(user);
 
   const { data, error } = await supabase
     .from("bookings")
     .select("*")
     .eq("driver_id", userId)
-    .in("status", ["accepted", "en_route", "arrived", "in_progress"])
+    .in("status", DRIVER_ACTIVE_BOOKING_STATUSES)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (error || !data) return null;
+  if (error || !data) return getActiveBookingForDriver(user);
   return mapSupabaseBooking(data as SupabaseBookingRow);
 }
 
@@ -392,6 +411,27 @@ export async function updateSupabaseBookingStatus(bookingId: string, status: Boo
   return mapSupabaseBooking(data as SupabaseBookingRow);
 }
 
+export async function updateSupabaseDriverBookingStatus(
+  bookingId: string,
+  status: BookingStatus,
+  driver: UserData
+): Promise<BookingData | null> {
+  const directUpdate = await updateSupabaseBookingStatus(bookingId, status);
+  if (directUpdate) return directUpdate;
+
+  if (!supabase || !isUuid(bookingId) || !driver.phoneNumber || !driver.password) return null;
+
+  const { data, error } = await supabase.rpc("update_booking_status_as_driver", {
+    p_booking_id: bookingId,
+    p_driver_phone: driver.phoneNumber,
+    p_driver_password: driver.password,
+    p_status: status,
+  });
+
+  if (error || !data) return null;
+  return mapSupabaseBooking(data as SupabaseBookingRow);
+}
+
 export function subscribeToSupabaseBooking(
   bookingId: string,
   onBooking: (booking: BookingData) => void
@@ -476,7 +516,7 @@ function isCancelledOrRejectedRide(ride: BookingData): boolean {
 }
 
 function isOngoingRide(ride: BookingData): boolean {
-  return ["accepted", "en_route", "arrived", "in_progress"].includes(ride.status);
+  return DRIVER_ACTIVE_BOOKING_STATUSES.includes(ride.status);
 }
 
 function isToday(value: string): boolean {
@@ -523,5 +563,19 @@ async function acceptBookingWithDriverCredentials(bookingId: string, driver: Use
   });
 
   if (error || !data) return null;
+
+  return mapSupabaseBooking(data as SupabaseBookingRow);
+}
+
+async function getActiveBookingForDriver(driver: UserData): Promise<BookingData | null> {
+  if (!supabase || !driver.phoneNumber || !driver.password) return null;
+
+  const { data, error } = await supabase.rpc("get_active_booking_for_driver", {
+    p_driver_phone: driver.phoneNumber,
+    p_driver_password: driver.password,
+  });
+
+  if (error || !data) return null;
+
   return mapSupabaseBooking(data as SupabaseBookingRow);
 }
