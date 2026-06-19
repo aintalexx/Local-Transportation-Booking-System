@@ -62,7 +62,8 @@ export type BookingStatus =
   | "arrived"
   | "in_progress"
   | "completed"
-  | "cancelled";
+  | "cancelled"
+  | "rejected";
 
 const BOOKINGS_KEY = "ridestamesa_bookings";
 const ACTIVE_BOOKING_STATUSES: BookingStatus[] = [

@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Badge } from "../../components/ui/badge";
 import { Switch } from "../../components/ui/switch";
 import { Avatar, AvatarFallback } from "../../components/ui/avatar";
-import { MapPin, DollarSign, Clock, TrendingUp, Navigation2, Phone, MessageCircle } from "lucide-react";
+import { MapPin, DollarSign, Clock, AlertTriangle, Navigation2 } from "lucide-react";
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
@@ -13,9 +13,11 @@ import { useBooking } from "../../context/BookingContext";
 import { type BookingData } from "../../utils/bookingDatabase";
 import {
   acceptSupabaseBooking,
+  getSupabaseDriverDashboardSummary,
   getSupabaseDriverActiveBooking,
   getSupabasePendingBookings,
   subscribeToSupabasePendingBookings,
+  type DriverDashboardSummary,
 } from "../../utils/supabaseBookings";
 import { setDriverOnlineStatus, syncSupabaseProfile } from "../../utils/supabaseProfiles";
 import { formatPersonName } from "../../utils/nameFormatting";
@@ -27,6 +29,8 @@ export default function DriverDashboard() {
   const [isOnline, setIsOnline] = useState(true);
   const [pendingBookings, setPendingBookings] = useState<BookingData[]>([]);
   const [dismissedBookingIds, setDismissedBookingIds] = useState<Set<string>>(new Set());
+  const [dashboardSummary, setDashboardSummary] = useState<DriverDashboardSummary>(getEmptyDashboardSummary());
+  const [summaryLoading, setSummaryLoading] = useState(true);
   const canReceiveRequests = isApprovedActiveDriver(currentUser);
 
   // Check for active booking on mount
@@ -68,19 +72,42 @@ export default function DriverDashboard() {
     return unsubscribe;
   }, [isOnline, currentUser, activeBooking, dismissedBookingIds, canReceiveRequests]);
 
+  useEffect(() => {
+    if (!currentUser) {
+      setDashboardSummary(getEmptyDashboardSummary());
+      setSummaryLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadSummary = async () => {
+      const summary = await getSupabaseDriverDashboardSummary(currentUser);
+      if (!cancelled) {
+        setDashboardSummary(summary);
+        setSummaryLoading(false);
+      }
+    };
+
+    setSummaryLoading(true);
+    void loadSummary();
+
+    const unsubscribe = subscribeToSupabasePendingBookings(() => {
+      void loadSummary();
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [currentUser]);
+
   const driver = {
     name: currentUser ? formatPersonName(currentUser, "Driver") : "Driver",
     vehicleType: currentUser?.vehicleType || "Tricycle",
     plateNumber: currentUser?.plateNumber || "ABC 1234",
     rating: currentUser?.rating || 4.8,
     totalTrips: currentUser?.totalTrips || 0,
-  };
-
-  const todayStats = {
-    earnings: 850,
-    trips: 12,
-    hours: 6.5,
-    avgRating: 4.9,
   };
 
   const handleToggleOnline = (checked: boolean) => {
@@ -271,11 +298,15 @@ export default function DriverDashboard() {
           </Card>
         )}
 
-        {/* Today's Earnings */}
+        {/* Today's Summary */}
         <Card className="mb-4 shadow-sm animate-scale-in">
           <CardHeader>
             <CardTitle>Today's Summary</CardTitle>
-            <CardDescription>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</CardDescription>
+            <CardDescription>
+              {summaryLoading
+                ? "Loading live Supabase data..."
+                : new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -284,36 +315,73 @@ export default function DriverDashboard() {
                   <div className="h-8 w-8 bg-green-600 rounded-lg flex items-center justify-center">
                     <DollarSign className="h-4 w-4 text-white" />
                   </div>
-                  <p className="text-xs font-medium text-gray-700">Earnings</p>
+                  <p className="text-xs font-medium text-gray-700">Total Earnings Today</p>
                 </div>
-                <p className="break-words text-2xl font-bold text-green-700">₱{todayStats.earnings}</p>
+                <p className="break-words text-2xl font-bold text-green-700">PHP {dashboardSummary.totalEarningsToday.toFixed(2)}</p>
               </div>
               <div className="p-4 bg-gradient-to-br from-[rgba(75,15,20,0.04)] to-[rgba(75,15,20,0.08)] rounded-2xl border-2 border-[rgba(75,15,20,0.2)] shadow-sm touch-active">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="h-8 w-8 bg-[#4B0F14] rounded-lg flex items-center justify-center">
                     <Navigation2 className="h-4 w-4 text-white" />
                   </div>
-                  <p className="text-xs font-medium text-gray-700">Trips</p>
+                  <p className="text-xs font-medium text-gray-700">Today's Rides</p>
                 </div>
-                <p className="text-2xl font-bold text-[#4B0F14]">{todayStats.trips}</p>
+                <p className="text-2xl font-bold text-[#4B0F14]">{dashboardSummary.todaysRides}</p>
               </div>
               <div className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-2xl border-2 border-purple-200 shadow-sm touch-active">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="h-8 w-8 bg-purple-600 rounded-lg flex items-center justify-center">
                     <Clock className="h-4 w-4 text-white" />
                   </div>
-                  <p className="text-xs font-medium text-gray-700">Hours</p>
+                  <p className="text-xs font-medium text-gray-700">Ongoing Ride</p>
                 </div>
-                <p className="text-2xl font-bold text-purple-700">{todayStats.hours}</p>
+                <p className="text-2xl font-bold text-purple-700">{dashboardSummary.ongoingRides}</p>
               </div>
               <div className="p-4 bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-2xl border-2 border-yellow-200 shadow-sm touch-active">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="h-8 w-8 bg-yellow-600 rounded-lg flex items-center justify-center">
-                    <TrendingUp className="h-4 w-4 text-white" />
+                    <AlertTriangle className="h-4 w-4 text-white" />
                   </div>
-                  <p className="text-xs font-medium text-gray-700">Rating</p>
+                  <p className="text-xs font-medium text-gray-700">Cancelled/Rejected</p>
                 </div>
-                <p className="text-2xl font-bold text-yellow-700">{todayStats.avgRating}</p>
+                <p className="text-2xl font-bold text-yellow-700">{dashboardSummary.cancelledRejectedRides}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-gray-900">Completed Rides</p>
+                  <p className="text-xs text-gray-600">Completed trips assigned to you today</p>
+                </div>
+                <p className="text-2xl font-bold text-green-700">{dashboardSummary.completedRides}</p>
+              </div>
+
+              <div className="border-t border-gray-200 pt-3">
+                <p className="mb-2 text-sm font-bold text-gray-900">Recent Ride History</p>
+                {dashboardSummary.recentRideHistory.length > 0 ? (
+                  <div className="space-y-2">
+                    {dashboardSummary.recentRideHistory.map((ride) => (
+                      <div key={ride.id} className="rounded-xl bg-white p-3 shadow-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-gray-900">{ride.passengerName || "Passenger"}</p>
+                            <p className="mt-1 truncate text-xs text-gray-600">{ride.pickupLocation.address}</p>
+                            <p className="truncate text-xs text-gray-600">{ride.destination.address}</p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-sm font-bold text-green-700">PHP {ride.finalPrice.toFixed(2)}</p>
+                            <p className="text-xs text-gray-500">{formatStatusLabel(ride.status)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-xl bg-white p-3 text-center text-sm text-gray-600">
+                    No recent ride history yet.
+                  </p>
+                )}
               </div>
             </div>
           </CardContent>
@@ -358,6 +426,22 @@ function isApprovedActiveDriver(user: ReturnType<typeof useUser>["user"]): boole
   if (!user || user.role !== "driver") return false;
   const accountStatus = user.accountStatus || "Active";
   return user.approvalStatus === "approved" && accountStatus === "Active";
+}
+
+function getEmptyDashboardSummary(): DriverDashboardSummary {
+  return {
+    totalEarningsToday: 0,
+    todaysRides: 0,
+    completedRides: 0,
+    cancelledRejectedRides: 0,
+    ongoingRides: 0,
+    recentRideHistory: [],
+  };
+}
+
+function formatStatusLabel(status: BookingData["status"]): string {
+  if (status === "ride_completed") return "Completed";
+  return status.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function removeDuplicateBookings(bookings: BookingData[]): BookingData[] {

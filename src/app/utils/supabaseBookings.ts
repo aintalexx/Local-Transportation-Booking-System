@@ -5,6 +5,7 @@ import { getCurrentSupabaseUserId, syncSupabaseProfile } from "./supabaseProfile
 import type { UserData } from "./userDatabase";
 
 type BookingStatus = BookingData["status"];
+type DriverDashboardStatus = BookingStatus | "rejected";
 
 type SupabaseBookingRow = {
   id: string;
@@ -36,6 +37,15 @@ type SupabaseBookingRow = {
   created_at: string;
   accepted_at: string | null;
   completed_at: string | null;
+};
+
+export type DriverDashboardSummary = {
+  totalEarningsToday: number;
+  todaysRides: number;
+  completedRides: number;
+  cancelledRejectedRides: number;
+  ongoingRides: number;
+  recentRideHistory: BookingData[];
 };
 
 export type CreateSupabaseBookingInput = {
@@ -226,6 +236,50 @@ export async function getSupabaseDriverBookingHistory(user: UserData): Promise<B
   return (data as SupabaseBookingRow[]).map(mapSupabaseBooking);
 }
 
+export async function getSupabaseDriverDashboardSummary(user: UserData): Promise<DriverDashboardSummary> {
+  const emptySummary: DriverDashboardSummary = {
+    totalEarningsToday: 0,
+    todaysRides: 0,
+    completedRides: 0,
+    cancelledRejectedRides: 0,
+    ongoingRides: 0,
+    recentRideHistory: [],
+  };
+
+  if (!supabase) return emptySummary;
+
+  const userId = user.supabaseId || await getCurrentSupabaseUserId();
+  if (!userId) return emptySummary;
+
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("*")
+    .eq("driver_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (error || !data) return emptySummary;
+
+  const rides = (data as SupabaseBookingRow[]).map(mapSupabaseBooking);
+  const todayRides = rides.filter(isCreatedOrCompletedToday);
+  const completedToday = todayRides.filter(isCompletedRide);
+  const cancelledRejectedToday = todayRides.filter(isCancelledOrRejectedRide);
+  const ongoingToday = todayRides.filter(isOngoingRide);
+  const recentRideHistory = rides
+    .filter((ride) => isCompletedRide(ride) || isCancelledOrRejectedRide(ride))
+    .sort((a, b) => getRideActivityTime(b) - getRideActivityTime(a))
+    .slice(0, 5);
+
+  return {
+    totalEarningsToday: completedToday.reduce((sum, ride) => sum + ride.finalPrice, 0),
+    todaysRides: todayRides.length,
+    completedRides: completedToday.length,
+    cancelledRejectedRides: cancelledRejectedToday.length,
+    ongoingRides: ongoingToday.length,
+    recentRideHistory,
+  };
+}
+
 export async function acceptSupabaseBooking(bookingId: string, driver: UserData): Promise<BookingData | null> {
   if (!supabase || !isUuid(bookingId)) return null;
 
@@ -341,6 +395,40 @@ function mapSupabaseBooking(row: SupabaseBookingRow): BookingData {
         }
       : undefined,
   };
+}
+
+function isCreatedOrCompletedToday(ride: BookingData): boolean {
+  return isToday(ride.createdAt) || Boolean(ride.completedAt && isToday(ride.completedAt));
+}
+
+function isCompletedRide(ride: BookingData): boolean {
+  return ride.status === "completed" || ride.status === "ride_completed";
+}
+
+function isCancelledOrRejectedRide(ride: BookingData): boolean {
+  const status = ride.status as DriverDashboardStatus;
+  return status === "cancelled" || status === "rejected";
+}
+
+function isOngoingRide(ride: BookingData): boolean {
+  return ["accepted", "en_route", "arrived", "in_progress"].includes(ride.status);
+}
+
+function isToday(value: string): boolean {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+
+  const today = new Date();
+  return (
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+  );
+}
+
+function getRideActivityTime(ride: BookingData): number {
+  const value = new Date(ride.completedAt || ride.createdAt).getTime();
+  return Number.isFinite(value) ? value : 0;
 }
 
 function isUuid(value: string): boolean {
