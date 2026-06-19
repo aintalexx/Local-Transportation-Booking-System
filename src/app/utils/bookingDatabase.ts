@@ -50,6 +50,8 @@ export type BookingStatus =
   | "selecting_location"
   | "route_preview"
   | "finding_driver"
+  | "searching"
+  | "available"
   | "driver_found"
   | "driver_to_pickup"
   | "driver_arrived"

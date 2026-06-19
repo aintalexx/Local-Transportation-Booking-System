@@ -6,6 +6,7 @@ import type { UserData } from "./userDatabase";
 
 type BookingStatus = BookingData["status"];
 type DriverDashboardStatus = BookingStatus | "rejected";
+const AVAILABLE_BOOKING_STATUSES: BookingStatus[] = ["pending", "searching", "available"];
 
 type SupabaseBookingRow = {
   id: string;
@@ -94,6 +95,7 @@ export async function createSupabaseBooking(input: CreateSupabaseBookingInput): 
       status: "pending",
       discount_type: input.discount?.type || null,
       discount_amount: input.discount?.amount ?? null,
+      created_at: new Date().toISOString(),
     })
     .select()
     .single();
@@ -129,7 +131,7 @@ export async function getSupabasePassengerActiveBooking(user: UserData): Promise
     .from("bookings")
     .select("*")
     .eq("passenger_id", userId)
-    .in("status", ["pending", "accepted", "en_route", "arrived", "in_progress"])
+    .in("status", ["pending", "searching", "available", "accepted", "en_route", "arrived", "in_progress"])
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -163,7 +165,7 @@ export async function getSupabasePendingBookings(vehicleType?: string): Promise<
   let query = supabase
     .from("bookings")
     .select("*")
-    .eq("status", "pending")
+    .in("status", AVAILABLE_BOOKING_STATUSES)
     .is("driver_id", null)
     .order("created_at", { ascending: true });
 
@@ -177,13 +179,43 @@ export async function getSupabasePendingBookings(vehicleType?: string): Promise<
   return (data as SupabaseBookingRow[]).map(mapSupabaseBooking);
 }
 
+export async function getSupabasePendingBookingsResult(vehicleType?: string): Promise<{
+  bookings: BookingData[];
+  error: string | null;
+}> {
+  if (!supabase) {
+    return { bookings: [], error: "Supabase is not configured." };
+  }
+
+  let query = supabase
+    .from("bookings")
+    .select("*")
+    .in("status", AVAILABLE_BOOKING_STATUSES)
+    .is("driver_id", null)
+    .order("created_at", { ascending: true });
+
+  if (vehicleType) {
+    query = query.ilike("vehicle_type", vehicleType);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    return { bookings: [], error: error.message };
+  }
+
+  return {
+    bookings: (data as SupabaseBookingRow[] | null || []).map(mapSupabaseBooking),
+    error: null,
+  };
+}
+
 export function subscribeToSupabasePendingBookings(
   onChange: () => void
 ): () => void {
   if (!supabase) return () => undefined;
 
   const channel = supabase
-    .channel("driver-pending-bookings-realtime")
+    .channel(`driver-pending-bookings-realtime-${Math.random().toString(36).slice(2)}`)
     .on(
       "postgres_changes",
       {
@@ -301,7 +333,7 @@ export async function acceptSupabaseBooking(bookingId: string, driver: UserData)
       accepted_at: new Date().toISOString(),
     })
     .eq("id", bookingId)
-    .eq("status", "pending")
+    .in("status", AVAILABLE_BOOKING_STATUSES)
     .is("driver_id", null)
     .select()
     .single();

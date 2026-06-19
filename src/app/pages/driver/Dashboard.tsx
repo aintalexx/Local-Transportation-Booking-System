@@ -15,7 +15,7 @@ import {
   acceptSupabaseBooking,
   getSupabaseDriverDashboardSummary,
   getSupabaseDriverActiveBooking,
-  getSupabasePendingBookings,
+  getSupabasePendingBookingsResult,
   subscribeToSupabasePendingBookings,
   type DriverDashboardSummary,
 } from "../../utils/supabaseBookings";
@@ -28,6 +28,8 @@ export default function DriverDashboard() {
   const { activeBooking, setActiveBooking, refreshBooking } = useBooking();
   const [isOnline, setIsOnline] = useState(true);
   const [pendingBookings, setPendingBookings] = useState<BookingData[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(true);
+  const [requestsError, setRequestsError] = useState<string | null>(null);
   const [dismissedBookingIds, setDismissedBookingIds] = useState<Set<string>>(new Set());
   const [dashboardSummary, setDashboardSummary] = useState<DriverDashboardSummary>(getEmptyDashboardSummary());
   const [summaryLoading, setSummaryLoading] = useState(true);
@@ -56,12 +58,24 @@ export default function DriverDashboard() {
   useEffect(() => {
     if (!isOnline || !currentUser || !canReceiveRequests) {
       setPendingBookings([]);
+      setRequestsLoading(false);
+      setRequestsError(null);
       return;
     }
 
+    let cancelled = false;
+
     const loadBookings = async () => {
-      const supabaseBookings = await getSupabasePendingBookings(currentUser.vehicleType || "Tricycle");
-      setPendingBookings(removeDuplicateBookings(supabaseBookings).filter(booking => !dismissedBookingIds.has(booking.id)));
+      setRequestsLoading(true);
+      const result = await getSupabasePendingBookingsResult(currentUser.vehicleType || "Tricycle");
+      if (cancelled) return;
+
+      setRequestsError(result.error);
+      setPendingBookings(
+        removeDuplicateBookings(result.bookings)
+          .filter(booking => !dismissedBookingIds.has(booking.id))
+      );
+      setRequestsLoading(false);
     };
 
     void loadBookings();
@@ -69,7 +83,10 @@ export default function DriverDashboard() {
       void loadBookings();
     });
 
-    return unsubscribe;
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, [isOnline, currentUser, activeBooking, dismissedBookingIds, canReceiveRequests]);
 
   useEffect(() => {
@@ -187,8 +204,26 @@ export default function DriverDashboard() {
           </Alert>
         )}
 
+        {isOnline && canReceiveRequests && requestsError && (
+          <Alert className="mb-4 border-2 border-red-300 bg-gradient-to-br from-red-50 to-red-100/50 shadow-sm animate-slide-down">
+            <AlertDescription className="text-red-800 font-medium">
+              Unable to load booking requests: {requestsError}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {isOnline && canReceiveRequests && requestsLoading && !requestsError && (
+          <Card className="mb-4 animate-fade-in shadow-sm">
+            <CardContent className="pt-8 pb-8 text-center">
+              <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-[#4B0F14]" />
+              <h3 className="text-lg font-semibold mb-2 text-gray-900">Loading ride requests...</h3>
+              <p className="text-gray-600 text-sm">Checking real-time Supabase bookings assigned or available to you.</p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Incoming Ride Requests */}
-        {pendingBookings.length > 0 && isOnline && canReceiveRequests && (
+        {pendingBookings.length > 0 && isOnline && canReceiveRequests && !requestsLoading && !requestsError && (
           <div className="mb-4 space-y-3 animate-scale-in">
             <h2 className="text-lg font-bold text-gray-900">Incoming Ride Requests</h2>
             {pendingBookings.map((booking) => (
@@ -286,7 +321,7 @@ export default function DriverDashboard() {
         )}
 
         {/* No Requests Message */}
-        {pendingBookings.length === 0 && isOnline && canReceiveRequests && (
+        {pendingBookings.length === 0 && isOnline && canReceiveRequests && !requestsLoading && !requestsError && (
           <Card className="mb-4 animate-fade-in shadow-sm">
             <CardContent className="pt-8 pb-8 text-center">
               <div className="h-20 w-20 bg-gradient-to-br from-green-100 to-green-200 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-sm animate-pulse-slow">
