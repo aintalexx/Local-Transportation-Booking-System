@@ -33,6 +33,7 @@ export type SupabaseProfile = {
 };
 
 export type EditableProfileData = {
+  username?: string;
   firstName: string;
   middleName?: string;
   surname: string;
@@ -45,6 +46,11 @@ export type EditableProfileData = {
   vehicleColor?: string;
   profilePhoto?: string;
 };
+
+export type DriverEditableProfileData = Pick<
+  EditableProfileData,
+  "username" | "firstName" | "middleName" | "surname" | "suffix" | "profilePhoto"
+>;
 
 export async function getCurrentSupabaseUserId(): Promise<string | null> {
   if (!supabase) return null;
@@ -129,6 +135,35 @@ export async function profileContactExistsForOther(
   }
 }
 
+export async function profileUsernameExistsForOther(
+  username: string,
+  currentUserId: string
+): Promise<{ exists: boolean; error: string | null }> {
+  if (!supabase) return { exists: false, error: null };
+
+  const normalizedUsername = username.trim();
+  if (!normalizedUsername) return { exists: false, error: null };
+
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("username", normalizedUsername)
+      .neq("id", currentUserId)
+      .limit(1);
+
+    return {
+      exists: !error && Boolean(data?.length),
+      error: error?.message || null,
+    };
+  } catch (error) {
+    return {
+      exists: false,
+      error: error instanceof Error ? error.message : "Failed to check username.",
+    };
+  }
+}
+
 export async function getOwnSupabaseProfile(user: UserData): Promise<SupabaseProfile | null> {
   if (!supabase) return null;
 
@@ -172,6 +207,7 @@ export async function updateOwnSupabaseProfile(
   );
 
   const payload = {
+    username: updates.username?.trim() || user.username,
     first_name: updates.firstName,
     middle_name: updates.middleName || null,
     surname: updates.surname,
@@ -193,6 +229,40 @@ export async function updateOwnSupabaseProfile(
     .eq("id", authUserId)
     .select("*")
     .single();
+
+  if (error) {
+    return { profile: null, error: error.message };
+  }
+
+  return { profile: data as SupabaseProfile, error: null };
+}
+
+export async function updateApprovedDriverEditableProfile(
+  user: UserData,
+  updates: DriverEditableProfileData
+): Promise<{ profile: SupabaseProfile | null; error: string | null }> {
+  if (!supabase) {
+    return { profile: null, error: "Supabase is not configured." };
+  }
+
+  if (user.role !== "driver") {
+    return { profile: null, error: "Only driver accounts can use this update path." };
+  }
+
+  if (!user.phoneNumber || !user.password) {
+    return { profile: null, error: "Unable to verify driver profile. Please log in again." };
+  }
+
+  const { data, error } = await supabase.rpc("update_driver_editable_profile", {
+    p_driver_phone: user.phoneNumber,
+    p_driver_password: user.password,
+    p_username: updates.username?.trim() || user.username,
+    p_first_name: updates.firstName,
+    p_middle_name: updates.middleName || null,
+    p_surname: updates.surname,
+    p_suffix: updates.suffix || null,
+    p_profile_photo: updates.profilePhoto || null,
+  });
 
   if (error) {
     return { profile: null, error: error.message };

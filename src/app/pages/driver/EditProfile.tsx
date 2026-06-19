@@ -7,21 +7,18 @@ import { Label } from "../../components/ui/label";
 import { ArrowLeft, Phone, Bike, Camera } from "lucide-react";
 import { useUser } from "../../context/UserContext";
 import { toast } from "sonner";
-import { emailExists, phoneExists, updateUser } from "../../utils/userDatabase";
+import { getAllUsers, updateUser } from "../../utils/userDatabase";
 import { uploadBase64ToStorage } from "../../utils/supabaseDrivers";
 import {
   getCurrentSupabaseUserId,
-  profileContactExistsForOther,
-  updateOwnSupabaseProfile,
+  profileUsernameExistsForOther,
+  updateApprovedDriverEditableProfile,
 } from "../../utils/supabaseProfiles";
 import {
   firstInvalid,
-  formatPHPhoneInput,
   normalizeSpaces,
-  validateEmail,
   validateName,
-  validatePHPhone,
-  validatePlateNumber,
+  validateUsername,
 } from "../../utils/validators";
 import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
 
@@ -32,14 +29,11 @@ export default function DriverEditProfile() {
   const [profilePhoto, setProfilePhoto] = useState<string>(user?.profilePhoto || "");
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState({
+    username: user?.username || "",
     firstName: user?.firstName || "",
     middleName: user?.middleName || "",
     surname: user?.surname || "",
     suffix: normalizeOptionalSuffix(user?.suffix),
-    phoneNumber: user?.phoneNumber || "",
-    email: user?.email || "",
-    plateNumber: user?.plateNumber || "",
-    vehicleColor: user?.vehicleColor || "",
   });
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -54,18 +48,13 @@ export default function DriverEditProfile() {
     if (!user) return;
     if (isSaving) return;
 
-    const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
-    const normalizedEmail = formData.email.trim();
-    const normalizedPlate = formData.plateNumber.trim().toUpperCase();
+    const normalizedUsername = formData.username.trim();
 
     const basicCheck = firstInvalid([
+      validateUsername(normalizedUsername),
       validateName(formData.surname, "Surname"),
       validateName(formData.firstName, "First name"),
       validateName(formData.middleName, "Middle name", false),
-      validatePHPhone(normalizedPhone),
-      validateEmail(normalizedEmail),
-      validatePlateNumber(normalizedPlate, false),
-      validateName(formData.vehicleColor, "Vehicle color", false),
     ]);
 
     if (!basicCheck.valid) {
@@ -73,25 +62,27 @@ export default function DriverEditProfile() {
       return;
     }
 
-    const authUserId = user.supabaseId || await getCurrentSupabaseUserId();
-    if (!authUserId) {
+    const profileId = user.supabaseId || await getCurrentSupabaseUserId();
+    if (!profileId) {
       toast.error("Unable to save profile. Please log in again.");
       return;
     }
 
-    const contactCheck = await profileContactExistsForOther(normalizedEmail, normalizedPhone, authUserId);
-    if (contactCheck.error) {
-      toast.error(contactCheck.error);
+    const usernameCheck = await profileUsernameExistsForOther(normalizedUsername, profileId);
+    if (usernameCheck.error) {
+      toast.error(usernameCheck.error);
       return;
     }
 
-    if (contactCheck.phoneExists || phoneExists(normalizedPhone, user.username)) {
-      toast.error("Phone number already registered. Please use a different number.");
-      return;
-    }
+    const localUsernameExists = getAllUsers().some(
+      (item) =>
+        item.username.toLowerCase() === normalizedUsername.toLowerCase() &&
+        item.username !== user.username &&
+        item.supabaseId !== profileId
+    );
 
-    if (normalizedEmail && (contactCheck.emailExists || emailExists(normalizedEmail, user.username))) {
-      toast.error("Email already registered. Please use a different email.");
+    if (usernameCheck.exists || localUsernameExists) {
+      toast.error("Username already exists. Please use a different username.");
       return;
     }
 
@@ -111,7 +102,7 @@ export default function DriverEditProfile() {
 
     let savedProfilePhoto = profilePhoto;
     if (profilePhoto && profilePhoto.startsWith("data:")) {
-      const uploadedPhoto = await uploadBase64ToStorage(profilePhoto, `profiles/${authUserId}/profile.jpg`);
+      const uploadedPhoto = await uploadBase64ToStorage(profilePhoto, `profiles/${profileId}/profile.jpg`);
       if (!uploadedPhoto) {
         toast.error("Failed to upload profile photo.");
         setIsSaving(false);
@@ -123,23 +114,17 @@ export default function DriverEditProfile() {
     const updatedUser = {
       ...user,
       ...nextName,
+      username: normalizedUsername,
       displayName: nameFieldsChanged ? "" : user.displayName,
-      phoneNumber: normalizedPhone,
-      email: normalizedEmail,
-      plateNumber: normalizedPlate,
-      vehicleColor: normalizeSpaces(formData.vehicleColor),
       profilePhoto: savedProfilePhoto,
     };
 
-    const { profile, error } = await updateOwnSupabaseProfile(user, {
+    const { profile, error } = await updateApprovedDriverEditableProfile(user, {
+      username: updatedUser.username,
       firstName: updatedUser.firstName,
       middleName: updatedUser.middleName,
       surname: updatedUser.surname,
       suffix: updatedUser.suffix,
-      phoneNumber: updatedUser.phoneNumber,
-      email: updatedUser.email,
-      plateNumber: updatedUser.plateNumber,
-      vehicleColor: updatedUser.vehicleColor,
       profilePhoto: updatedUser.profilePhoto,
     });
 
@@ -152,14 +137,19 @@ export default function DriverEditProfile() {
     const savedUser = {
       ...updatedUser,
       supabaseId: profile.id,
+      username: profile.username || updatedUser.username,
       firstName: profile.first_name || updatedUser.firstName,
       middleName: profile.middle_name || "",
       surname: profile.surname || updatedUser.surname,
       suffix: normalizeOptionalSuffix(profile.suffix || updatedUser.suffix),
-      phoneNumber: profile.phone || updatedUser.phoneNumber,
-      email: profile.email || "",
-      plateNumber: profile.plate_number || "",
-      vehicleColor: profile.vehicle_color || "",
+      phoneNumber: user.phoneNumber,
+      email: user.email || "",
+      vehicleType: user.vehicleType,
+      plateNumber: user.plateNumber,
+      vehicleColor: user.vehicleColor,
+      approvalStatus: user.approvalStatus,
+      accountStatus: user.accountStatus,
+      role: "driver" as const,
       profilePhoto: profile.profile_photo || "",
     };
 
@@ -228,6 +218,16 @@ export default function DriverEditProfile() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                placeholder="Enter username"
+              />
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="surname">Surname</Label>
               <Input
                 id="surname"
@@ -264,37 +264,6 @@ export default function DriverEditProfile() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="phoneNumber">Phone Number</Label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="phoneNumber"
-                  type="tel"
-                  value={formData.phoneNumber}
-                  onChange={(e) => {
-                    const formatted = formatPHPhoneInput(e.target.value);
-                    setFormData({ ...formData, phoneNumber: formatted });
-                  }}
-                  inputMode="numeric"
-                  maxLength={11}
-                  placeholder="09XXXXXXXXX"
-                  className="pl-10"
-                />
-              </div>
-              <p className="text-xs text-gray-500">Format: 09XXXXXXXXX</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email">Email (Optional)</Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value.trim() })}
-                placeholder="your.email@example.com"
-              />
-            </div>
           </CardContent>
         </Card>
 
@@ -307,28 +276,36 @@ export default function DriverEditProfile() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="plateNumber">Plate Number</Label>
-              <Input
-                id="plateNumber"
-                value={formData.plateNumber}
-                onChange={(e) => {
-                  const plateNumber = e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 6);
-                  setFormData({ ...formData, plateNumber });
-                }}
-                maxLength={6}
-                placeholder="ABC123"
-              />
-              <p className="text-xs text-gray-500">2-6 letters or numbers, no spaces.</p>
+              <Label>Phone Number</Label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input value={user?.phoneNumber || ""} className="pl-10" readOnly disabled />
+              </div>
+              <p className="text-xs text-gray-500">Phone number is locked after driver approval.</p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="vehicleColor">Vehicle Color</Label>
-              <Input
-                id="vehicleColor"
-                value={formData.vehicleColor}
-                onChange={(e) => setFormData({ ...formData, vehicleColor: e.target.value })}
-                placeholder="e.g. Blue, Red, White"
-              />
+              <Label>Vehicle Type</Label>
+              <Input value={user?.vehicleType || "Tricycle"} readOnly disabled />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Plate Number</Label>
+              <Input value={user?.plateNumber || "Not set"} readOnly disabled />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Vehicle Color</Label>
+              <Input value={user?.vehicleColor || "Not set"} readOnly disabled />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Approval Status</Label>
+              <Input value={user?.approvalStatus || "pending"} readOnly disabled />
+            </div>
+
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              Vehicle details, documents, phone number, approval status, account status, and role are reviewed by admin and cannot be edited here.
             </div>
           </CardContent>
         </Card>

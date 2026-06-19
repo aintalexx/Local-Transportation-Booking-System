@@ -7,11 +7,12 @@ import { Label } from "../../components/ui/label";
 import { ArrowLeft, UserCircle, Phone, Camera } from "lucide-react";
 import { useUser } from "../../context/UserContext";
 import { toast } from "sonner";
-import { emailExists, phoneExists, updateUser } from "../../utils/userDatabase";
+import { emailExists, getAllUsers, phoneExists, updateUser } from "../../utils/userDatabase";
 import { uploadBase64ToStorage } from "../../utils/supabaseDrivers";
 import {
   getCurrentSupabaseUserId,
   profileContactExistsForOther,
+  profileUsernameExistsForOther,
   updateOwnSupabaseProfile,
 } from "../../utils/supabaseProfiles";
 import {
@@ -21,6 +22,7 @@ import {
   validateEmail,
   validateName,
   validatePHPhone,
+  validateUsername,
 } from "../../utils/validators";
 import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
 
@@ -46,6 +48,7 @@ export default function EditProfile() {
   const [profilePhoto, setProfilePhoto] = useState<string>(user?.profilePhoto || "");
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState({
+    username: user?.username || "",
     firstName: user?.firstName || "",
     middleName: user?.middleName || "",
     surname: user?.surname || "",
@@ -71,8 +74,10 @@ export default function EditProfile() {
     const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
     const normalizedGuardianPhone = formatPHPhoneInput(formData.guardianPhone);
     const normalizedEmail = formData.email.trim();
+    const normalizedUsername = formData.username.trim();
 
     const basicCheck = firstInvalid([
+      validateUsername(normalizedUsername),
       validateName(formData.surname, "Surname"),
       validateName(formData.firstName, "First name"),
       validateName(formData.middleName, "Middle name", false),
@@ -120,6 +125,24 @@ export default function EditProfile() {
       return;
     }
 
+    const usernameCheck = await profileUsernameExistsForOther(normalizedUsername, authUserId);
+    if (usernameCheck.error) {
+      toast.error(usernameCheck.error);
+      return;
+    }
+
+    const localUsernameExists = getAllUsers().some(
+      (item) =>
+        item.username.toLowerCase() === normalizedUsername.toLowerCase() &&
+        item.username !== user.username &&
+        item.supabaseId !== authUserId
+    );
+
+    if (usernameCheck.exists || localUsernameExists) {
+      toast.error("Username already exists. Please use a different username.");
+      return;
+    }
+
     const nextName = {
       firstName: normalizeSpaces(formData.firstName),
       middleName: normalizeSpaces(formData.middleName),
@@ -148,6 +171,7 @@ export default function EditProfile() {
     const updatedUser = {
       ...user,
       ...nextName,
+      username: normalizedUsername,
       displayName: nameFieldsChanged ? "" : user.displayName,
       phoneNumber: normalizedPhone,
       email: normalizedEmail,
@@ -157,6 +181,7 @@ export default function EditProfile() {
     };
 
     const { profile, error } = await updateOwnSupabaseProfile(user, {
+      username: updatedUser.username,
       firstName: updatedUser.firstName,
       middleName: updatedUser.middleName,
       surname: updatedUser.surname,
@@ -177,6 +202,7 @@ export default function EditProfile() {
     const savedUser = {
       ...updatedUser,
       supabaseId: profile.id,
+      username: profile.username || updatedUser.username,
       firstName: profile.first_name || updatedUser.firstName,
       middleName: profile.middle_name || "",
       surname: profile.surname || updatedUser.surname,
@@ -252,6 +278,16 @@ export default function EditProfile() {
             <CardTitle>Personal & Contact Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                placeholder="Enter username"
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="surname">Surname</Label>
               <Input
