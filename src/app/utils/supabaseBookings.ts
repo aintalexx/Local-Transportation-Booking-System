@@ -206,7 +206,7 @@ export async function getSupabasePendingBookings(vehicleType?: string, driver?: 
 
   const { data, error } = await query;
   if (error || !data || data.length === 0) {
-    if (driver?.phoneNumber && driver.password) {
+    if (driver?.phoneNumber) {
       const rpcBookings = await getAvailableBookingsForDriver(driver, vehicleType);
       if (rpcBookings.length > 0) return rpcBookings;
     }
@@ -444,12 +444,12 @@ export async function updateSupabaseDriverBookingStatus(
   const directUpdate = await updateSupabaseBookingStatus(bookingId, status);
   if (directUpdate) return directUpdate;
 
-  if (!supabase || !isUuid(bookingId) || !driver.phoneNumber || !driver.password) return null;
+  if (!supabase || !isUuid(bookingId) || !driver.phoneNumber) return null;
 
   const { data, error } = await supabase.rpc("update_booking_status_as_driver", {
     p_booking_id: bookingId,
     p_driver_phone: driver.phoneNumber,
-    p_driver_password: driver.password,
+    p_driver_password: driver.password || "",
     p_status: status,
   });
 
@@ -570,11 +570,11 @@ function isUuid(value: string): boolean {
 }
 
 async function getAvailableBookingsForDriver(driver: UserData, vehicleType?: string): Promise<BookingData[]> {
-  if (!supabase || !driver.phoneNumber || !driver.password) return [];
+  if (!supabase || !driver.phoneNumber) return [];
 
   const { data, error } = await supabase.rpc("get_available_bookings_for_driver", {
     p_driver_phone: driver.phoneNumber,
-    p_driver_password: driver.password,
+    p_driver_password: driver.password || "",
     p_vehicle_type: vehicleType || driver.vehicleType || "Tricycle",
   });
 
@@ -583,12 +583,12 @@ async function getAvailableBookingsForDriver(driver: UserData, vehicleType?: str
 }
 
 async function acceptBookingWithDriverCredentials(bookingId: string, driver: UserData): Promise<BookingData | null> {
-  if (!supabase || !driver.phoneNumber || !driver.password) return null;
+  if (!supabase || !driver.phoneNumber) return null;
 
   const { data, error } = await supabase.rpc("accept_booking_as_driver", {
     p_booking_id: bookingId,
     p_driver_phone: driver.phoneNumber,
-    p_driver_password: driver.password,
+    p_driver_password: driver.password || "",
   });
 
   if (error || !data) return null;
@@ -597,11 +597,11 @@ async function acceptBookingWithDriverCredentials(bookingId: string, driver: Use
 }
 
 async function getActiveBookingForDriver(driver: UserData): Promise<BookingData | null> {
-  if (!supabase || !driver.phoneNumber || !driver.password) return null;
+  if (!supabase || !driver.phoneNumber) return null;
 
   const { data, error } = await supabase.rpc("get_active_booking_for_driver", {
     p_driver_phone: driver.phoneNumber,
-    p_driver_password: driver.password,
+    p_driver_password: driver.password || "",
   });
 
   if (error || !data) return null;
@@ -613,11 +613,11 @@ async function getDriverBookingsForHistory(
   driver: UserData,
   statuses?: BookingStatus[],
 ): Promise<BookingData[]> {
-  if (!supabase || !driver.phoneNumber || !driver.password) return [];
+  if (!supabase || !driver.phoneNumber) return [];
 
   const { data, error } = await supabase.rpc("get_driver_bookings_for_history", {
     p_driver_phone: driver.phoneNumber,
-    p_driver_password: driver.password,
+    p_driver_password: driver.password || "",
   });
 
   if (error || !data) return [];
