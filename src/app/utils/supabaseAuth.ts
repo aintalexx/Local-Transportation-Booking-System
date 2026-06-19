@@ -185,7 +185,11 @@ export async function signUpWithEmailPassword(userData: UserData): Promise<UserD
   return nextUser;
 }
 
-export async function signInWithEmailPassword(identifier: string, password: string): Promise<UserData | null> {
+export async function signInWithEmailPassword(
+  identifier: string,
+  password: string,
+  fallbackRole: AppRole = "passenger"
+): Promise<UserData | null> {
   if (!supabase || !identifier.includes("@")) return null;
 
   const { data, error } = await supabase.auth.signInWithPassword({
@@ -198,7 +202,7 @@ export async function signInWithEmailPassword(identifier: string, password: stri
   }
 
   if (!data.user) return null;
-  return createLocalUserFromSupabaseUser(data.user, "passenger", password);
+  return createLocalUserFromSupabaseUser(data.user, fallbackRole, password);
 }
 
 export async function requestSupabasePasswordReset(email: string): Promise<void> {

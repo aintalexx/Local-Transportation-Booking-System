@@ -5,7 +5,11 @@ import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
 import { authenticateUser, findUser, getAllUsers, updateUser, type UserData } from "../../utils/userDatabase";
 import { formatPHPhoneInput } from "../../utils/validators";
-import { resolveAuthEmailForLogin, signInWithEmailPassword, signUpWithEmailPassword } from "../../utils/supabaseAuth";
+import {
+  resolveAuthEmailForLogin,
+  signInWithEmailPassword,
+  signUpWithEmailPassword,
+} from "../../utils/supabaseAuth";
 import { getRoleHomePath } from "../../utils/roleRouting";
 import { getSupabaseDriverByPhone } from "../../utils/supabaseDrivers";
 import { createDemoOtp } from "../../utils/demoOtp";
@@ -79,9 +83,16 @@ export default function LoginPage() {
       setLoading(true);
       try {
         const normalizedPhone = formatPHPhoneInput(phoneInput);
-        
+        const { data: driverProfile } = supabase
+          ? await supabase
+              .from("profiles")
+              .select("*")
+              .eq("phone", normalizedPhone)
+              .eq("role", "driver")
+              .maybeSingle()
+          : { data: null };
+
         let dbDriver = await getSupabaseDriverByPhone(normalizedPhone);
-        
         if (!dbDriver) {
           const localUser = findUser(normalizedPhone);
           if (localUser && localUser.role === "driver") {
@@ -110,18 +121,15 @@ export default function LoginPage() {
           }
         }
 
-        if (!dbDriver) {
+        const driverRecord = driverProfile || dbDriver;
+
+        if (!driverRecord) {
           toast.error("Driver account not found. Please register first.");
           return;
         }
 
-        if (dbDriver.password !== password) {
-          toast.error("Invalid driver credentials.");
-          return;
-        }
-
-        const approvalStatus = String(dbDriver.approval_status || "pending").toLowerCase();
-        const accountStatus = String(dbDriver.account_status || "Active");
+        const approvalStatus = String(driverRecord.approval_status || "pending").toLowerCase();
+        const accountStatus = String(driverRecord.account_status || "Active");
 
         if (approvalStatus === "pending") {
           toast.error("Your driver application is still pending admin approval.");
@@ -143,6 +151,48 @@ export default function LoginPage() {
           return;
         }
 
+        const authEmail = typeof driverRecord.email === "string" && driverRecord.email.trim()
+          ? driverRecord.email.trim().toLowerCase()
+          : await resolveAuthEmailForLogin(normalizedPhone);
+
+        if (!authEmail) {
+          toast.error("Unable to find the driver's registered email. Please sign up again with a real email or contact support.");
+          return;
+        }
+
+        let authenticatedDriver: UserData | null = null;
+        try {
+          authenticatedDriver = await signInWithEmailPassword(authEmail, password, "driver");
+        } catch (authError) {
+          const message = authError instanceof Error ? authError.message.toLowerCase() : "";
+          if (message.includes("email not confirmed") || message.includes("email_not_confirmed")) {
+            toast.error("Driver account is approved, but the auth account still needs syncing. Please ask the admin to approve it again.");
+            return;
+          }
+          if (message.includes("invalid login credentials")) {
+            toast.error("Invalid driver credentials.");
+            return;
+          }
+          throw authError;
+        }
+
+        if (!authenticatedDriver) {
+          toast.error("Invalid driver credentials.");
+          return;
+        }
+
+        if (authenticatedDriver.role !== "driver") {
+          toast.error("This account does not have driver access.");
+          return;
+        }
+
+        const driverSession = {
+          ...authenticatedDriver,
+          approvalStatus: "approved" as const,
+          accountStatus: "Active" as const,
+          phoneNumber: normalizedPhone,
+        };
+
         const otp = createDemoOtp();
         toast.success(`Demo OTP: ${otp}`, { duration: 10000 });
 
@@ -153,26 +203,9 @@ export default function LoginPage() {
             phoneNumber: normalizedPhone,
             generatedOtp: otp,
             userData: {
-              supabaseId: dbDriver.id,
-              username: `driver_${dbDriver.phone.replace(/\D/g, "")}`,
-              phoneNumber: dbDriver.phone,
-              firstName: dbDriver.first_name,
-              middleName: dbDriver.middle_name || "",
-              surname: dbDriver.surname,
-              suffix: dbDriver.suffix || "",
-              birthdate: dbDriver.birthdate,
-              password: dbDriver.password,
+              ...driverSession,
+              password,
               role: "driver" as const,
-              approvalStatus: "approved" as const,
-              accountStatus: "Active" as const,
-              vehicleType: dbDriver.vehicle_type,
-              plateNumber: dbDriver.plate_number || "",
-              licenseNumber: dbDriver.license_number || "",
-              profilePhoto: dbDriver.profile_photo || "",
-              validIdPhoto: dbDriver.valid_id_photo || "",
-              orCrPhoto: dbDriver.or_cr_photo || "",
-              clearancePhoto: dbDriver.clearance_photo || "",
-              vehiclePhoto: dbDriver.vehicle_photo || "",
             }
           }
         });

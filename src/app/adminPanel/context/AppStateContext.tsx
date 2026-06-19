@@ -326,6 +326,29 @@ async function syncDriverToProfile(driverId: string) {
   }
 }
 
+async function approveDriverApplicationInSupabase(driverId: string): Promise<{ ok: boolean; error?: string }> {
+  if (!supabase) return { ok: false, error: "Supabase not configured." };
+
+  const { error: rpcError } = await supabase.rpc("approve_driver_application", {
+    p_driver_id: driverId,
+  });
+
+  if (!rpcError) return { ok: true };
+
+  // Fallback for local/dev databases before the latest migration is applied.
+  const { error: driverError } = await supabase
+    .from("drivers")
+    .update({ approval_status: "approved", account_status: "Active", updated_at: new Date().toISOString() })
+    .eq("id", driverId);
+
+  if (driverError) {
+    return { ok: false, error: driverError.message || rpcError.message };
+  }
+
+  await syncDriverToProfile(driverId);
+  return { ok: true, error: rpcError.message };
+}
+
 // Helper to map Supabase bookings to Booking
 function mapRowToBooking(b: any): Booking {
   let status: BookingStatus = "Pending";
@@ -611,14 +634,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (!supabase) { toast.error("Supabase not configured."); return; }
-    const { error } = await supabase
-      .from("drivers")
-      .update({ approval_status: "approved", account_status: "Active", updated_at: new Date().toISOString() })
-      .eq("id", id);
-    if (error) {
-      toast.error("Failed to approve driver", { description: error.message });
+    const approval = await approveDriverApplicationInSupabase(id);
+    if (!approval.ok) {
+      toast.error("Failed to approve driver", { description: approval.error });
     } else {
-      await syncDriverToProfile(id);
       updateDriverState(id, "approved", "Active", "Approved");
       toast.success("Driver approved successfully");
     }
@@ -677,14 +696,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (!supabase) { toast.error("Supabase not configured."); return; }
-    const { error } = await supabase
-      .from("drivers")
-      .update({ approval_status: "approved", account_status: "Active", updated_at: new Date().toISOString() })
-      .eq("id", id);
-    if (error) {
-      toast.error("Failed to reinstate driver", { description: error.message });
+    const approval = await approveDriverApplicationInSupabase(id);
+    if (!approval.ok) {
+      toast.error("Failed to reinstate driver", { description: approval.error });
     } else {
-      await syncDriverToProfile(id);
       updateDriverState(id, "approved", "Active", "Approved");
       toast.success("Driver reinstated successfully");
     }
@@ -720,18 +735,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     // Update Supabase drivers
     if (supabasePending.length > 0 && supabase) {
-      const supabaseIds = supabasePending.map(d => d.id);
-      const { error } = await supabase
-        .from("drivers")
-        .update({ approval_status: "approved", account_status: "Active", updated_at: new Date().toISOString() })
-        .in("id", supabaseIds);
-      if (error) {
-        toast.error("Failed to approve some drivers", { description: error.message });
-        return;
-      }
-      // Sync approved drivers to profiles
+      let failedApproval: string | null = null;
       for (const d of supabasePending) {
-        await syncDriverToProfile(d.id);
+        const approval = await approveDriverApplicationInSupabase(d.id);
+        if (!approval.ok) {
+          failedApproval = approval.error || "Unknown approval error.";
+          break;
+        }
+      }
+      if (failedApproval) {
+        toast.error("Failed to approve some drivers", { description: failedApproval });
+        return;
       }
       setDrivers(prev =>
         prev.map(d =>

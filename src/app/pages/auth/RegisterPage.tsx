@@ -86,11 +86,6 @@ function formatDateInputValue(date: Date | undefined): string {
   return `${year}-${month}-${day}`;
 }
 
-function buildDriverAuthEmail(phoneDigits: string): string {
-  const safeDigits = phoneDigits.replace(/\D/g, "").slice(0, 11) || "00000000000";
-  return `driver_${safeDigits}@arangkada.local`;
-}
-
 async function compressImageFile(file: File): Promise<string> {
   const originalDataUrl = await readFileAsDataUrl(file);
 
@@ -557,6 +552,7 @@ export default function RegisterPage() {
       validateName(formData.firstName, "First name"),
       formData.noMiddleName ? { valid: true, message: "" } : validateName(formData.middleName, "Middle name"),
       validateBirthdate(formData.birthdate),
+      validateAuthEmail(formData.email.trim().toLowerCase()),
       validatePassword(formData.password),
     ]);
 
@@ -583,7 +579,7 @@ export default function RegisterPage() {
     setShowValidationErrors(true);
 
     const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
-    const normalizedEmail = role === "passenger" ? formData.email.trim().toLowerCase() : "";
+    const normalizedEmail = formData.email.trim().toLowerCase();
     const normalizedPlate = formData.plateNumber.trim().toUpperCase();
     const normalizedPhoneDigits = normalizedPhone.replace(/\D/g, "");
     const finalUsername = role === "passenger" 
@@ -598,7 +594,7 @@ export default function RegisterPage() {
       validateBirthdate(formData.birthdate),
       validatePHPhone(normalizedPhone),
       role === "passenger" ? validateUsername(formData.username.trim()) : ok,
-      role === "passenger" ? validateAuthEmail(normalizedEmail) : ok,
+      validateAuthEmail(normalizedEmail),
       validatePassword(formData.password),
     ]);
 
@@ -681,7 +677,7 @@ export default function RegisterPage() {
         middleName: formData.noMiddleName ? "" : normalizeSpaces(formData.middleName),
         suffix: normalizeOptionalSuffix(formData.suffix),
         email: normalizedEmail,
-        emailConfirmed: role === "driver",
+        emailConfirmed: role === "driver" ? false : true,
         birthdate: birthdateString,
         role,
         guardianName: role === "passenger" ? normalizeSpaces(formData.guardianName) : "",
@@ -704,10 +700,6 @@ export default function RegisterPage() {
       };
 
       if (role === "driver") {
-        const driverAuthEmail = buildDriverAuthEmail(normalizedPhoneDigits);
-        userData.email = driverAuthEmail;
-        userData.emailConfirmed = false;
-
         // Upload images to Supabase Storage and get their URLs
         const phoneDigits = normalizedPhone.replace(/\D/g, "");
         
@@ -744,21 +736,11 @@ export default function RegisterPage() {
           if (authUser?.supabaseId) {
             userData.supabaseId = authUser.supabaseId;
             userData.emailConfirmed = true;
-          } else {
-            const authFallback = await signInWithEmailPassword(driverAuthEmail, userData.password);
-            if (authFallback?.supabaseId) {
-              userData.supabaseId = authFallback.supabaseId;
-            }
           }
         } catch (authError) {
           const authMessage = authError instanceof Error ? authError.message.toLowerCase() : String(authError).toLowerCase();
           if (isSupabaseDuplicateEmailError(authMessage)) {
-            const authFallback = await signInWithEmailPassword(driverAuthEmail, userData.password);
-            if (authFallback?.supabaseId) {
-              userData.supabaseId = authFallback.supabaseId;
-            } else {
-              throw new Error("Unable to verify the driver auth account. Please try again.");
-            }
+            throw new Error("This email is already used. Please sign in with the same email or use a different one.");
           } else {
             throw authError;
           }
@@ -995,7 +977,7 @@ export default function RegisterPage() {
 
               {role === "driver" && (
                 <p className="mt-2 text-center text-xs text-gray-500">
-                  Driver applicants must use the full form for license and admin approval.
+                  Driver applicants must use a real email address so the approved account can log in later.
                 </p>
               )}
 
@@ -1357,6 +1339,21 @@ export default function RegisterPage() {
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="driver.email@example.com"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value.trim() })}
+                    required
+                  />
+                  <p className="text-xs text-gray-500">
+                    Use your real email address. It will be used for driver login after admin approval.
+                  </p>
                 </div>
 
                 <div className="space-y-2">
