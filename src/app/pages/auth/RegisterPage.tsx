@@ -74,17 +74,7 @@ function isSupabaseInvalidEmailError(message: string): boolean {
 }
 
 function validatePassengerName(value: string, required = true) {
-  const normalized = normalizeSpaces(value);
-
-  if (!normalized) {
-    return required ? { valid: false, message: "Names must contain letters only." } : ok;
-  }
-
-  if (!/^[\p{L}]+(?:\s+[\p{L}]+)*$/u.test(normalized)) {
-    return { valid: false, message: "Names must contain letters only." };
-  }
-
-  return ok;
+  return validateName(value, "Name field", required);
 }
 
 function formatDateInputValue(date: Date | undefined): string {

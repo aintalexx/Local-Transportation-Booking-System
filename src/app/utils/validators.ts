@@ -50,8 +50,8 @@ export function validateName(value: string, label: string, required = true): Val
     return fail(`${label} must be between 2 and 60 characters.`);
   }
 
-  if (!/^[\p{L}][\p{L} .'-]*$/u.test(normalized)) {
-    return fail(`${label} can only contain letters, spaces, apostrophes, periods, and hyphens.`);
+  if (!/^[A-Za-z]+(?:[ -][A-Za-z]+)*$/.test(normalized)) {
+    return fail("Name fields must contain letters only. Numbers and special characters are not allowed.");
   }
 
   return ok;
