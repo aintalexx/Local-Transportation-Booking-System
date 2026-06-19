@@ -262,8 +262,8 @@ export default function DriverDashboard() {
                     </div>
                     <div className="flex gap-1.5 shrink-0">
                       <Badge className="bg-green-500">{booking.vehicleType}</Badge>
-                      <Badge className={booking.rideType === "group" ? "bg-amber-600" : "bg-blue-600"}>
-                        {booking.rideType === "group" ? "GROUP" : "SOLO"}
+                      <Badge className={(booking.bookingType || booking.rideType) === "group" ? "bg-amber-600" : "bg-blue-600"}>
+                        {(booking.bookingType || booking.rideType) === "group" ? "GROUP" : "SOLO"}
                       </Badge>
                     </div>
                   </div>
@@ -290,9 +290,9 @@ export default function DriverDashboard() {
 
                   {/* Solo/Group Helper Notes */}
                   <div className="p-3 rounded-lg text-xs border border-gray-100" style={{ background: "#fcfcfc" }}>
-                    {booking.rideType === "group" ? (
+                    {(booking.bookingType || booking.rideType) === "group" ? (
                       <p style={{ color: "#b45309" }} className="leading-relaxed">
-                        <span className="font-bold">Group Ride:</span> Passenger count: {booking.reserveEntire ? 5 : (booking.passengerCount || 1)}. Do not match other passengers.
+                        <span className="font-bold">Group Ride:</span> Passenger count: {booking.reserveEntire ? 5 : (booking.passengerCount || 1)}. Do not match other passengers. {booking.splitPaymentEnabled && `Split Payment: ₱${booking.individualShare} each.`}
                       </p>
                     ) : (
                       <p style={{ color: "#1e3a8a" }} className="leading-relaxed">
@@ -306,15 +306,15 @@ export default function DriverDashboard() {
                       <p className="text-sm text-gray-600">Distance</p>
                       <p className="break-words font-semibold">{booking.distance.toFixed(1)} km</p>
                     </div>
-                    {booking.rideType === "group" && (
+                    {((booking.bookingType || booking.rideType) === "group") && (
                       <div className="min-w-0">
                         <p className="text-sm text-gray-600">Passengers</p>
                         <p className="break-words font-semibold">{booking.reserveEntire ? "5 (Reserved)" : (booking.passengerCount || 1)}</p>
                       </div>
                     )}
                     <div className="min-w-0 text-left sm:text-right">
-                      <p className="text-sm text-gray-600">Fare</p>
-                      <p className="break-words text-xl font-bold text-green-600">₱{booking.finalPrice}</p>
+                      <p className="text-sm text-gray-600">Driver Earnings</p>
+                      <p className="break-words text-xl font-bold text-green-600">₱{booking.totalFare ?? booking.finalPrice}</p>
                     </div>
                   </div>
 
@@ -424,7 +424,7 @@ export default function DriverDashboard() {
                             <p className="truncate text-xs text-gray-600">{ride.destination.address}</p>
                           </div>
                           <div className="shrink-0 text-right">
-                            <p className="text-sm font-bold text-green-700">PHP {ride.finalPrice.toFixed(2)}</p>
+                            <p className="text-sm font-bold text-green-700">PHP {(ride.totalFare ?? ride.finalPrice).toFixed(2)}</p>
                             <p className="text-xs text-gray-500">{formatStatusLabel(ride.status)}</p>
                           </div>
                         </div>

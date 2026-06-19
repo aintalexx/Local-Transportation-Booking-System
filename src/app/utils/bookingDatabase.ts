@@ -35,6 +35,10 @@ export interface BookingData {
   rideType?: "solo" | "group" | "shared";
   passengerCount?: number;
   reserveEntire?: boolean;
+  bookingType?: "solo" | "group";
+  totalFare?: number;
+  individualShare?: number;
+  splitPaymentEnabled?: boolean;
   status: BookingStatus;
   createdAt: string;
   acceptedAt?: string;

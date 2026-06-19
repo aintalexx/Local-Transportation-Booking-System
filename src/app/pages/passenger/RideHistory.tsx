@@ -61,7 +61,7 @@ export default function RideHistory() {
   }, [filter, rides]);
 
   const completedRides = rides.filter(ride => ride.status === "completed" || ride.status === "ride_completed");
-  const totalSpent = completedRides.reduce((sum, ride) => sum + ride.finalPrice, 0);
+  const totalSpent = completedRides.reduce((sum, ride) => sum + (ride.individualShare ?? ride.finalPrice), 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -124,12 +124,17 @@ export default function RideHistory() {
                   </div>
 
                   <div className="grid gap-3 border-t pt-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-                    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-4">
                       <InfoBlock label="Driver" value={ride.driverName || "Not assigned"} />
                       <InfoBlock label="Vehicle" value={ride.driverVehicleType || ride.vehicleType || "Vehicle"} />
+                      <InfoBlock label="Ride Type" value={ride.bookingType === "group" ? "Group Ride" : "Solo Ride"} />
+                      <InfoBlock label="Passengers" value={`${ride.passengerCount || 1} Pax`} />
                     </div>
                     <div className="min-w-fit text-left sm:text-right">
-                      <p className="text-xl font-bold text-[#4B0F14]">PHP {ride.finalPrice.toFixed(2)}</p>
+                      <p className="text-xl font-bold text-[#4B0F14]">PHP {(ride.individualShare ?? ride.finalPrice).toFixed(2)}</p>
+                      {ride.splitPaymentEnabled && ride.bookingType === "group" && (
+                        <p className="text-[10px] text-red-600 font-semibold">Split Share (Total: PHP {ride.totalFare ?? ride.finalPrice})</p>
+                      )}
                       <p className="mt-1 text-xs text-gray-500">{ride.distance.toFixed(1)} km</p>
                     </div>
                   </div>

@@ -180,6 +180,7 @@ function BookingPage() {
   const [rideType, setRideType] = useState<"solo" | "group">("solo");
   const [passengerCount, setPassengerCount] = useState<number>(1);
   const [reserveEntire, setReserveEntire] = useState<boolean>(false);
+  const [splitPaymentEnabled, setSplitPaymentEnabled] = useState<boolean>(false);
 
   // Map refs
   const mapContainerRef  = useRef<HTMLDivElement>(null);
@@ -281,20 +282,25 @@ function BookingPage() {
 
   const distanceKm  = routeData?.distanceKm ?? 0;
   const durationMin = routeData?.durationMin ?? 0;
-  const standardFare = calculateFare(distanceKm).finalFare;
 
-  let basePrice = 0;
-  if (rideType === "solo") {
-    basePrice = standardFare;
-  } else {
-    const effectiveCount = reserveEntire ? 5 : passengerCount;
-    basePrice = effectiveCount * standardFare;
-  }
+  const calculatedPassengerCount = rideType === "solo"
+    ? 1
+    : (reserveEntire ? 5 : passengerCount);
+
+  const totalFare = rideType === "solo"
+    ? 50
+    : 50 + ((calculatedPassengerCount - 1) * 10);
+
+  const basePrice = totalFare;
 
   let finalPrice = basePrice;
   if (appliedPromo) {
     finalPrice = Math.max(1, Math.round(basePrice * (1 - appliedPromo.discount / 100)));
   }
+
+  const individualShare = splitPaymentEnabled && rideType === "group"
+    ? Math.round((finalPrice / calculatedPassengerCount) * 100) / 100
+    : finalPrice;
 
 
   const setLocationByMode = useCallback((mode: PinMode, loc: LatLng, mapZoom = 17) => {
@@ -530,7 +536,7 @@ function BookingPage() {
         ? { type: appliedPromo.code, amount: appliedPromo.discount }
         : undefined;
 
-      const pCount = rideType === "solo" ? 1 : passengerCount;
+      const pCount = calculatedPassengerCount;
       const resEntire = rideType === "solo" ? false : reserveEntire;
 
       const supabaseBooking = await createSupabaseBooking({
@@ -545,6 +551,10 @@ function BookingPage() {
         rideType,
         passengerCount: pCount,
         reserveEntire: resEntire,
+        bookingType: rideType,
+        totalFare: totalFare,
+        individualShare: individualShare,
+        splitPaymentEnabled: splitPaymentEnabled && rideType === "group",
         discount,
       });
 
@@ -885,7 +895,7 @@ function BookingPage() {
               }}
             >
               <span>Solo Ride</span>
-              <span className="text-[10px] font-normal opacity-85 mt-0.5">₱16 first km • Exclusive</span>
+              <span className="text-[10px] font-normal opacity-85 mt-0.5">₱50 fixed fare • Exclusive</span>
             </button>
             <button
               type="button"
@@ -901,7 +911,7 @@ function BookingPage() {
               }}
             >
               <span>Group Ride</span>
-              <span className="text-[10px] font-normal opacity-85 mt-0.5">Per passenger • Max 5</span>
+              <span className="text-[10px] font-normal opacity-85 mt-0.5">₱50 base + ₱10/add'l pax</span>
             </button>
           </div>
 
@@ -928,11 +938,30 @@ function BookingPage() {
                   type="checkbox"
                   id="reserveEntire"
                   checked={reserveEntire}
-                  onChange={(e) => setReserveEntire(e.target.checked)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setReserveEntire(checked);
+                    if (checked) {
+                      setPassengerCount(5);
+                    }
+                  }}
                   className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
                 />
                 <label htmlFor="reserveEntire" className="text-xs font-bold cursor-pointer" style={{ color: "#4b5563" }}>
                   Reserve Entire Vehicle (Bill for 5 seats)
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 border-t" style={{ borderColor: "#e5e7eb" }}>
+                <input
+                  type="checkbox"
+                  id="splitPaymentEnabled"
+                  checked={splitPaymentEnabled}
+                  onChange={(e) => setSplitPaymentEnabled(e.target.checked)}
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                />
+                <label htmlFor="splitPaymentEnabled" className="text-xs font-bold cursor-pointer" style={{ color: "#4b5563" }}>
+                  Split Payment (₱{Math.round((finalPrice / calculatedPassengerCount) * 100) / 100} each)
                 </label>
               </div>
             </div>
@@ -1027,8 +1056,18 @@ function BookingPage() {
             <p className="text-2xl font-black" style={{ color: MAROON }}>
               ₱{dropoff && distanceKm > 0 ? finalPrice : "—"}
             </p>
+            {dropoff && distanceKm > 0 && (
+              <div className="text-[10px] mt-1 space-y-0.5" style={{ color: "#4b5563" }}>
+                <p>Ride Type: <span className="font-bold capitalize">{rideType}</span></p>
+                <p>Passenger Count: <span className="font-bold">{calculatedPassengerCount}</span></p>
+                {splitPaymentEnabled && rideType === "group" && (
+                  <p>Individual Share: <span className="font-bold font-black" style={{ color: MAROON }}>₱{individualShare} each</span></p>
+                )}
+                <p>Driver Earnings: <span className="font-bold font-black" style={{ color: GREEN }}>₱{finalPrice}</span></p>
+              </div>
+            )}
             {appliedPromo && dropoff && (
-              <p className="text-xs" style={{ color: GREEN }}>
+              <p className="text-[10px]" style={{ color: GREEN }}>
                 incl. {appliedPromo.discount}% off
               </p>
             )}
@@ -1073,6 +1112,9 @@ function BookingPage() {
                 { label: "Duration",  value: `${durationMin} mins` },
                 { label: "Ride",      value: rideType === "solo" ? "Solo Ride" : `Group Ride (${reserveEntire ? "Entire Vehicle" : `${passengerCount} Pax`})` },
                 { label: "Passengers", value: rideType === "solo" ? "1" : (reserveEntire ? "5 (Reserved)" : String(passengerCount)) },
+                { label: "Split Payment", value: splitPaymentEnabled && rideType === "group" ? "Enabled" : "Disabled" },
+                ...(splitPaymentEnabled && rideType === "group" ? [{ label: "Individual Share", value: `₱${individualShare} each` }] : []),
+                { label: "Driver Earnings", value: `₱${finalPrice}` },
                 { label: "Payment",   value: paymentMethod === "cash" ? "Cash" : "E-Payment" },
               ].map((row) => (
                 <div key={row.label} className="flex items-start justify-between gap-3 py-1.5"

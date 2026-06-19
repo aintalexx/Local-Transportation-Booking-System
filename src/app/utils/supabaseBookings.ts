@@ -51,6 +51,10 @@ type SupabaseBookingRow = {
   ride_type: "solo" | "group" | "shared" | null;
   passenger_count?: number | null;
   reserve_entire?: boolean | null;
+  booking_type?: "solo" | "group" | null;
+  total_fare?: number | string | null;
+  individual_share?: number | string | null;
+  split_payment_enabled?: boolean | null;
   status: BookingStatus;
   discount_type: string | null;
   discount_amount: number | string | null;
@@ -80,6 +84,10 @@ export type CreateSupabaseBookingInput = {
   rideType?: "solo" | "group" | "shared";
   passengerCount?: number;
   reserveEntire?: boolean;
+  bookingType?: "solo" | "group";
+  totalFare?: number;
+  individualShare?: number;
+  splitPaymentEnabled?: boolean;
   discount?: BookingData["discount"];
 };
 
@@ -108,9 +116,13 @@ export async function createSupabaseBooking(input: CreateSupabaseBookingInput): 
       final_price: input.finalPrice,
       payment_method: input.paymentMethod,
       vehicle_type: input.vehicleType,
-      ride_type: input.rideType || "solo",
+      ride_type: input.rideType || input.bookingType || "solo",
       passenger_count: input.passengerCount || 1,
       reserve_entire: input.reserveEntire || false,
+      booking_type: input.bookingType || "solo",
+      total_fare: input.totalFare ?? input.finalPrice,
+      individual_share: input.individualShare ?? input.finalPrice,
+      split_payment_enabled: input.splitPaymentEnabled || false,
       status: "pending",
       discount_type: input.discount?.type || null,
       discount_amount: input.discount?.amount ?? null,
@@ -362,7 +374,7 @@ function buildDriverDashboardSummary(rides: BookingData[]): DriverDashboardSumma
     .slice(0, 5);
 
   return {
-    totalEarningsToday: completedToday.reduce((sum, ride) => sum + ride.finalPrice, 0),
+    totalEarningsToday: completedToday.reduce((sum, ride) => sum + (ride.totalFare ?? ride.finalPrice), 0),
     todaysRides: todayRides.length,
     completedRides: completedToday.length,
     cancelledRejectedRides: cancelledRejectedToday.length,
@@ -502,6 +514,10 @@ function mapSupabaseBooking(row: SupabaseBookingRow): BookingData {
     rideType: row.ride_type || undefined,
     passengerCount: row.passenger_count || undefined,
     reserveEntire: row.reserve_entire || undefined,
+    bookingType: row.booking_type || undefined,
+    totalFare: row.total_fare ? Number(row.total_fare) : undefined,
+    individualShare: row.individual_share ? Number(row.individual_share) : undefined,
+    splitPaymentEnabled: row.split_payment_enabled || undefined,
     status: row.status,
     createdAt: row.created_at,
     acceptedAt: row.accepted_at || undefined,

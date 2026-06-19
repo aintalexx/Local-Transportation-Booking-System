@@ -82,6 +82,12 @@ export interface Booking {
   from: string; to: string; fare: string; distance: string;
   duration: string; status: BookingStatus;
   booked: string; ended: string; seats: number;
+  bookingType?: "solo" | "group";
+  passengerCount: number;
+  totalFare: number;
+  individualShare: number;
+  splitPaymentEnabled: boolean;
+  driverEarnings: number;
 }
 
 export interface AppNotification {
@@ -306,13 +312,19 @@ function mapRowToBooking(b: any): Booking {
     vehicle: b.driver_plate_number || "—",
     from: b.pickup_address,
     to: b.destination_address,
-    fare: `₱${b.final_price}`,
+    fare: `₱${b.total_fare ?? b.final_price}`,
     distance: `${b.distance_km} km`,
     duration: "—",
     status,
     booked: new Date(b.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) + ", " + new Date(b.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
     ended: b.completed_at ? new Date(b.completed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) + ", " + new Date(b.completed_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "—",
-    seats: b.ride_type === "shared" ? 2 : 1,
+    seats: b.passenger_count || (b.ride_type === "shared" ? 2 : 1),
+    bookingType: b.booking_type || (b.ride_type === "group" ? "group" : "solo"),
+    passengerCount: b.passenger_count || 1,
+    totalFare: b.total_fare ? Number(b.total_fare) : Number(b.final_price),
+    individualShare: b.individual_share ? Number(b.individual_share) : Number(b.final_price),
+    splitPaymentEnabled: b.split_payment_enabled || false,
+    driverEarnings: b.total_fare ? Number(b.total_fare) : Number(b.final_price),
   };
 }
 

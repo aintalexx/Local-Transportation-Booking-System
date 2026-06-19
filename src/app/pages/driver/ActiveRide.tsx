@@ -53,6 +53,10 @@ type CompletedTripSummary = {
   paymentMethod: string;
   completedAt: string;
   tripsCompleted: number;
+  bookingType?: string;
+  passengerCount?: number;
+  splitPaymentEnabled?: boolean;
+  individualShare?: number;
 };
 
 type DriverNextStatus = "driver_arriving" | "passenger_picked_up" | "in_progress";
@@ -337,7 +341,7 @@ export default function ActiveRide() {
             <InfoBox label="Distance" value={`${activeBooking.distance.toFixed(1)} km`} />
             <InfoBox label="Pickup ETA" value={etaToPickup ? `${etaToPickup} min` : "Tracking"} />
             <InfoBox label="Trip ETA" value={tripEta ? `${tripEta} min` : "Calculating"} />
-            <InfoBox label="Fare" value={`PHP ${activeBooking.finalPrice}`} strong />
+            <InfoBox label="Driver Earnings" value={`PHP ${activeBooking.totalFare ?? activeBooking.finalPrice}`} strong />
           </div>
 
           <div className="rounded-lg bg-gray-50 p-3">
@@ -348,9 +352,15 @@ export default function ActiveRide() {
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm">
               <span className="text-gray-600">Ride Type</span>
               <span className="font-semibold">
-                {activeBooking.rideType === "group" ? `Group (${activeBooking.passengerCount || 2} passengers)` : "Solo"}
+                {activeBooking.bookingType === "group" ? `Group Ride (${activeBooking.passengerCount || 2} Pax)` : "Solo Ride"}
               </span>
             </div>
+            {activeBooking.splitPaymentEnabled && activeBooking.bookingType === "group" && (
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm text-red-600 font-semibold">
+                <span>Split Payment Enabled</span>
+                <span>PHP {activeBooking.individualShare} each</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -363,7 +373,7 @@ export default function ActiveRide() {
             <AlertDialogTitle>Complete Trip?</AlertDialogTitle>
             <AlertDialogDescription>
               Confirm that you have arrived at the destination and the passenger has been dropped off.
-              You will earn PHP {activeBooking.finalPrice} for this trip.
+              You will earn PHP {activeBooking.totalFare ?? activeBooking.finalPrice} for this trip.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -542,6 +552,14 @@ function CompletedTripResult({
             <p className="text-xs text-gray-500">Payment</p>
             <p className="mt-1 font-bold text-gray-900">{summary.paymentMethod}</p>
           </div>
+          <div className="rounded-lg bg-gray-50 p-3">
+            <p className="text-xs text-gray-500">Ride Type</p>
+            <p className="mt-1 font-bold text-gray-900">{summary.bookingType === "group" ? `Group (${summary.passengerCount || 2} Pax)` : "Solo"}</p>
+          </div>
+          <div className="rounded-lg bg-gray-50 p-3">
+            <p className="text-xs text-gray-500">Split Share</p>
+            <p className="mt-1 font-bold text-gray-900">{summary.splitPaymentEnabled && summary.bookingType === "group" ? `₱${summary.individualShare} each` : "Disabled"}</p>
+          </div>
         </div>
 
         <p className="mt-5 text-sm font-semibold text-gray-700">
@@ -578,11 +596,15 @@ function createCompletedTripSummary(
 
   return {
     passengerName: booking.passengerName || "Passenger",
-    fare: booking.finalPrice,
+    fare: booking.totalFare ?? booking.finalPrice,
     distance: booking.distance,
     paymentMethod: booking.paymentMethod,
     completedAt: booking.completedAt || new Date().toISOString(),
     tripsCompleted: Math.max(1, completedLocalTrips),
+    bookingType: booking.bookingType,
+    passengerCount: booking.passengerCount,
+    splitPaymentEnabled: booking.splitPaymentEnabled,
+    individualShare: booking.individualShare,
   };
 }
 

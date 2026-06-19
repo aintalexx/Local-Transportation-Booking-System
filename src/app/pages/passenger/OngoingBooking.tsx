@@ -292,6 +292,11 @@ export default function OngoingBooking() {
             fare={activeBooking.finalPrice}
             onRate={() => navigate(`/rating/${activeBooking.id}`)}
             onDone={handleDone}
+            bookingType={activeBooking.bookingType}
+            passengerCount={activeBooking.passengerCount}
+            totalFare={activeBooking.totalFare}
+            individualShare={activeBooking.individualShare}
+            splitPaymentEnabled={activeBooking.splitPaymentEnabled}
           />
         ) : (
           <>
@@ -378,6 +383,11 @@ export default function OngoingBooking() {
               fare={activeBooking.finalPrice}
               paymentMethod={activeBooking.paymentMethod}
               discount={activeBooking.discount}
+              bookingType={activeBooking.bookingType}
+              passengerCount={activeBooking.passengerCount}
+              totalFare={activeBooking.totalFare}
+              individualShare={activeBooking.individualShare}
+              splitPaymentEnabled={activeBooking.splitPaymentEnabled}
             />
           </>
         )}
@@ -416,6 +426,11 @@ function TripDetails({
   fare,
   paymentMethod,
   discount,
+  bookingType,
+  passengerCount,
+  totalFare,
+  individualShare,
+  splitPaymentEnabled,
 }: {
   pickup: LatLngPoint;
   destination: LatLngPoint;
@@ -425,6 +440,11 @@ function TripDetails({
   fare: number;
   paymentMethod: string;
   discount?: { type: string; amount: number };
+  bookingType?: string;
+  passengerCount?: number;
+  totalFare?: number;
+  individualShare?: number;
+  splitPaymentEnabled?: boolean;
 }) {
   return (
     <div className="space-y-3">
@@ -446,15 +466,28 @@ function TripDetails({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-        <InfoBox icon={<Bike className="h-4 w-4 text-gray-600" />} label="Vehicle" value={vehicleType} />
-        <InfoBox icon={<Navigation className="h-4 w-4 text-gray-600" />} label="Distance" value={`${distance.toFixed(1)} km`} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <InfoBox icon={<Bike className="h-4 w-4 text-gray-600" />} label="Ride Type" value={bookingType === "group" ? "Group Ride" : "Solo Ride"} />
+        <InfoBox icon={<Navigation className="h-4 w-4 text-gray-600" />} label="Passengers" value={`${passengerCount || 1} Pax`} />
         <InfoBox icon={<Clock className="h-4 w-4 text-gray-600" />} label="ETA" value={`${duration} mins`} />
-        <InfoBox icon={<DollarSign className="h-4 w-4 text-green-600" />} label="Fare" value={`PHP ${fare}`} strong />
+        <InfoBox icon={<DollarSign className="h-4 w-4 text-green-600" />} label="Total Fare" value={`₱${totalFare ?? fare}`} strong />
       </div>
+
+      {splitPaymentEnabled && bookingType === "group" && (
+        <div className="rounded-lg bg-red-50 p-3 border border-red-200 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-gray-600 font-medium">Split Payment Enabled</span>
+            <span className="font-bold text-[#4B0F14]">₱{individualShare ?? fare} each</span>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-lg bg-gray-50 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+          <span className="text-gray-600">Driver Earnings</span>
+          <span className="font-bold text-green-600">₱{totalFare ?? fare}</span>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm">
           <span className="text-gray-600">Payment Method</span>
           <span className="font-semibold">{paymentMethod}</span>
         </div>
@@ -478,6 +511,11 @@ function RideCompletedCard({
   fare,
   onRate,
   onDone,
+  bookingType,
+  passengerCount,
+  totalFare,
+  individualShare,
+  splitPaymentEnabled,
 }: {
   pickup: LatLngPoint;
   destination: LatLngPoint;
@@ -487,6 +525,11 @@ function RideCompletedCard({
   fare: number;
   onRate: () => void;
   onDone: () => void;
+  bookingType?: string;
+  passengerCount?: number;
+  totalFare?: number;
+  individualShare?: number;
+  splitPaymentEnabled?: boolean;
 }) {
   return (
     <div className="space-y-4">
@@ -504,6 +547,11 @@ function RideCompletedCard({
         duration={duration}
         fare={fare}
         paymentMethod="Cash"
+        bookingType={bookingType}
+        passengerCount={passengerCount}
+        totalFare={totalFare}
+        individualShare={individualShare}
+        splitPaymentEnabled={splitPaymentEnabled}
       />
 
       <div className="rounded-lg bg-gray-50 p-3">

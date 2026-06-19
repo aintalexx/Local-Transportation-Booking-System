@@ -211,7 +211,7 @@ export function Bookings() {
               { icon: User,   label: "Passenger",       primary: detailBooking.passenger,                        secondary: detailBooking.passengerPhone },
               { icon: Car,    label: "Driver & Vehicle", primary: detailBooking.driver,                           secondary: `${detailBooking.vehicle} · ${detailBooking.driverPhone}` },
               { icon: MapPin, label: "Route",            primary: detailBooking.from,                             secondary: `→ ${detailBooking.to}` },
-              { icon: Phone,  label: "Fare & Details",  primary: `${detailBooking.fare} · ${detailBooking.distance}`, secondary: `${detailBooking.duration} · ${detailBooking.seats} seat${detailBooking.seats > 1 ? "s" : ""}` },
+              { icon: Phone,  label: "Fare & Earnings",  primary: `Total: ${detailBooking.fare} · Driver: ₱${detailBooking.driverEarnings}`, secondary: `${detailBooking.bookingType === "group" ? `Group (${detailBooking.passengerCount} Pax)` : "Solo"} · ${detailBooking.splitPaymentEnabled ? `Split: ₱${detailBooking.individualShare} each` : "No Split"}` },
             ].map(({ icon: Icon, label, primary, secondary }) => (
               <div key={label} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border border-border/60">
                 <Icon size={14} className="mt-0.5 shrink-0" style={{ color: MAROON }} />
