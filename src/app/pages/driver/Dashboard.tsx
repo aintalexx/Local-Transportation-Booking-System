@@ -51,7 +51,7 @@ export default function DriverDashboard() {
     const checkActiveBooking = async () => {
       await syncSupabaseProfile(currentUser);
       const driverActiveBooking = await getSupabaseDriverActiveBooking(currentUser);
-      if (driverActiveBooking) {
+      if (driverActiveBooking && isUsableDriverActiveBooking(driverActiveBooking)) {
         setActiveBooking(driverActiveBooking);
         navigate("/driver/active-ride");
       }
@@ -503,6 +503,32 @@ function isApprovedActiveDriver(user: ReturnType<typeof useUser>["user"]): boole
   const approvalStatus = String(user.approvalStatus || "").trim().toLowerCase();
   const accountStatus = String(user.accountStatus || "active").trim().toLowerCase();
   return approvalStatus === "approved" && accountStatus === "active";
+}
+
+function isUsableDriverActiveBooking(booking: BookingData): boolean {
+  const status = String(booking.status || "").trim().toLowerCase();
+  const isActiveStatus = [
+    "accepted",
+    "driver_arriving",
+    "en_route",
+    "passenger_picked_up",
+    "arrived",
+    "in_progress",
+  ].includes(status);
+
+  return (
+    isActiveStatus &&
+    hasValidLocation(booking.pickupLocation) &&
+    hasValidLocation(booking.destination)
+  );
+}
+
+function hasValidLocation(location: BookingData["pickupLocation"] | BookingData["destination"] | null | undefined): boolean {
+  return Boolean(
+    location &&
+    Number.isFinite(location.lat) &&
+    Number.isFinite(location.lng)
+  );
 }
 
 function getEmptyDashboardSummary(): DriverDashboardSummary {
