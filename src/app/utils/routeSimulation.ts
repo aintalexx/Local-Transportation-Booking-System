@@ -50,10 +50,12 @@ export function getBookingFlowStatus(status: BookingData["status"] | undefined):
 }
 
 export function createRoutePoints(
-  start: LatLngPoint,
-  end: LatLngPoint,
+  start: LatLngPoint | null | undefined,
+  end: LatLngPoint | null | undefined,
   steps = 24
 ): LatLngPoint[] {
+  if (!isValidRoutePoint(start) || !isValidRoutePoint(end)) return [];
+
   const safeSteps = Math.max(2, steps);
 
   return Array.from({ length: safeSteps }, (_, index) => {
@@ -64,6 +66,14 @@ export function createRoutePoints(
       address: index === 0 ? start.address : index === safeSteps - 1 ? end.address : undefined,
     };
   });
+}
+
+export function isValidRoutePoint(point: LatLngPoint | null | undefined): point is LatLngPoint {
+  return Boolean(
+    point &&
+    Number.isFinite(point.lat) &&
+    Number.isFinite(point.lng)
+  );
 }
 
 export function getRoutePoint(route: LatLngPoint[], index: number): LatLngPoint {

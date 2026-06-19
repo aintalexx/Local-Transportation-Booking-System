@@ -26,7 +26,7 @@ import { cancelBooking } from "../../utils/bookingDatabase";
 import { subscribeToSupabaseBooking, updateSupabaseBookingStatus } from "../../utils/supabaseBookings";
 import { subscribeToDriverLocation, type RealtimeDriverLocation } from "../../utils/realtimeTracking";
 import { DEMO_DRIVERS, estimateRouteDistanceKm, estimateTravelMinutes, type LatLngPoint } from "../../utils/rideMatching";
-import { createRoutePoints, getBookingFlowStatus } from "../../utils/routeSimulation";
+import { createRoutePoints, getBookingFlowStatus, isValidRoutePoint } from "../../utils/routeSimulation";
 import MapView from "../../components/MapView";
 import {
   AlertDialog,
@@ -70,7 +70,7 @@ export default function OngoingBooking() {
     return createRoutePoints(activeBooking.pickupLocation, activeBooking.destination, 24);
   }, [activeBooking, displayDriverLocation, flowStatus]);
 
-  const etaToPickup = activeBooking && displayDriverLocation
+  const etaToPickup = activeBooking && isValidRoutePoint(displayDriverLocation) && isValidRoutePoint(activeBooking.pickupLocation)
     ? estimateTravelMinutes(
         estimateRouteDistanceKm(displayDriverLocation, activeBooking.pickupLocation),
         assignedDriver?.averageSpeedKph || 18
@@ -153,7 +153,7 @@ export default function OngoingBooking() {
         };
       case "driver_found":
         return {
-          text: "Driver found",
+          text: "Driver accepted your booking",
           description: "Preparing the route from driver to pickup",
           color: "green",
           icon: CheckCircle2,
@@ -167,7 +167,7 @@ export default function OngoingBooking() {
         };
       case "driver_arrived":
         return {
-          text: "Driver arrived",
+          text: "Driver has arrived",
           description: "Your driver is at the pickup location",
           color: "purple",
           icon: MapPin,
@@ -188,7 +188,7 @@ export default function OngoingBooking() {
         };
       case "ride_completed":
         return {
-          text: "Ride completed",
+          text: "Booking completed successfully",
           description: "You have arrived at your destination",
           color: "green",
           icon: CheckCircle2,

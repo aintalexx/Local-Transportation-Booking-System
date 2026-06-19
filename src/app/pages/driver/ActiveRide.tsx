@@ -32,7 +32,7 @@ import {
   updateSupabaseDriverBookingStatus,
 } from "../../utils/supabaseBookings";
 import { publishDriverLocation } from "../../utils/realtimeTracking";
-import { createRoutePoints, getBookingFlowStatus } from "../../utils/routeSimulation";
+import { createRoutePoints, getBookingFlowStatus, isValidRoutePoint } from "../../utils/routeSimulation";
 import { estimateRouteDistanceKm, estimateTravelMinutes } from "../../utils/rideMatching";
 import MapView from "../../components/MapView";
 import {
@@ -59,7 +59,7 @@ type CompletedTripSummary = {
   individualShare?: number;
 };
 
-type DriverNextStatus = "driver_arriving" | "passenger_picked_up" | "in_progress";
+type DriverNextStatus = "driver_arriving" | "arrived";
 
 export default function ActiveRide() {
   const navigate = useNavigate();
@@ -81,7 +81,7 @@ export default function ActiveRide() {
 
     return createRoutePoints(activeBooking.pickupLocation, activeBooking.destination, 24);
   }, [activeBooking, displayDriverLocation, flowStatus]);
-  const etaToPickup = activeBooking && displayDriverLocation
+  const etaToPickup = activeBooking && isValidRoutePoint(displayDriverLocation) && isValidRoutePoint(activeBooking.pickupLocation)
     ? estimateTravelMinutes(estimateRouteDistanceKm(displayDriverLocation, activeBooking.pickupLocation), 18)
     : null;
   const tripEta = activeBooking ? estimateTravelMinutes(activeBooking.distance, 18) : null;
@@ -402,30 +402,24 @@ function getActionButton(
       return (
         <Button className="w-full whitespace-normal bg-[#4B0F14] hover:bg-[#6E171D]" size="lg" onClick={() => onStatusUpdate("driver_arriving")}>
           <Truck className="mr-2 h-5 w-5" />
-          Start Driving to Pickup
+          Start Ride
         </Button>
       );
     case "driver_arriving":
     case "en_route":
       return (
-        <Button className="w-full whitespace-normal bg-green-600 hover:bg-green-700" size="lg" onClick={() => onStatusUpdate("passenger_picked_up")}>
+        <Button className="w-full whitespace-normal bg-green-600 hover:bg-green-700" size="lg" onClick={() => onStatusUpdate("arrived")}>
           <CheckCircle2 className="mr-2 h-5 w-5" />
-          Passenger Picked Up
+          Arrived at Location
         </Button>
       );
     case "passenger_picked_up":
     case "arrived":
-      return (
-        <Button className="w-full whitespace-normal bg-purple-600 hover:bg-purple-700" size="lg" onClick={() => onStatusUpdate("in_progress")}>
-          <Navigation className="mr-2 h-5 w-5" />
-          Start Trip
-        </Button>
-      );
     case "in_progress":
       return (
         <Button className="w-full whitespace-normal bg-orange-600 hover:bg-orange-700" size="lg" onClick={onComplete}>
           <CheckCircle2 className="mr-2 h-5 w-5" />
-          Complete Trip
+          End Booking
         </Button>
       );
     default:
@@ -435,9 +429,8 @@ function getActionButton(
 
 function getStatusMessage(status: DriverNextStatus): string {
   const messages: Record<DriverNextStatus, string> = {
-    driver_arriving: "Status updated: Driving to pickup",
-    passenger_picked_up: "Passenger pickup confirmed",
-    in_progress: "Trip started!",
+    driver_arriving: "Driver is on the way",
+    arrived: "Driver has arrived",
   };
   return messages[status];
 }
@@ -449,15 +442,15 @@ function getDriverStatusInfo(status: BookingData["status"], etaToPickup: number 
       return {
         label: "Accepted",
         title: "Booking accepted",
-        description: "Review the pickup route and start driving when ready.",
+        description: "Review the pickup route and start the ride when ready.",
         color: "bg-[#4B0F14]",
         icon: CheckCircle2,
       };
     case "driver_arriving":
     case "en_route":
       return {
-        label: "To Pickup",
-        title: "Heading to passenger",
+        label: "Ongoing",
+        title: "Driver is on the way",
         description: etaToPickup ? `Estimated pickup arrival: ${etaToPickup} minutes.` : "Proceed to the pickup point.",
         color: "bg-green-500",
         icon: Truck,
@@ -465,9 +458,9 @@ function getDriverStatusInfo(status: BookingData["status"], etaToPickup: number 
     case "passenger_picked_up":
     case "arrived":
       return {
-        label: "Picked Up",
-        title: "Passenger picked up",
-        description: "Start the trip when you are ready to go to the destination.",
+        label: "Arrived",
+        title: "Arrived at location",
+        description: "End the booking once the passenger has been dropped off.",
         color: "bg-purple-500",
         icon: MapPin,
       };
