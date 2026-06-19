@@ -128,47 +128,78 @@ export default function LoginPage() {
           return;
         }
 
-        const approvalStatus = String(driverRecord.approval_status || "pending").toLowerCase();
-        const accountStatus = String(driverRecord.account_status || "Active");
+        const recordPhone = formatPHPhoneInput(String((driverRecord as { phone?: string }).phone || ""));
+        if (recordPhone !== normalizedPhone) {
+          toast.error("Driver account not found. Please register first.");
+          return;
+        }
+
+        const approvalStatus = String(
+          (driverRecord as { approval_status?: string; approvalStatus?: string }).approval_status ||
+          (driverRecord as { approval_status?: string; approvalStatus?: string }).approvalStatus ||
+          "pending"
+        ).toLowerCase();
+        const rawAccountStatus = String(
+          (driverRecord as { account_status?: string; accountStatus?: string; status?: string }).account_status ||
+          (driverRecord as { account_status?: string; accountStatus?: string; status?: string }).accountStatus ||
+          "Active"
+        );
+        const normalizedAccountStatus = rawAccountStatus.toLowerCase();
+        const sessionAccountStatus =
+          normalizedAccountStatus === "blocked" ? "Blocked" :
+          normalizedAccountStatus === "archived" ? "Archived" :
+          normalizedAccountStatus === "suspended" ? "Suspended" :
+          "Active";
+
+        const driverSession = {
+          ...localUser,
+          username: localUser?.username || (driverRecord as { username?: string }).username || `driver_${normalizedPhone.replace(/\D/g, "")}`,
+          password: "",
+          email: (driverRecord as { email?: string }).email || localUser?.email || "",
+          emailConfirmed: false,
+          approvalStatus: approvalStatus === "approved" ? "approved" as const : approvalStatus === "rejected" ? "rejected" as const : "pending" as const,
+          accountStatus: sessionAccountStatus,
+          phoneNumber: normalizedPhone,
+          surname: (driverRecord as { surname?: string }).surname || localUser?.surname || "",
+          firstName: (driverRecord as { first_name?: string; firstName?: string }).first_name || (driverRecord as { first_name?: string; firstName?: string }).firstName || localUser?.firstName || "",
+          middleName: (driverRecord as { middle_name?: string; middleName?: string }).middle_name || (driverRecord as { middle_name?: string; middleName?: string }).middleName || localUser?.middleName || "",
+          suffix: (driverRecord as { suffix?: string }).suffix || localUser?.suffix || "",
+          birthdate: (driverRecord as { birthdate?: string }).birthdate || localUser?.birthdate || "",
+          role: "driver" as const,
+          supabaseId: (driverRecord as { id?: string }).id || localUser?.supabaseId,
+          vehicleType: (driverRecord as { vehicle_type?: string; vehicleType?: string }).vehicle_type || (driverRecord as { vehicle_type?: string; vehicleType?: string }).vehicleType || localUser?.vehicleType || "Tricycle",
+          plateNumber: (driverRecord as { plate_number?: string; plateNumber?: string }).plate_number || (driverRecord as { plate_number?: string; plateNumber?: string }).plateNumber || localUser?.plateNumber || "",
+          licenseNumber: (driverRecord as { license_number?: string; licenseNumber?: string }).license_number || (driverRecord as { license_number?: string; licenseNumber?: string }).licenseNumber || localUser?.licenseNumber || "",
+          profilePhoto: (driverRecord as { profile_photo?: string; profilePhoto?: string }).profile_photo || (driverRecord as { profile_photo?: string; profilePhoto?: string }).profilePhoto || localUser?.profilePhoto || "",
+        };
 
         if (approvalStatus === "pending") {
-          toast.error("Your driver application is still pending admin approval.");
+          updateUser(driverSession.username, driverSession);
+          setUser(driverSession);
+          navigate("/pending-approval", { replace: true });
           return;
         }
 
         if (approvalStatus === "rejected") {
-          toast.error("Your driver application was rejected. Please contact support.");
+          updateUser(driverSession.username, driverSession);
+          setUser(driverSession);
+          navigate("/pending-approval", { replace: true });
           return;
         }
 
-        if (approvalStatus !== "approved") {
-          toast.error("Your driver account is not approved yet.");
+        if (approvalStatus !== "approved" || normalizedAccountStatus === "blocked" || normalizedAccountStatus === "archived" || normalizedAccountStatus === "suspended") {
+          updateUser(driverSession.username, driverSession);
+          setUser(driverSession);
+          navigate("/pending-approval", { replace: true });
           return;
         }
 
-        if (accountStatus !== "Active") {
-          toast.error(`Your driver account is ${accountStatus}. Please contact support.`);
+        if (sessionAccountStatus !== "Active") {
+          updateUser(driverSession.username, driverSession);
+          setUser(driverSession);
+          navigate("/pending-approval", { replace: true });
           return;
         }
-
-        const driverPassword = String((driverRecord as { password?: string }).password || localUser?.password || "");
-        if (driverPassword !== password) {
-          toast.error("Invalid driver credentials.");
-          return;
-        }
-
-        const driverSession = {
-          ...localUser,
-          ...driverRecord,
-          username: localUser?.username || (driverRecord as { username?: string }).username || `driver_${normalizedPhone.replace(/\D/g, "")}`,
-          password,
-          email: "",
-          emailConfirmed: false,
-          approvalStatus: "approved" as const,
-          accountStatus: "Active" as const,
-          phoneNumber: normalizedPhone,
-          role: "driver" as const,
-        };
 
         const otp = createDemoOtp();
         toast.success(`Demo OTP: ${otp}`, { duration: 10000 });
