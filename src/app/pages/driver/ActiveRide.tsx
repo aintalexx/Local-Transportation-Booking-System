@@ -300,12 +300,12 @@ export default function ActiveRide() {
             <div className="mb-3 flex items-start gap-4">
               <Avatar className="h-14 w-14 shrink-0">
                 <AvatarFallback className="bg-[rgba(75,15,20,0.08)] text-xl text-[#4B0F14]">
-                  {activeBooking.passengerName.charAt(0)}
+                  {(activeBooking.passengerName || "Passenger").charAt(0)}
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
-                <h3 className="break-words text-lg font-bold">{activeBooking.passengerName}</h3>
-                <p className="break-words text-sm text-gray-600">{activeBooking.passengerPhone}</p>
+                <h3 className="break-words text-lg font-bold">{activeBooking.passengerName || "Passenger"}</h3>
+                <p className="break-words text-sm text-gray-600">{activeBooking.passengerPhone || "N/A"}</p>
               </div>
               <div className="flex shrink-0 gap-2">
                 <Button
@@ -577,7 +577,7 @@ function createCompletedTripSummary(
     : 0;
 
   return {
-    passengerName: booking.passengerName,
+    passengerName: booking.passengerName || "Passenger",
     fare: booking.finalPrice,
     distance: booking.distance,
     paymentMethod: booking.paymentMethod,

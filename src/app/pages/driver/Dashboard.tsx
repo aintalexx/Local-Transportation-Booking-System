@@ -251,10 +251,10 @@ export default function DriverDashboard() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
                       <Avatar className="shrink-0">
-                        <AvatarFallback>{booking.passengerName.charAt(0)}</AvatarFallback>
+                        <AvatarFallback>{(booking.passengerName || "Passenger").charAt(0)}</AvatarFallback>
                       </Avatar>
                       <div className="min-w-0">
-                        <CardTitle className="break-words text-lg">{booking.passengerName}</CardTitle>
+                        <CardTitle className="break-words text-lg">{booking.passengerName || "Passenger"}</CardTitle>
                         <CardDescription className="text-sm text-gray-600">
                           {booking.passengerPhone}
                         </CardDescription>

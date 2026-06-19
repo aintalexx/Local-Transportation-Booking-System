@@ -4,7 +4,7 @@ import { Clock, CheckCircle, Phone, ArrowLeft, AlertTriangle, XCircle, LogOut, R
 import { useUser } from "../../context/UserContext";
 import logoImg from "../../../imports/logo.png";
 import { getSupabaseDriverByPhone } from "../../utils/supabaseDrivers";
-import { findUser } from "../../utils/userDatabase";
+import { findUser, updateUser } from "../../utils/userDatabase";
 import { formatPHPhoneInput } from "../../utils/validators";
 import { toast } from "sonner";
 
@@ -50,6 +50,7 @@ export default function PendingApproval() {
         // If driver is now approved, redirect to driver dashboard
         if (dbDriver.approval_status === "approved" && dbDriver.account_status === "Active") {
           const updatedUser = { ...user, approvalStatus: "approved", accountStatus: "Active" };
+          updateUser(user.username, updatedUser);
           setUser(updatedUser);
           toast.success("🎉 Your account has been approved! Welcome aboard!");
           navigate("/driver", { replace: true });
@@ -59,6 +60,7 @@ export default function PendingApproval() {
         // If driver is rejected, show rejection message
         if (dbDriver.approval_status === "rejected") {
           const updatedUser = { ...user, approvalStatus: "rejected" };
+          updateUser(user.username, updatedUser);
           setUser(updatedUser);
           toast.error("Your application was rejected. Please contact support for more information.");
           return;
@@ -67,6 +69,7 @@ export default function PendingApproval() {
         // If account is blocked/archived, show that status
         if (dbDriver.account_status === "Blocked" || dbDriver.account_status === "Archived" || dbDriver.account_status === "Suspended") {
           const updatedUser = { ...user, accountStatus: dbDriver.account_status };
+          updateUser(user.username, updatedUser);
           setUser(updatedUser);
           return;
         }
