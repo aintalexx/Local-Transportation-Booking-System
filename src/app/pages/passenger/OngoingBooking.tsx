@@ -290,6 +290,7 @@ export default function OngoingBooking() {
             distance={activeBooking.distance}
             duration={tripEta || estimateTravelMinutes(activeBooking.distance)}
             fare={activeBooking.finalPrice}
+            onRate={() => navigate(`/rating/${activeBooking.id}`)}
             onDone={handleDone}
           />
         ) : (
@@ -475,6 +476,7 @@ function RideCompletedCard({
   distance,
   duration,
   fare,
+  onRate,
   onDone,
 }: {
   pickup: LatLngPoint;
@@ -483,6 +485,7 @@ function RideCompletedCard({
   distance: number;
   duration: number;
   fare: number;
+  onRate: () => void;
   onDone: () => void;
 }) {
   return (
@@ -510,7 +513,10 @@ function RideCompletedCard({
         </div>
       </div>
 
-      <Button className="w-full bg-[#4B0F14] hover:bg-[#3a0c10]" onClick={onDone}>
+      <Button className="w-full bg-[#4B0F14] hover:bg-[#3a0c10]" onClick={onRate}>
+        Rate Driver
+      </Button>
+      <Button variant="outline" className="w-full" onClick={onDone}>
         Done
       </Button>
     </div>

@@ -72,7 +72,7 @@ function DriverDetailModal({
     { label: "Plate Number",    value: driver.plate,                             icon: <Hash size={13} /> },
     { label: "Assigned Route",  value: driver.route,                             icon: <MapPin size={13} /> },
     { label: "Total Rides",     value: driver.rides.toLocaleString(),            icon: <Star size={13} /> },
-    { label: "Rating",          value: driver.rating > 0 ? `★ ${driver.rating}` : "No rating yet", icon: <Star size={13} /> },
+    { label: "Rating",          value: driver.rating > 0 ? `★ ${driver.rating.toFixed(2)} (${driver.ratingCount || 0} ${driver.ratingCount === 1 ? 'rating' : 'ratings'})` : "No rating yet", icon: <Star size={13} /> },
     { label: "License Number",  value: driver.licenseNumber || "Not provided",   icon: <IdCard size={13} /> },
     { label: "License Status",  value: driver.license,                           icon: <CheckCircle size={13} /> },
     { label: "Account Status",  value: driver.status,                            icon: <ShieldOff size={13} /> },
@@ -608,7 +608,7 @@ export function Drivers() {
                       <td className="px-4 py-3">
                         {d.rating > 0 ? (
                           <span className="inline-flex items-center gap-1 text-sm font-semibold" style={{ color: GOLD }}>
-                            <Star size={12} fill={GOLD} color={GOLD} /> {d.rating}
+                            <Star size={12} fill={GOLD} color={GOLD} /> {d.rating.toFixed(2)} <span className="text-xs text-muted-foreground font-normal">({d.ratingCount || 0})</span>
                           </span>
                         ) : (
                           <span className="text-sm text-muted-foreground">—</span>

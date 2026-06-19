@@ -5,6 +5,7 @@ import {
 import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
 import { getAllUsers, updateUser } from "../../utils/userDatabase";
+import { getAllDriverRatingSummaries, subscribeToRatings } from "../../utils/supabaseRatings";
 
 /** Returns true if the string looks like a Supabase UUID */
 function isUUID(id: string): boolean {
@@ -65,6 +66,7 @@ export interface Driver {
   id: string; name: string; photo: string; vehicle: string; plate: string;
   route: string; rides: number; rating: number; status: DriverStatus;
   license: LicenseStatus; joined: string; bg: string; phone: string;
+  ratingCount?: number;
   licenseNumber?: string;
   driverLicensePhoto?: string;
   validIdPhoto?: string;
@@ -173,6 +175,7 @@ function mapLocalUserToDriver(u: any): Driver {
     route: "Sta. Mesa Local Route",
     rides: u.totalTrips || 0,
     rating: u.rating || 5.0,
+    ratingCount: 0,
     status,
     license,
     joined: u.memberSince || new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
@@ -227,6 +230,7 @@ function mapDbDriverToAdminDriver(p: any): Driver {
     route: "Sta. Mesa Local Route",
     rides: 0,
     rating: 5.0,
+    ratingCount: 0,
     status,
     license,
     joined: p.created_at ? new Date(p.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
@@ -379,6 +383,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     async function loadDrivers() {
       let supabaseDrivers: Driver[] = [];
+      const ratingSummaries = supabase ? await getAllDriverRatingSummaries() : {};
 
       if (supabase) {
         const { data, error } = await supabase
@@ -390,6 +395,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           const archivedSnapshot = getArchivedDrivers();
           supabaseDrivers = data
             .map(mapDbDriverToAdminDriver)
+            .map(driver => {
+              const summary = ratingSummaries[driver.id];
+              if (!summary) return { ...driver, rating: 0, ratingCount: 0 };
+              return {
+                ...driver,
+                rating: summary.averageRating,
+                ratingCount: summary.totalRatings,
+              };
+            })
             .filter(driver => !isArchivedDriver(driver, archivedSnapshot));
         }
       }
@@ -498,9 +512,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       )
       .subscribe();
 
+    const unsubscribeRatings = subscribeToRatings(() => {
+      void loadDrivers();
+    });
+
     return () => {
       supabase.removeChannel(driversChannel);
       supabase.removeChannel(bookingsChannel);
+      unsubscribeRatings();
     };
   }, []);
 

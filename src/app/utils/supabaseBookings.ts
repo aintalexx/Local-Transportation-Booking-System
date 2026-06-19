@@ -301,7 +301,7 @@ export async function getSupabaseDriverBookingHistory(user: UserData): Promise<B
   if (!supabase) return [];
 
   const userId = user.supabaseId || await getCurrentSupabaseUserId();
-  if (!userId) return [];
+  if (!userId) return getDriverBookingsForHistory(user, ["completed", "ride_completed", "cancelled"]);
 
   const { data, error } = await supabase
     .from("bookings")
@@ -310,7 +310,10 @@ export async function getSupabaseDriverBookingHistory(user: UserData): Promise<B
     .in("status", ["completed", "ride_completed", "cancelled"])
     .order("created_at", { ascending: false });
 
-  if (error || !data) return [];
+  if (error || !data || data.length === 0) {
+    return getDriverBookingsForHistory(user, ["completed", "ride_completed", "cancelled"]);
+  }
+
   return (data as SupabaseBookingRow[]).map(mapSupabaseBooking);
 }
 
@@ -327,7 +330,10 @@ export async function getSupabaseDriverDashboardSummary(user: UserData): Promise
   if (!supabase) return emptySummary;
 
   const userId = user.supabaseId || await getCurrentSupabaseUserId();
-  if (!userId) return emptySummary;
+  if (!userId) {
+    const credentialRides = await getDriverBookingsForHistory(user);
+    return buildDriverDashboardSummary(credentialRides);
+  }
 
   const { data, error } = await supabase
     .from("bookings")
@@ -336,9 +342,16 @@ export async function getSupabaseDriverDashboardSummary(user: UserData): Promise
     .order("created_at", { ascending: false })
     .limit(100);
 
-  if (error || !data) return emptySummary;
+  if (error || !data || data.length === 0) {
+    const credentialRides = await getDriverBookingsForHistory(user);
+    return buildDriverDashboardSummary(credentialRides);
+  }
 
   const rides = (data as SupabaseBookingRow[]).map(mapSupabaseBooking);
+  return buildDriverDashboardSummary(rides);
+}
+
+function buildDriverDashboardSummary(rides: BookingData[]): DriverDashboardSummary {
   const todayRides = rides.filter(isCreatedOrCompletedToday);
   const completedToday = todayRides.filter(isCompletedRide);
   const cancelledRejectedToday = todayRides.filter(isCancelledOrRejectedRide);
@@ -578,4 +591,22 @@ async function getActiveBookingForDriver(driver: UserData): Promise<BookingData 
   if (error || !data) return null;
 
   return mapSupabaseBooking(data as SupabaseBookingRow);
+}
+
+async function getDriverBookingsForHistory(
+  driver: UserData,
+  statuses?: BookingStatus[],
+): Promise<BookingData[]> {
+  if (!supabase || !driver.phoneNumber || !driver.password) return [];
+
+  const { data, error } = await supabase.rpc("get_driver_bookings_for_history", {
+    p_driver_phone: driver.phoneNumber,
+    p_driver_password: driver.password,
+  });
+
+  if (error || !data) return [];
+
+  const rides = (data as SupabaseBookingRow[]).map(mapSupabaseBooking);
+  if (!statuses) return rides;
+  return rides.filter((ride) => statuses.includes(ride.status));
 }

@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Badge } from "../../components/ui/badge";
 import { Switch } from "../../components/ui/switch";
 import { Avatar, AvatarFallback } from "../../components/ui/avatar";
-import { MapPin, DollarSign, Clock, AlertTriangle, Navigation2 } from "lucide-react";
+import { MapPin, DollarSign, Clock, AlertTriangle, Navigation2, Star } from "lucide-react";
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
@@ -21,6 +21,11 @@ import {
 } from "../../utils/supabaseBookings";
 import { setDriverOnlineStatus, syncSupabaseProfile } from "../../utils/supabaseProfiles";
 import { formatPersonName } from "../../utils/nameFormatting";
+import {
+  getDriverRatingSummary,
+  subscribeToRatings,
+  type DriverRatingSummary,
+} from "../../utils/supabaseRatings";
 
 export default function DriverDashboard() {
   const navigate = useNavigate();
@@ -32,6 +37,7 @@ export default function DriverDashboard() {
   const [requestsError, setRequestsError] = useState<string | null>(null);
   const [dismissedBookingIds, setDismissedBookingIds] = useState<Set<string>>(new Set());
   const [dashboardSummary, setDashboardSummary] = useState<DriverDashboardSummary>(getEmptyDashboardSummary());
+  const [ratingSummary, setRatingSummary] = useState<DriverRatingSummary>(getEmptyRatingSummary());
   const [summaryLoading, setSummaryLoading] = useState(true);
   const canReceiveRequests = isApprovedActiveDriver(currentUser);
 
@@ -96,6 +102,7 @@ export default function DriverDashboard() {
   useEffect(() => {
     if (!currentUser) {
       setDashboardSummary(getEmptyDashboardSummary());
+      setRatingSummary(getEmptyRatingSummary());
       setSummaryLoading(false);
       return;
     }
@@ -103,9 +110,13 @@ export default function DriverDashboard() {
     let cancelled = false;
 
     const loadSummary = async () => {
-      const summary = await getSupabaseDriverDashboardSummary(currentUser);
+      const [summary, ratings] = await Promise.all([
+        getSupabaseDriverDashboardSummary(currentUser),
+        getDriverRatingSummary(currentUser),
+      ]);
       if (!cancelled) {
         setDashboardSummary(summary);
+        setRatingSummary(ratings);
         setSummaryLoading(false);
       }
     };
@@ -116,10 +127,14 @@ export default function DriverDashboard() {
     const unsubscribe = subscribeToSupabasePendingBookings(() => {
       void loadSummary();
     });
+    const unsubscribeRatings = subscribeToRatings(() => {
+      void loadSummary();
+    });
 
     return () => {
       cancelled = true;
       unsubscribe();
+      unsubscribeRatings();
     };
   }, [currentUser]);
 
@@ -127,7 +142,7 @@ export default function DriverDashboard() {
     name: currentUser ? formatPersonName(currentUser, "Driver") : "Driver",
     vehicleType: currentUser?.vehicleType || "Tricycle",
     plateNumber: currentUser?.plateNumber || "ABC 1234",
-    rating: currentUser?.rating || 4.8,
+    rating: ratingSummary.totalRatings > 0 ? ratingSummary.averageRating : (currentUser?.rating || 0),
     totalTrips: currentUser?.totalTrips || 0,
   };
 
@@ -441,8 +456,12 @@ export default function DriverDashboard() {
               <span className="text-gray-600">Average Rating</span>
               <span className="font-bold flex items-center gap-1">
                 <span className="text-yellow-600">★</span>
-                {driver.rating}
+                {ratingSummary.totalRatings > 0 ? driver.rating.toFixed(2) : "No ratings yet"}
               </span>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-gray-600">Total Ratings</span>
+              <span className="font-bold">{ratingSummary.totalRatings}</span>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-gray-600">Vehicle Type</span>
@@ -454,6 +473,24 @@ export default function DriverDashboard() {
                 <span className="break-words text-right font-bold">{driver.plateNumber}</span>
               </div>
             )}
+            <div className="border-t pt-4">
+              <p className="mb-2 text-sm font-bold text-gray-900">Recent Feedback</p>
+              {ratingSummary.recentFeedback.length > 0 ? (
+                <div className="space-y-2">
+                  {ratingSummary.recentFeedback.map((feedback) => (
+                    <div key={feedback.id} className="rounded-xl bg-gray-50 p-3">
+                      <div className="mb-1 flex items-center gap-1 text-sm font-bold text-yellow-600">
+                        <Star className="h-3.5 w-3.5 fill-yellow-500 text-yellow-500" />
+                        {feedback.rating}
+                      </div>
+                      <p className="text-sm text-gray-700">{feedback.feedback}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-xl bg-gray-50 p-3 text-sm text-gray-600">No feedback yet.</p>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -475,6 +512,15 @@ function getEmptyDashboardSummary(): DriverDashboardSummary {
     cancelledRejectedRides: 0,
     ongoingRides: 0,
     recentRideHistory: [],
+  };
+}
+
+function getEmptyRatingSummary(): DriverRatingSummary {
+  return {
+    driverId: null,
+    averageRating: 0,
+    totalRatings: 0,
+    recentFeedback: [],
   };
 }
 
