@@ -15,7 +15,7 @@ import {
   acceptSupabaseBooking,
   getSupabaseDriverDashboardSummary,
   getSupabaseDriverActiveBooking,
-  getSupabasePendingBookingsResult,
+  getSupabasePendingBookingsForDriverResult,
   subscribeToSupabasePendingBookings,
   type DriverDashboardSummary,
 } from "../../utils/supabaseBookings";
@@ -67,7 +67,7 @@ export default function DriverDashboard() {
 
     const loadBookings = async () => {
       setRequestsLoading(true);
-      const result = await getSupabasePendingBookingsResult(currentUser.vehicleType || "Tricycle");
+      const result = await getSupabasePendingBookingsForDriverResult(currentUser, currentUser.vehicleType || "Tricycle");
       if (cancelled) return;
 
       setRequestsError(result.error);
@@ -82,9 +82,13 @@ export default function DriverDashboard() {
     const unsubscribe = subscribeToSupabasePendingBookings(() => {
       void loadBookings();
     });
+    const poll = window.setInterval(() => {
+      void loadBookings();
+    }, 5000);
 
     return () => {
       cancelled = true;
+      window.clearInterval(poll);
       unsubscribe();
     };
   }, [isOnline, currentUser, activeBooking, dismissedBookingIds, canReceiveRequests]);

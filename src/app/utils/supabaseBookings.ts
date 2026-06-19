@@ -159,7 +159,7 @@ export async function getSupabaseDriverActiveBooking(user: UserData): Promise<Bo
   return mapSupabaseBooking(data as SupabaseBookingRow);
 }
 
-export async function getSupabasePendingBookings(vehicleType?: string): Promise<BookingData[]> {
+export async function getSupabasePendingBookings(vehicleType?: string, driver?: UserData): Promise<BookingData[]> {
   if (!supabase) return [];
 
   let query = supabase
@@ -174,7 +174,14 @@ export async function getSupabasePendingBookings(vehicleType?: string): Promise<
   }
 
   const { data, error } = await query;
-  if (error || !data) return [];
+  if (error || !data || data.length === 0) {
+    if (driver?.phoneNumber && driver.password) {
+      const rpcBookings = await getAvailableBookingsForDriver(driver, vehicleType);
+      if (rpcBookings.length > 0) return rpcBookings;
+    }
+
+    if (error || !data) return [];
+  }
 
   return (data as SupabaseBookingRow[]).map(mapSupabaseBooking);
 }
@@ -207,6 +214,26 @@ export async function getSupabasePendingBookingsResult(vehicleType?: string): Pr
     bookings: (data as SupabaseBookingRow[] | null || []).map(mapSupabaseBooking),
     error: null,
   };
+}
+
+export async function getSupabasePendingBookingsForDriverResult(
+  driver: UserData,
+  vehicleType?: string
+): Promise<{
+  bookings: BookingData[];
+  error: string | null;
+}> {
+  const directResult = await getSupabasePendingBookingsResult(vehicleType);
+  if (directResult.error === null && directResult.bookings.length > 0) {
+    return directResult;
+  }
+
+  const rpcBookings = await getAvailableBookingsForDriver(driver, vehicleType);
+  if (rpcBookings.length > 0) {
+    return { bookings: rpcBookings, error: null };
+  }
+
+  return directResult;
 }
 
 export function subscribeToSupabasePendingBookings(
@@ -315,7 +342,8 @@ export async function getSupabaseDriverDashboardSummary(user: UserData): Promise
 export async function acceptSupabaseBooking(bookingId: string, driver: UserData): Promise<BookingData | null> {
   if (!supabase || !isUuid(bookingId)) return null;
 
-  const userId = driver.supabaseId || await getCurrentSupabaseUserId();
+  const authUserId = await getCurrentSupabaseUserId();
+  const userId = authUserId || driver.supabaseId;
   if (!userId) return null;
 
   await syncSupabaseProfile(driver);
@@ -338,7 +366,12 @@ export async function acceptSupabaseBooking(bookingId: string, driver: UserData)
     .select()
     .single();
 
-  if (error || !data) return null;
+  if (error || !data) {
+    const fallbackBooking = await acceptBookingWithDriverCredentials(bookingId, driver);
+    if (fallbackBooking) return fallbackBooking;
+    return null;
+  }
+
   return mapSupabaseBooking(data as SupabaseBookingRow);
 }
 
@@ -465,4 +498,30 @@ function getRideActivityTime(ride: BookingData): number {
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function getAvailableBookingsForDriver(driver: UserData, vehicleType?: string): Promise<BookingData[]> {
+  if (!supabase || !driver.phoneNumber || !driver.password) return [];
+
+  const { data, error } = await supabase.rpc("get_available_bookings_for_driver", {
+    p_driver_phone: driver.phoneNumber,
+    p_driver_password: driver.password,
+    p_vehicle_type: vehicleType || driver.vehicleType || "Tricycle",
+  });
+
+  if (error || !data) return [];
+  return (data as SupabaseBookingRow[]).map(mapSupabaseBooking);
+}
+
+async function acceptBookingWithDriverCredentials(bookingId: string, driver: UserData): Promise<BookingData | null> {
+  if (!supabase || !driver.phoneNumber || !driver.password) return null;
+
+  const { data, error } = await supabase.rpc("accept_booking_as_driver", {
+    p_booking_id: bookingId,
+    p_driver_phone: driver.phoneNumber,
+    p_driver_password: driver.password,
+  });
+
+  if (error || !data) return null;
+  return mapSupabaseBooking(data as SupabaseBookingRow);
 }
