@@ -891,6 +891,7 @@ function BookingPage() {
               type="button"
               onClick={() => {
                 setRideType("group");
+                setPassengerCount((current) => Math.max(2, current));
               }}
               className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex flex-col items-center"
               style={{
@@ -916,7 +917,7 @@ function BookingPage() {
                   className="px-3 py-1.5 rounded-xl border text-sm font-bold outline-none bg-white"
                   style={{ borderColor: "#d1d5db" }}
                 >
-                  {[1, 2, 3, 4, 5].map(n => (
+                  {[2, 3, 4, 5].map(n => (
                     <option key={n} value={n}>{n} Passenger{n > 1 ? "s" : ""}</option>
                   ))}
                 </select>
