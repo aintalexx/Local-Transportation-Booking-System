@@ -8,6 +8,12 @@ import { ArrowLeft, UserCircle, Phone, Camera } from "lucide-react";
 import { useUser } from "../../context/UserContext";
 import { toast } from "sonner";
 import { emailExists, phoneExists, updateUser } from "../../utils/userDatabase";
+import { uploadBase64ToStorage } from "../../utils/supabaseDrivers";
+import {
+  getCurrentSupabaseUserId,
+  profileContactExistsForOther,
+  updateOwnSupabaseProfile,
+} from "../../utils/supabaseProfiles";
 import {
   firstInvalid,
   formatPHPhoneInput,
@@ -38,6 +44,7 @@ export default function EditProfile() {
   const isMinor = age !== null && age <= 17;
 
   const [profilePhoto, setProfilePhoto] = useState<string>(user?.profilePhoto || "");
+  const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState({
     firstName: user?.firstName || "",
     middleName: user?.middleName || "",
@@ -57,8 +64,10 @@ export default function EditProfile() {
     reader.readAsDataURL(file);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!user) return;
+    if (isSaving) return;
+
     const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
     const normalizedGuardianPhone = formatPHPhoneInput(formData.guardianPhone);
     const normalizedEmail = formData.email.trim();
@@ -76,16 +85,6 @@ export default function EditProfile() {
       return;
     }
 
-    if (phoneExists(normalizedPhone, user.username)) {
-      toast.error("Phone number already registered. Please use a different number.");
-      return;
-    }
-
-    if (emailExists(normalizedEmail, user.username)) {
-      toast.error("Email already registered. Please use a different email.");
-      return;
-    }
-
     // Validate guardian info for minors
     if (isMinor) {
       const guardianCheck = firstInvalid([
@@ -97,6 +96,28 @@ export default function EditProfile() {
         toast.error(guardianCheck.message);
         return;
       }
+    }
+
+    const authUserId = user.supabaseId || await getCurrentSupabaseUserId();
+    if (!authUserId) {
+      toast.error("Unable to save profile. Please log in again.");
+      return;
+    }
+
+    const contactCheck = await profileContactExistsForOther(normalizedEmail, normalizedPhone, authUserId);
+    if (contactCheck.error) {
+      toast.error(contactCheck.error);
+      return;
+    }
+
+    if (contactCheck.phoneExists || phoneExists(normalizedPhone, user.username)) {
+      toast.error("Phone number already registered. Please use a different number.");
+      return;
+    }
+
+    if (normalizedEmail && (contactCheck.emailExists || emailExists(normalizedEmail, user.username))) {
+      toast.error("Email already registered. Please use a different email.");
+      return;
     }
 
     const nextName = {
@@ -111,6 +132,19 @@ export default function EditProfile() {
       nextName.surname !== (user.surname || "") ||
       nextName.suffix !== normalizeOptionalSuffix(user.suffix);
 
+    setIsSaving(true);
+
+    let savedProfilePhoto = profilePhoto;
+    if (profilePhoto && profilePhoto.startsWith("data:")) {
+      const uploadedPhoto = await uploadBase64ToStorage(profilePhoto, `profiles/${authUserId}/profile.jpg`);
+      if (!uploadedPhoto) {
+        toast.error("Failed to upload profile photo.");
+        setIsSaving(false);
+        return;
+      }
+      savedProfilePhoto = uploadedPhoto;
+    }
+
     const updatedUser = {
       ...user,
       ...nextName,
@@ -119,20 +153,45 @@ export default function EditProfile() {
       email: normalizedEmail,
       guardianName: normalizeSpaces(formData.guardianName),
       guardianPhone: normalizedGuardianPhone,
-      profilePhoto,
+      profilePhoto: savedProfilePhoto,
     };
 
-    // Update in database
-    const success = updateUser(user.username, updatedUser);
+    const { profile, error } = await updateOwnSupabaseProfile(user, {
+      firstName: updatedUser.firstName,
+      middleName: updatedUser.middleName,
+      surname: updatedUser.surname,
+      suffix: updatedUser.suffix,
+      phoneNumber: updatedUser.phoneNumber,
+      email: updatedUser.email,
+      guardianName: updatedUser.guardianName,
+      guardianPhone: updatedUser.guardianPhone,
+      profilePhoto: updatedUser.profilePhoto,
+    });
 
-    if (!success) {
-      toast.error("Failed to update profile in database");
+    if (error || !profile) {
+      toast.error(error || "Failed to save profile to Supabase.");
+      setIsSaving(false);
       return;
     }
 
-    // Update current user context
-    setUser(updatedUser);
+    const savedUser = {
+      ...updatedUser,
+      supabaseId: profile.id,
+      firstName: profile.first_name || updatedUser.firstName,
+      middleName: profile.middle_name || "",
+      surname: profile.surname || updatedUser.surname,
+      suffix: normalizeOptionalSuffix(profile.suffix || updatedUser.suffix),
+      phoneNumber: profile.phone || updatedUser.phoneNumber,
+      email: profile.email || "",
+      guardianName: profile.guardian_name || "",
+      guardianPhone: profile.guardian_phone || "",
+      profilePhoto: profile.profile_photo || "",
+    };
+
+    updateUser(user.username, savedUser);
+    setUser(savedUser);
     toast.success("Profile updated successfully!");
+    setIsSaving(false);
     navigate("/passenger/profile");
   };
 
@@ -318,8 +377,8 @@ export default function EditProfile() {
         )}
 
         <div className="pt-4 space-y-2">
-          <Button onClick={handleSave} className="w-full">
-            Save Changes
+          <Button onClick={handleSave} className="w-full" disabled={isSaving}>
+            {isSaving ? "Saving..." : "Save Changes"}
           </Button>
           <Button variant="outline" onClick={() => navigate("/passenger/profile")} className="w-full">
             Cancel

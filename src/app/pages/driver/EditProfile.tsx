@@ -8,6 +8,12 @@ import { ArrowLeft, Phone, Bike, Camera } from "lucide-react";
 import { useUser } from "../../context/UserContext";
 import { toast } from "sonner";
 import { emailExists, phoneExists, updateUser } from "../../utils/userDatabase";
+import { uploadBase64ToStorage } from "../../utils/supabaseDrivers";
+import {
+  getCurrentSupabaseUserId,
+  profileContactExistsForOther,
+  updateOwnSupabaseProfile,
+} from "../../utils/supabaseProfiles";
 import {
   firstInvalid,
   formatPHPhoneInput,
@@ -24,6 +30,7 @@ export default function DriverEditProfile() {
   const { user, setUser } = useUser();
 
   const [profilePhoto, setProfilePhoto] = useState<string>(user?.profilePhoto || "");
+  const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState({
     firstName: user?.firstName || "",
     middleName: user?.middleName || "",
@@ -43,8 +50,10 @@ export default function DriverEditProfile() {
     reader.readAsDataURL(file);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!user) return;
+    if (isSaving) return;
+
     const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
     const normalizedEmail = formData.email.trim();
     const normalizedPlate = formData.plateNumber.trim().toUpperCase();
@@ -64,12 +73,24 @@ export default function DriverEditProfile() {
       return;
     }
 
-    if (phoneExists(normalizedPhone, user.username)) {
+    const authUserId = user.supabaseId || await getCurrentSupabaseUserId();
+    if (!authUserId) {
+      toast.error("Unable to save profile. Please log in again.");
+      return;
+    }
+
+    const contactCheck = await profileContactExistsForOther(normalizedEmail, normalizedPhone, authUserId);
+    if (contactCheck.error) {
+      toast.error(contactCheck.error);
+      return;
+    }
+
+    if (contactCheck.phoneExists || phoneExists(normalizedPhone, user.username)) {
       toast.error("Phone number already registered. Please use a different number.");
       return;
     }
 
-    if (emailExists(normalizedEmail, user.username)) {
+    if (normalizedEmail && (contactCheck.emailExists || emailExists(normalizedEmail, user.username))) {
       toast.error("Email already registered. Please use a different email.");
       return;
     }
@@ -86,6 +107,19 @@ export default function DriverEditProfile() {
       nextName.surname !== (user.surname || "") ||
       nextName.suffix !== normalizeOptionalSuffix(user.suffix);
 
+    setIsSaving(true);
+
+    let savedProfilePhoto = profilePhoto;
+    if (profilePhoto && profilePhoto.startsWith("data:")) {
+      const uploadedPhoto = await uploadBase64ToStorage(profilePhoto, `profiles/${authUserId}/profile.jpg`);
+      if (!uploadedPhoto) {
+        toast.error("Failed to upload profile photo.");
+        setIsSaving(false);
+        return;
+      }
+      savedProfilePhoto = uploadedPhoto;
+    }
+
     const updatedUser = {
       ...user,
       ...nextName,
@@ -94,18 +128,45 @@ export default function DriverEditProfile() {
       email: normalizedEmail,
       plateNumber: normalizedPlate,
       vehicleColor: normalizeSpaces(formData.vehicleColor),
-      profilePhoto,
+      profilePhoto: savedProfilePhoto,
     };
 
-    const success = updateUser(user.username, updatedUser);
+    const { profile, error } = await updateOwnSupabaseProfile(user, {
+      firstName: updatedUser.firstName,
+      middleName: updatedUser.middleName,
+      surname: updatedUser.surname,
+      suffix: updatedUser.suffix,
+      phoneNumber: updatedUser.phoneNumber,
+      email: updatedUser.email,
+      plateNumber: updatedUser.plateNumber,
+      vehicleColor: updatedUser.vehicleColor,
+      profilePhoto: updatedUser.profilePhoto,
+    });
 
-    if (!success) {
-      toast.error("Failed to update profile");
+    if (error || !profile) {
+      toast.error(error || "Failed to save profile to Supabase.");
+      setIsSaving(false);
       return;
     }
 
-    setUser(updatedUser);
+    const savedUser = {
+      ...updatedUser,
+      supabaseId: profile.id,
+      firstName: profile.first_name || updatedUser.firstName,
+      middleName: profile.middle_name || "",
+      surname: profile.surname || updatedUser.surname,
+      suffix: normalizeOptionalSuffix(profile.suffix || updatedUser.suffix),
+      phoneNumber: profile.phone || updatedUser.phoneNumber,
+      email: profile.email || "",
+      plateNumber: profile.plate_number || "",
+      vehicleColor: profile.vehicle_color || "",
+      profilePhoto: profile.profile_photo || "",
+    };
+
+    updateUser(user.username, savedUser);
+    setUser(savedUser);
     toast.success("Profile updated successfully!");
+    setIsSaving(false);
     navigate("/driver/profile");
   };
 
@@ -273,8 +334,8 @@ export default function DriverEditProfile() {
         </Card>
 
         <div className="space-y-2">
-          <Button onClick={handleSave} className="w-full bg-green-600 hover:bg-green-700">
-            Save Changes
+          <Button onClick={handleSave} className="w-full bg-green-600 hover:bg-green-700" disabled={isSaving}>
+            {isSaving ? "Saving..." : "Save Changes"}
           </Button>
           <Button variant="outline" onClick={() => navigate("/driver/profile")} className="w-full">
             Cancel

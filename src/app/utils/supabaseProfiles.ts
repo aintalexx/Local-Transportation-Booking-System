@@ -16,6 +16,9 @@ export type SupabaseProfile = {
   role: "passenger" | "driver" | "admin";
   vehicle_type: string | null;
   plate_number: string | null;
+  vehicle_color?: string | null;
+  guardian_name?: string | null;
+  guardian_phone?: string | null;
   license_number?: string | null;
   driver_license_photo?: string | null;
   valid_id_photo?: string | null;
@@ -27,6 +30,20 @@ export type SupabaseProfile = {
   approval_status?: "pending" | "approved" | "rejected";
   registration_date?: string | null;
   account_status?: "Active" | "Blocked" | "Archived" | "Suspended" | null;
+};
+
+export type EditableProfileData = {
+  firstName: string;
+  middleName?: string;
+  surname: string;
+  suffix?: string;
+  phoneNumber: string;
+  email?: string;
+  guardianName?: string;
+  guardianPhone?: string;
+  plateNumber?: string;
+  vehicleColor?: string;
+  profilePhoto?: string;
 };
 
 export async function getCurrentSupabaseUserId(): Promise<string | null> {
@@ -64,6 +81,126 @@ export async function profileContactExists(email: string, phone: string): Promis
   }
 }
 
+export async function profileContactExistsForOther(
+  email: string,
+  phone: string,
+  currentUserId: string
+): Promise<{
+  emailExists: boolean;
+  phoneExists: boolean;
+  error: string | null;
+}> {
+  if (!supabase) return { emailExists: false, phoneExists: false, error: null };
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  try {
+    const [emailResult, phoneResult] = await Promise.all([
+      normalizedEmail
+        ? supabase
+            .from("profiles")
+            .select("id")
+            .eq("email", normalizedEmail)
+            .neq("id", currentUserId)
+            .limit(1)
+        : Promise.resolve({ data: [], error: null }),
+      phone
+        ? supabase
+            .from("profiles")
+            .select("id")
+            .eq("phone", phone)
+            .neq("id", currentUserId)
+            .limit(1)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    const error = emailResult.error?.message || phoneResult.error?.message || null;
+    return {
+      emailExists: !emailResult.error && Boolean(emailResult.data?.length),
+      phoneExists: !phoneResult.error && Boolean(phoneResult.data?.length),
+      error,
+    };
+  } catch (error) {
+    return {
+      emailExists: false,
+      phoneExists: false,
+      error: error instanceof Error ? error.message : "Failed to check profile contacts.",
+    };
+  }
+}
+
+export async function getOwnSupabaseProfile(user: UserData): Promise<SupabaseProfile | null> {
+  if (!supabase) return null;
+
+  const userId = user.supabaseId || await getCurrentSupabaseUserId();
+  const authUserId = await getCurrentSupabaseUserId();
+  if (!userId || !authUserId || userId !== authUserId) return null;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", authUserId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data as SupabaseProfile;
+}
+
+export async function updateOwnSupabaseProfile(
+  user: UserData,
+  updates: EditableProfileData
+): Promise<{ profile: SupabaseProfile | null; error: string | null }> {
+  if (!supabase) {
+    return { profile: null, error: "Supabase is not configured." };
+  }
+
+  const userId = user.supabaseId || await getCurrentSupabaseUserId();
+  const authUserId = await getCurrentSupabaseUserId();
+  if (!userId || !authUserId || userId !== authUserId) {
+    return { profile: null, error: "You can only update your own profile." };
+  }
+
+  const fullName = formatPersonName(
+    {
+      ...user,
+      firstName: updates.firstName,
+      middleName: updates.middleName || "",
+      surname: updates.surname,
+      suffix: updates.suffix || "",
+    },
+    user.username
+  );
+
+  const payload = {
+    first_name: updates.firstName,
+    middle_name: updates.middleName || null,
+    surname: updates.surname,
+    suffix: updates.suffix || null,
+    full_name: fullName,
+    phone: updates.phoneNumber,
+    email: updates.email?.trim().toLowerCase() || null,
+    guardian_name: updates.guardianName || null,
+    guardian_phone: updates.guardianPhone || null,
+    plate_number: updates.plateNumber || user.plateNumber || null,
+    vehicle_color: updates.vehicleColor || null,
+    profile_photo: updates.profilePhoto || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .update(payload)
+    .eq("id", authUserId)
+    .select("*")
+    .single();
+
+  if (error) {
+    return { profile: null, error: error.message };
+  }
+
+  return { profile: data as SupabaseProfile, error: null };
+}
+
 export async function syncSupabaseProfile(user: UserData): Promise<SupabaseProfile | null> {
   if (!supabase) return null;
 
@@ -91,6 +228,7 @@ export async function syncSupabaseProfile(user: UserData): Promise<SupabaseProfi
     role: user.role,
     vehicle_type: user.vehicleType || null,
     plate_number: user.plateNumber || null,
+    vehicle_color: user.vehicleColor || null,
     license_number: user.licenseNumber || null,
     driver_license_photo: user.driverLicensePhoto || null,
     valid_id_photo: user.validIdPhoto || null,
@@ -107,6 +245,8 @@ export async function syncSupabaseProfile(user: UserData): Promise<SupabaseProfi
     surname: user.surname || null,
     suffix: user.suffix || null,
     birthdate: user.birthdate || null,
+    guardian_name: user.guardianName || null,
+    guardian_phone: user.guardianPhone || null,
     registration_date: user.registrationDate || new Date().toISOString(),
     account_status: user.accountStatus || "Active",
   };
