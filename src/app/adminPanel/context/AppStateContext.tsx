@@ -504,8 +504,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (!error && data) {
+      if (!error && data && data.length > 0) {
         setBookings(data.map(mapRowToBooking));
+        return;
+      }
+
+      const { data: adminData, error: adminError } = await supabase.rpc("get_admin_bookings");
+      if (!adminError && adminData) {
+        setBookings((adminData as any[]).map(mapRowToBooking));
       }
     }
 
