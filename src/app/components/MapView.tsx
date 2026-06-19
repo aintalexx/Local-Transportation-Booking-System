@@ -78,7 +78,7 @@ function GoogleMapView({
         if (cancelled || !mapContainerRef.current || mapRef.current) return;
 
         mapRef.current = new googleMaps.maps.Map(mapContainerRef.current, {
-          center: pickup || driverLocation || destination || DEFAULT_CENTER,
+          center: firstValidLocation([pickup, driverLocation, destination]) || DEFAULT_CENTER,
           zoom: 15,
           clickableIcons: false,
           fullscreenControl: false,
@@ -101,7 +101,7 @@ function GoogleMapView({
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
               if (!mapRef.current || !window.google?.maps) return;
-              const center = pickup || driverLocation || destination || DEFAULT_CENTER;
+              const center = firstValidLocation([pickup, driverLocation, destination]) || DEFAULT_CENTER;
               mapRef.current.setCenter(center);
               window.google.maps.event.trigger(mapRef.current, "resize");
             });
@@ -168,7 +168,7 @@ function GoogleMapView({
     upsertGoogleMarker(pickupMarkerRef, pickup, mapRef.current, "Pickup", "P", "#16A34A");
     upsertGoogleMarker(destinationMarkerRef, destination, mapRef.current, "Destination", "D", "#DC2626");
     upsertGoogleMarker(driverMarkerRef, driverLocation, mapRef.current, "Driver", "R", "#4B0F14");
-    fitGoogleMap(mapRef.current, [pickup, destination, driverLocation].filter(Boolean) as MapLocation[]);
+    fitGoogleMap(mapRef.current, filterValidLocations([pickup, destination, driverLocation]));
   }, [isReady, pickup, destination, driverLocation]);
 
   useEffect(() => {
@@ -179,9 +179,10 @@ function GoogleMapView({
     fallbackLineRef.current?.setMap(null);
     fallbackLineRef.current = null;
 
-    const routePath = routePoints && routePoints.length >= 2
-      ? routePoints
-      : pickup && destination
+    const validRoutePoints = filterValidLocations(routePoints || []);
+    const routePath = validRoutePoints.length >= 2
+      ? validRoutePoints
+      : isValidLocation(pickup) && isValidLocation(destination)
         ? [pickup, destination]
         : [];
 
@@ -392,9 +393,10 @@ function LeafletMapView({
       routeLineRef.current = null;
     }
 
-    const routePath = routePoints && routePoints.length >= 2
-      ? routePoints
-      : pickup && destination
+    const validRoutePoints = filterValidLocations(routePoints || []);
+    const routePath = validRoutePoints.length >= 2
+      ? validRoutePoints
+      : isValidLocation(pickup) && isValidLocation(destination)
         ? [pickup, destination]
         : [];
 
@@ -405,7 +407,7 @@ function LeafletMapView({
       ).addTo(mapRef.current);
     }
 
-    fitLeafletMap(mapRef.current, [pickup, destination, driverLocation, ...(routePoints || [])].filter(Boolean) as MapLocation[]);
+    fitLeafletMap(mapRef.current, filterValidLocations([pickup, destination, driverLocation, ...(routePoints || [])]));
   }, [isReady, pickup, destination, driverLocation, routePoints]);
 
   return <div ref={mapContainerRef} style={{ height, width: "100%", borderRadius: "8px" }} />;
@@ -447,7 +449,7 @@ function upsertGoogleMarker(
 ) {
   const googleMaps = window.google;
 
-  if (!location || !googleMaps?.maps) {
+  if (!isValidLocation(location) || !googleMaps?.maps) {
     clearGoogleMarker(markerRef);
     return;
   }
@@ -510,7 +512,7 @@ function upsertLeafletMarker(
   label: string,
   icon: L.DivIcon | L.Icon
 ) {
-  if (!location) {
+  if (!isValidLocation(location)) {
     if (markerRef.current) {
       markerRef.current.remove();
       markerRef.current = null;
@@ -539,6 +541,22 @@ function fitLeafletMap(map: L.Map, locations: MapLocation[]) {
 
   const bounds = L.latLngBounds(locations.map(location => [location.lat, location.lng] as [number, number]));
   map.fitBounds(bounds, { padding: [50, 50] });
+}
+
+function isValidLocation(location: MapLocation | null | undefined): location is MapLocation {
+  return Boolean(
+    location &&
+    Number.isFinite(location.lat) &&
+    Number.isFinite(location.lng)
+  );
+}
+
+function filterValidLocations(locations: Array<MapLocation | null | undefined>): MapLocation[] {
+  return locations.filter(isValidLocation);
+}
+
+function firstValidLocation(locations: Array<MapLocation | null | undefined>): MapLocation | null {
+  return filterValidLocations(locations)[0] || null;
 }
 
 function createPinIcon(color: "green" | "red"): L.Icon {

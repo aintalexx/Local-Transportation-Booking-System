@@ -115,6 +115,34 @@ export default function LoginPage() {
           return;
         }
 
+        if (dbDriver.password !== password) {
+          toast.error("Invalid driver credentials.");
+          return;
+        }
+
+        const approvalStatus = String(dbDriver.approval_status || "pending").toLowerCase();
+        const accountStatus = String(dbDriver.account_status || "Active");
+
+        if (approvalStatus === "pending") {
+          toast.error("Your driver application is still pending admin approval.");
+          return;
+        }
+
+        if (approvalStatus === "rejected") {
+          toast.error("Your driver application was rejected. Please contact support.");
+          return;
+        }
+
+        if (approvalStatus !== "approved") {
+          toast.error("Your driver account is not approved yet.");
+          return;
+        }
+
+        if (accountStatus !== "Active") {
+          toast.error(`Your driver account is ${accountStatus}. Please contact support.`);
+          return;
+        }
+
         const otp = createDemoOtp();
         toast.success(`Demo OTP: ${otp}`, { duration: 10000 });
 
@@ -135,8 +163,8 @@ export default function LoginPage() {
               birthdate: dbDriver.birthdate,
               password: dbDriver.password,
               role: "driver" as const,
-              approvalStatus: dbDriver.approval_status,
-              accountStatus: dbDriver.account_status,
+              approvalStatus: "approved" as const,
+              accountStatus: "Active" as const,
               vehicleType: dbDriver.vehicle_type,
               plateNumber: dbDriver.plate_number || "",
               licenseNumber: dbDriver.license_number || "",

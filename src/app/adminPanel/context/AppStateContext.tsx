@@ -282,6 +282,7 @@ async function syncDriverToProfile(driverId: string) {
     vehicle_photo: dbDriver.vehicle_photo || null,
     profile_photo: dbDriver.profile_photo || null,
     approval_status: "approved",
+    account_status: "Active",
     is_online: false,
     updated_at: new Date().toISOString(),
   };

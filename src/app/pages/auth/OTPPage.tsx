@@ -202,10 +202,15 @@ export default function OTPPage() {
         await handleVerifiedRegistration();
       } else if (state.mode === "login" && state.role === "driver") {
         const userData = state.userData as UserData;
-        updateUser(userData.username, userData);
-        setUser(userData);
+        const normalizedUserData = {
+          ...userData,
+          approvalStatus: String(userData.approvalStatus || "").toLowerCase() === "approved" ? "approved" as const : userData.approvalStatus,
+          accountStatus: String(userData.accountStatus || "Active").toLowerCase() === "active" ? "Active" as const : userData.accountStatus,
+        };
+        updateUser(normalizedUserData.username, normalizedUserData);
+        setUser(normalizedUserData);
         toast.success("Login successful!");
-        if (userData.approvalStatus === "approved" && userData.accountStatus === "Active") {
+        if (normalizedUserData.approvalStatus === "approved" && normalizedUserData.accountStatus === "Active") {
           navigate("/driver", { replace: true });
         } else {
           navigate("/pending-approval", { replace: true });

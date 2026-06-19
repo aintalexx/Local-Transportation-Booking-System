@@ -71,10 +71,14 @@ export async function registerSupabaseDriver(user: UserData): Promise<SupabaseDr
 export async function getSupabaseDriverByPhone(phone: string): Promise<SupabaseDriverRow | null> {
   if (!supabase) return null;
 
+  const phoneDigits = normalizePhoneDigits(phone);
+  const candidatePhones = buildPhoneCandidates(phone);
+
   const { data, error } = await supabase
     .from("drivers")
     .select("*")
-    .eq("phone", phone)
+    .in("phone", candidatePhones)
+    .limit(1)
     .maybeSingle();
 
   if (error) {
@@ -82,7 +86,47 @@ export async function getSupabaseDriverByPhone(phone: string): Promise<SupabaseD
     return null;
   }
 
+  if (data) return data as SupabaseDriverRow;
+
+  if (!phoneDigits) return null;
+
+  const { data: possibleRows, error: fallbackError } = await supabase
+    .from("drivers")
+    .select("*")
+    .limit(100);
+
+  if (fallbackError) {
+    console.error("Error fetching driver phone fallback from Supabase:", fallbackError.message);
+    return null;
+  }
+
+  const matchedDriver = (possibleRows as SupabaseDriverRow[] | null)?.find(
+    (driver) => normalizePhoneDigits(driver.phone) === phoneDigits
+  );
+
+  if (matchedDriver) return matchedDriver;
+
   return data as SupabaseDriverRow;
+}
+
+function normalizePhoneDigits(value: string | null | undefined): string {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("63")) return `0${digits.slice(2, 12)}`.slice(0, 11);
+  if (digits.startsWith("9")) return `0${digits.slice(0, 10)}`.slice(0, 11);
+  return digits.slice(0, 11);
+}
+
+function buildPhoneCandidates(value: string): string[] {
+  const normalized = normalizePhoneDigits(value);
+  const compact = String(value || "").replace(/\s+/g, "");
+  const withoutZero = normalized.startsWith("0") ? normalized.slice(1) : normalized;
+  return Array.from(new Set([
+    value,
+    compact,
+    normalized,
+    withoutZero ? `+63${withoutZero}` : "",
+    withoutZero ? `63${withoutZero}` : "",
+  ].filter(Boolean)));
 }
 
 /**

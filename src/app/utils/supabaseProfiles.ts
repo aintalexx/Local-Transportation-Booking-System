@@ -285,9 +285,11 @@ export async function syncSupabaseProfile(user: UserData): Promise<SupabaseProfi
     .maybeSingle();
 
   const approvalStatus =
-    existingProfile?.approval_status ||
-    user.approvalStatus ||
-    (user.role === "driver" ? "pending" : "approved");
+    user.approvalStatus === "approved"
+      ? "approved"
+      : existingProfile?.approval_status ||
+        user.approvalStatus ||
+        (user.role === "driver" ? "pending" : "approved");
 
   const baseProfilePayload = {
     id: userId,

@@ -69,6 +69,7 @@ function makeDriverIcon() {
 }
 
 function midpoint(a: BookingData["pickupLocation"], b: BookingData["destination"]) {
+  if (!isValidBookingLocation(a) || !isValidBookingLocation(b)) return DEFAULT_CENTER;
   return {
     lat: (a.lat + b.lat) / 2,
     lng: (a.lng + b.lng) / 2,
@@ -76,7 +77,7 @@ function midpoint(a: BookingData["pickupLocation"], b: BookingData["destination"
 }
 
 function getDriverPoint(booking: BookingData) {
-  if (booking.currentDriverLocation) return booking.currentDriverLocation;
+  if (isValidBookingLocation(booking.currentDriverLocation)) return booking.currentDriverLocation;
   const center = midpoint(booking.pickupLocation, booking.destination);
   return {
     lat: center.lat + 0.001,
@@ -88,6 +89,10 @@ function getInitials(name?: string) {
   if (!name) return "DR";
   const parts = name.trim().split(/\s+/).filter(Boolean);
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "DR";
+}
+
+function isValidBookingLocation(location?: { lat: number; lng: number } | null): location is { lat: number; lng: number } {
+  return Boolean(location && Number.isFinite(location.lat) && Number.isFinite(location.lng));
 }
 
 export default function FindingDriverPage() {
@@ -223,7 +228,7 @@ export default function FindingDriverPage() {
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    const start = activeBooking
+    const start = activeBooking && isValidBookingLocation(activeBooking.pickupLocation) && isValidBookingLocation(activeBooking.destination)
       ? midpoint(activeBooking.pickupLocation, activeBooking.destination)
       : DEFAULT_CENTER;
 
@@ -254,6 +259,15 @@ export default function FindingDriverPage() {
 
   useEffect(() => {
     if (!mapRef.current || !activeBooking) return;
+
+    if (!isValidBookingLocation(activeBooking.pickupLocation) || !isValidBookingLocation(activeBooking.destination)) {
+      if (layerRef.current) {
+        layerRef.current.remove();
+        layerRef.current = null;
+      }
+      mapRef.current.setView([DEFAULT_CENTER.lat, DEFAULT_CENTER.lng], 15);
+      return;
+    }
 
     if (layerRef.current) {
       layerRef.current.remove();
