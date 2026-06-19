@@ -77,6 +77,10 @@ function validatePassengerName(value: string, required = true) {
   return validateName(value, "Name field", required);
 }
 
+function sanitizeNameFieldInput(value: string): string {
+  return normalizeSpaces(value.replace(/[^A-Za-z\s-]/g, ""));
+}
+
 function formatDateInputValue(date: Date | undefined): string {
   if (!date || Number.isNaN(date.getTime())) return "";
 
@@ -1149,6 +1153,13 @@ export default function RegisterPage() {
 
   // 2.7. Driver Step 1.7: Driver Information Form
   if (step === "driverInfo") {
+    const surnameInvalid = showValidationErrors && !validateName(formData.surname, "Surname").valid;
+    const firstNameInvalid = showValidationErrors && !validateName(formData.firstName, "First name").valid;
+    const middleNameInvalid = showValidationErrors && !formData.noMiddleName && !validateName(formData.middleName, "Middle name").valid;
+    const birthdateInvalid = showValidationErrors && (!formData.birthdate || calculateAge(formData.birthdate) < 18);
+    const emailInvalid = showValidationErrors && !validateAuthEmail(formData.email.trim().toLowerCase()).valid;
+    const passwordInvalid = showValidationErrors && !validatePassword(formData.password).valid;
+
     return (
       <div className="min-h-screen bg-gradient-to-b from-[#FFF8E7] to-white flex items-center justify-center p-4">
         <div className="w-full max-w-md">
@@ -1174,9 +1185,11 @@ export default function RegisterPage() {
                     type="text"
                     placeholder="Doe"
                     value={formData.surname}
-                    onChange={(e) => setFormData({ ...formData, surname: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, surname: sanitizeNameFieldInput(e.target.value) })}
+                    className={surnameInvalid ? "border-red-400" : ""}
                     required
                   />
+                  {surnameInvalid && <p className="text-xs text-red-600">Name fields must contain letters only. Numbers and special characters are not allowed.</p>}
                 </div>
 
                 <div className="space-y-2">
@@ -1186,9 +1199,11 @@ export default function RegisterPage() {
                     type="text"
                     placeholder="John"
                     value={formData.firstName}
-                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, firstName: sanitizeNameFieldInput(e.target.value) })}
+                    className={firstNameInvalid ? "border-red-400" : ""}
                     required
                   />
+                  {firstNameInvalid && <p className="text-xs text-red-600">Name fields must contain letters only. Numbers and special characters are not allowed.</p>}
                 </div>
 
                 <div className="space-y-2">
@@ -1198,10 +1213,12 @@ export default function RegisterPage() {
                     type="text"
                     placeholder="Middle"
                     value={formData.middleName}
-                    onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, middleName: sanitizeNameFieldInput(e.target.value) })}
                     disabled={formData.noMiddleName}
+                    className={middleNameInvalid ? "border-red-400" : ""}
                     required={!formData.noMiddleName}
                   />
+                  {middleNameInvalid && <p className="text-xs text-red-600">Name fields must contain letters only. Numbers and special characters are not allowed.</p>}
                   <div className="flex items-center space-x-2">
                     <Checkbox
                       id="noMiddleName"
@@ -1316,6 +1333,9 @@ export default function RegisterPage() {
                     </Popover>
                   </div>
                 </div>
+                {birthdateInvalid && (
+                  <p className="text-xs text-red-600">You must be at least 18 years old to create an account.</p>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="password">Password</Label>
@@ -1326,7 +1346,7 @@ export default function RegisterPage() {
                       placeholder="Enter a strong password"
                       value={formData.password}
                       onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      className="pr-14"
+                      className={`pr-14 ${passwordInvalid ? "border-red-400" : ""}`}
                       required
                       minLength={8}
                       maxLength={30}
@@ -1339,6 +1359,7 @@ export default function RegisterPage() {
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
+                  {passwordInvalid && <p className="text-xs text-red-600">Password must be at least 8 characters.</p>}
                 </div>
 
                 <div className="space-y-2">
@@ -1349,11 +1370,13 @@ export default function RegisterPage() {
                     placeholder="driver.email@example.com"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value.trim() })}
+                    className={emailInvalid ? "border-red-400" : ""}
                     required
                   />
                   <p className="text-xs text-gray-500">
                     Use your real email address. It will be used for driver login after admin approval.
                   </p>
+                  {emailInvalid && <p className="text-xs text-red-600">Please enter a valid email address.</p>}
                 </div>
 
                 <div className="space-y-2">
@@ -1856,7 +1879,7 @@ export default function RegisterPage() {
                     type="text"
                     placeholder="Doe"
                     value={formData.surname}
-                    onChange={(e) => setFormData({ ...formData, surname: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, surname: sanitizeNameFieldInput(e.target.value) })}
                     className={lastNameInvalid ? "border-red-400" : ""}
                     required
                   />
@@ -1870,7 +1893,7 @@ export default function RegisterPage() {
                     type="text"
                     placeholder="John"
                     value={formData.firstName}
-                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, firstName: sanitizeNameFieldInput(e.target.value) })}
                     className={firstNameInvalid ? "border-red-400" : ""}
                     required
                   />
@@ -1884,7 +1907,7 @@ export default function RegisterPage() {
                     type="text"
                     placeholder="Middle"
                     value={formData.middleName}
-                    onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, middleName: sanitizeNameFieldInput(e.target.value) })}
                     className={middleNameInvalid ? "border-red-400" : ""}
                     disabled={formData.noMiddleName}
                     required={!formData.noMiddleName}
@@ -2394,7 +2417,7 @@ export default function RegisterPage() {
                       type="text"
                       placeholder="Guardian's full name"
                       value={formData.guardianName}
-                      onChange={(e) => setFormData({ ...formData, guardianName: e.target.value })}
+                      onChange={(e) => setFormData({ ...formData, guardianName: sanitizeNameFieldInput(e.target.value) })}
                       required
                     />
                   </div>
