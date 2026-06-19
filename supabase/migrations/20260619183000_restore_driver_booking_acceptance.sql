@@ -10,10 +10,11 @@ set search_path = public
 as $$
 declare
   profile_id uuid;
-  driver_full_name text;    ` 
+  driver_full_name text;
 begin
   profile_id := p_driver.id;
   driver_full_name := trim(concat_ws(' ', p_driver.first_name, p_driver.middle_name, p_driver.surname, p_driver.suffix));
+  perform set_config('app.allow_profile_status_sync', 'on', true);
 
   insert into public.profiles (
     id,
