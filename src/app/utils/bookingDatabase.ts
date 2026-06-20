@@ -43,6 +43,8 @@ export interface BookingData {
   createdAt: string;
   acceptedAt?: string;
   completedAt?: string;
+  cancelledAt?: string;
+  cancellationReason?: string;
   discount?: {
     type: string;
     amount: number;
@@ -241,7 +243,7 @@ export function acceptBooking(bookingId: string, driverUsername: string, driverN
 }
 
 // Update booking status
-export function updateBookingStatus(bookingId: string, status: BookingData["status"]): boolean {
+export function updateBookingStatus(bookingId: string, status: BookingData["status"], updates: Partial<BookingData> = {}): boolean {
   try {
     const bookings = getAllBookings();
     const bookingIndex = bookings.findIndex(b => b.id === bookingId);
@@ -253,8 +255,10 @@ export function updateBookingStatus(bookingId: string, status: BookingData["stat
 
     bookings[bookingIndex] = {
       ...bookings[bookingIndex],
+      ...updates,
       status,
       ...((status === "completed" || status === "ride_completed") && { completedAt: new Date().toISOString() }),
+      ...(status === "cancelled" && { cancelledAt: new Date().toISOString() }),
     };
 
     saveAllBookings(bookings);
@@ -316,8 +320,11 @@ export function updateDriverLocation(bookingId: string, lat: number, lng: number
 }
 
 // Cancel a booking
-export function cancelBooking(bookingId: string): boolean {
-  return updateBookingStatus(bookingId, "cancelled");
+export function cancelBooking(bookingId: string, reason = ""): boolean {
+  const trimmedReason = reason.trim();
+  return updateBookingStatus(bookingId, "cancelled", {
+    ...(trimmedReason ? { cancellationReason: trimmedReason } : {}),
+  });
 }
 
 // Get passenger's booking history

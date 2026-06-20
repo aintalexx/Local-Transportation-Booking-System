@@ -106,6 +106,8 @@ export default function FindingDriverPage() {
 
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState("");
+  const [cancelAction, setCancelAction] = useState<"dashboard" | "modify">("dashboard");
   const [showNoDriversCard, setShowNoDriversCard] = useState(false);
 
   const driverFound = useMemo(() => {
@@ -138,39 +140,30 @@ export default function FindingDriverPage() {
     toast.success("Retrying to find a driver...");
   };
 
-  const handleModifyBooking = async () => {
-    if (!activeBooking) return;
-    try {
-      if (activeBooking.id.startsWith("BK")) {
-        cancelBooking(activeBooking.id);
-      } else {
-        await updateSupabaseBookingStatus(activeBooking.id, "cancelled");
-      }
-      setActiveBooking(null);
-      navigate("/passenger/book", { replace: true });
-    } catch {
-      toast.error("Failed to update booking. Please try again.");
-    }
+  const openCancelDialog = (nextAction: "dashboard" | "modify" = "dashboard") => {
+    setCancelAction(nextAction);
+    setCancellationReason("");
+    setShowCancelDialog(true);
   };
-
 
   const handleCancelBooking = async () => {
     if (!activeBooking) return;
     setCancelLoading(true);
     try {
       if (activeBooking.id.startsWith("BK")) {
-        cancelBooking(activeBooking.id);
+        cancelBooking(activeBooking.id, cancellationReason);
       } else {
         await updateSupabaseBookingStatus(activeBooking.id, "cancelled");
       }
       setActiveBooking(null);
       toast.success("Booking cancelled.");
-      navigate("/passenger", { replace: true });
+      navigate(cancelAction === "modify" ? "/passenger/book" : "/passenger", { replace: true });
     } catch (err) {
       toast.error("Failed to cancel booking.");
     } finally {
       setCancelLoading(false);
       setShowCancelDialog(false);
+      setCancellationReason("");
     }
   };
 
@@ -384,13 +377,13 @@ export default function FindingDriverPage() {
                 Try Again
               </button>
               <button
-                onClick={handleModifyBooking}
+                onClick={() => openCancelDialog("modify")}
                 className="w-full h-12 rounded-2xl bg-white font-bold text-[#0756A8] border-2 border-[#0756A8] transition-all active:scale-95"
               >
                 Modify Booking
               </button>
               <button
-                onClick={handleCancelBooking}
+                onClick={() => openCancelDialog("dashboard")}
                 disabled={cancelLoading}
                 className="w-full h-12 rounded-2xl bg-[#f3f4f6] font-bold text-[#4B0F14] border border-[#e5e7eb] transition-all active:scale-95"
               >
@@ -415,7 +408,7 @@ export default function FindingDriverPage() {
             </div>
 
             <button
-              onClick={() => setShowCancelDialog(true)}
+              onClick={() => openCancelDialog("dashboard")}
               className="mt-6 h-12 w-full max-w-[260px] rounded-2xl bg-[#f3f4f6] font-bold text-[#4B0F14] shadow-sm transition-opacity"
               style={{ border: "2px solid #e5e7eb" }}
             >
@@ -464,7 +457,14 @@ export default function FindingDriverPage() {
       )}
 
       {/* ── Cancel Confirm Dialog ── */}
-      <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+      <Dialog
+        open={showCancelDialog}
+        onOpenChange={(open) => {
+          if (cancelLoading) return;
+          setShowCancelDialog(open);
+          if (!open) setCancellationReason("");
+        }}
+      >
         <DialogPortal>
           <DialogPrimitive.Overlay className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
           <DialogPrimitive.Content className="fixed top-[50%] left-[50%] z-[9999] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] rounded-3xl bg-white p-6 shadow-2xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95">
@@ -472,11 +472,26 @@ export default function FindingDriverPage() {
               Cancel Booking?
             </DialogPrimitive.Title>
             <DialogPrimitive.Description className="text-sm mb-6" style={{ color: "#6b7280" }}>
-              Are you sure you want to cancel your ride request? This action cannot be undone.
+              Are you sure you want to cancel? This action cannot be undone.
             </DialogPrimitive.Description>
 
+            <div className="mb-5">
+              <label htmlFor="findingCancelReason" className="mb-2 block text-sm font-bold text-gray-700">
+                Cancellation reason <span className="font-medium text-gray-400">(optional)</span>
+              </label>
+              <textarea
+                id="findingCancelReason"
+                value={cancellationReason}
+                onChange={(event) => setCancellationReason(event.target.value.slice(0, 180))}
+                placeholder="Tell us why you are cancelling"
+                className="min-h-24 w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none transition focus:border-[#4B0F14] focus:bg-white"
+                maxLength={180}
+              />
+              <p className="mt-1 text-right text-xs text-gray-400">{cancellationReason.length}/180</p>
+            </div>
+
             <div className="flex gap-3">
-              <button onClick={() => setShowCancelDialog(false)}
+              <button onClick={() => { setShowCancelDialog(false); setCancellationReason(""); }}
                 disabled={cancelLoading}
                 className="flex-1 h-12 rounded-2xl font-bold text-sm"
                 style={{ background: "#f3f4f6", color: "#374151" }}>

@@ -44,6 +44,8 @@ export default function OngoingBooking() {
   const { user } = useUser();
   const { activeBooking, refreshBooking, setActiveBooking } = useBooking();
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState("");
   const [liveDriverLocation, setLiveDriverLocation] = useState<RealtimeDriverLocation | null>(null);
 
   const flowStatus = getBookingFlowStatus(activeBooking?.status);
@@ -100,22 +102,29 @@ export default function OngoingBooking() {
 
   const handleCancelBooking = async () => {
     if (!activeBooking) return;
+    setCancelLoading(true);
 
-    const supabaseBooking = await updateSupabaseBookingStatus(activeBooking.id, "cancelled");
-    if (supabaseBooking) {
-      toast.success("Booking cancelled");
-      setActiveBooking(null);
-      navigate("/passenger");
-      return;
-    }
+    try {
+      const supabaseBooking = await updateSupabaseBookingStatus(activeBooking.id, "cancelled");
+      if (supabaseBooking) {
+        toast.success("Booking cancelled");
+        setActiveBooking(null);
+        navigate("/passenger");
+        return;
+      }
 
-    const success = cancelBooking(activeBooking.id);
-    if (success) {
-      toast.success("Booking cancelled");
-      setActiveBooking(null);
-      navigate("/passenger");
-    } else {
-      toast.error("Failed to cancel booking");
+      const success = cancelBooking(activeBooking.id, cancellationReason);
+      if (success) {
+        toast.success("Booking cancelled");
+        setActiveBooking(null);
+        navigate("/passenger");
+      } else {
+        toast.error("Failed to cancel booking");
+      }
+    } finally {
+      setCancelLoading(false);
+      setShowCancelDialog(false);
+      setCancellationReason("");
     }
   };
 
@@ -394,21 +403,45 @@ export default function OngoingBooking() {
       </div>
 
       {/* Cancel Confirmation Dialog */}
-      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+      <AlertDialog
+        open={showCancelDialog}
+        onOpenChange={(open) => {
+          if (cancelLoading) return;
+          setShowCancelDialog(open);
+          if (!open) setCancellationReason("");
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel Booking?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to cancel this booking? This action cannot be undone.
+              Are you sure you want to cancel?
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-2">
+            <label htmlFor="ongoingCancelReason" className="text-sm font-medium text-gray-700">
+              Cancellation reason <span className="font-normal text-gray-400">(optional)</span>
+            </label>
+            <textarea
+              id="ongoingCancelReason"
+              value={cancellationReason}
+              onChange={(event) => setCancellationReason(event.target.value.slice(0, 180))}
+              placeholder="Tell us why you are cancelling"
+              className="min-h-24 w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-[#4B0F14] focus:bg-white"
+              maxLength={180}
+            />
+            <p className="text-right text-xs text-gray-400">{cancellationReason.length}/180</p>
+          </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>No, keep booking</AlertDialogCancel>
+            <AlertDialogCancel disabled={cancelLoading} onClick={() => setCancellationReason("")}>
+              No, keep booking
+            </AlertDialogCancel>
             <AlertDialogAction
+              disabled={cancelLoading}
               onClick={handleCancelBooking}
               className="bg-red-600 hover:bg-red-700"
             >
-              Yes, cancel
+              {cancelLoading ? "Cancelling..." : "Yes, cancel"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
