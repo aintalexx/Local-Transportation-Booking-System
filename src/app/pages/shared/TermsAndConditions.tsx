@@ -1,15 +1,29 @@
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { Button } from "../../components/ui/button";
 import { ArrowLeft, FileText } from "lucide-react";
 
 export default function TermsAndConditions() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const routeState = location.state as { returnTo?: string; returnLabel?: string; restoreRegistrationDraft?: boolean } | null;
+
+  const handleReturn = () => {
+    if (routeState?.returnTo) {
+      navigate(routeState.returnTo, {
+        replace: true,
+        state: routeState.restoreRegistrationDraft ? { restoreRegistrationDraft: true } : undefined,
+      });
+      return;
+    }
+
+    navigate(-1);
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b sticky top-0 z-10">
+    <div className="min-h-screen scroll-smooth bg-gray-50">
+      <div className="sticky top-0 z-10 border-b bg-white/95 backdrop-blur">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+          <Button variant="ghost" size="icon" onClick={handleReturn} aria-label={routeState?.returnLabel || "Back"}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex items-center gap-2">

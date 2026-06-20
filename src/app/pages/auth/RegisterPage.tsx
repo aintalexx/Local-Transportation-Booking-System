@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -41,6 +41,8 @@ import { registerSupabaseDriver, uploadBase64ToStorage } from "../../utils/supab
 import { profileContactExists } from "../../utils/supabaseProfiles";
 import { useUser } from "../../context/UserContext";
 import logoImg from "../../../imports/logo.png";
+
+const REGISTER_DRAFT_KEY = "arangkada_registration_draft";
 
 const RegisterLogo = ({ size = 48 }: { size?: number }) => (
   <div
@@ -132,6 +134,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { setUser } = useUser();
   const syncLocalDuplicates = async (email: string, phone: string) => {
     try {
@@ -195,6 +198,7 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showTermsPopup, setShowTermsPopup] = useState(false);
+  const [termsScrolledToBottom, setTermsScrolledToBottom] = useState(false);
   const [showPrivacyPopup, setShowPrivacyPopup] = useState(false);
   const [zoomModal, setZoomModal] = useState<{ url: string; title: string } | null>(null);
 
@@ -202,6 +206,39 @@ export default function RegisterPage() {
   const passengerAge = formData.birthdate && !Number.isNaN(formData.birthdate.getTime())
     ? calculateAge(formData.birthdate)
     : null;
+
+  useEffect(() => {
+    const rawDraft = sessionStorage.getItem(REGISTER_DRAFT_KEY);
+    if (!rawDraft) return;
+
+    try {
+      const draft = JSON.parse(rawDraft);
+      if (draft.step) setStep(draft.step);
+      if (draft.role) setRole(draft.role);
+      if (typeof draft.demoOtp === "string") setDemoOtp(draft.demoOtp);
+      if (typeof draft.enteredOtp === "string") setEnteredOtp(draft.enteredOtp);
+      if (typeof draft.otpResendTimer === "number") setOtpResendTimer(draft.otpResendTimer);
+      if (typeof draft.otpCanResend === "boolean") setOtpCanResend(draft.otpCanResend);
+      if (draft.formData) {
+        setFormData({
+          ...draft.formData,
+          birthdate: draft.formData.birthdate ? new Date(draft.formData.birthdate) : undefined,
+        });
+      }
+      if (typeof draft.agreedToTerms === "boolean") setAgreedToTerms(draft.agreedToTerms);
+      if (typeof draft.isGuardianConfirmed === "boolean") setIsGuardianConfirmed(draft.isGuardianConfirmed);
+      if (typeof draft.liabilityAgreed === "boolean") setLiabilityAgreed(draft.liabilityAgreed);
+      if (typeof draft.birthdateInput === "string") setBirthdateInput(draft.birthdateInput);
+      if (typeof draft.showValidationErrors === "boolean") setShowValidationErrors(draft.showValidationErrors);
+    } catch (error) {
+      console.warn("Unable to restore registration draft:", error);
+      sessionStorage.removeItem(REGISTER_DRAFT_KEY);
+    }
+  }, [location.key]);
+
+  useEffect(() => {
+    if (showTermsPopup) setTermsScrolledToBottom(false);
+  }, [showTermsPopup]);
 
   useEffect(() => {
     if (step !== "driverOtp" && step !== "passengerOtp") return;
@@ -220,6 +257,61 @@ export default function RegisterPage() {
 
     return () => window.clearInterval(timer);
   }, [step, otpCanResend]);
+
+  const saveRegistrationDraft = () => {
+    sessionStorage.setItem(REGISTER_DRAFT_KEY, JSON.stringify({
+      step,
+      role,
+      demoOtp,
+      enteredOtp,
+      otpResendTimer,
+      otpCanResend,
+      formData: {
+        ...formData,
+        birthdate: formData.birthdate ? formData.birthdate.toISOString() : null,
+      },
+      agreedToTerms,
+      isGuardianConfirmed,
+      liabilityAgreed,
+      birthdateInput,
+      showValidationErrors,
+    }));
+  };
+
+  const openFullTerms = () => {
+    saveRegistrationDraft();
+    setShowTermsPopup(false);
+    navigate("/terms", {
+      state: {
+        returnTo: "/register",
+        returnLabel: "Back to registration",
+        restoreRegistrationDraft: true,
+      },
+    });
+  };
+
+  const handleTermsCheckedChange = (checked: boolean) => {
+    if (!checked) {
+      setAgreedToTerms(false);
+      return;
+    }
+
+    setShowTermsPopup(true);
+    toast.info("Please scroll to the bottom of the Terms & Conditions before agreeing.");
+  };
+
+  const handleTermsAccepted = () => {
+    setAgreedToTerms(true);
+    setShowTermsPopup(false);
+    toast.success("Terms & Conditions accepted.");
+  };
+
+  const handleTermsScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget;
+    if (target.scrollTop + target.clientHeight >= target.scrollHeight - 8) {
+      setTermsScrolledToBottom(true);
+    }
+  };
 
   const handleBirthdateInputChange = (rawValue: string) => {
     const digits = rawValue.replace(/\D/g, "").slice(0, 8);
@@ -507,6 +599,7 @@ export default function RegisterPage() {
       }
 
       setUser(userData);
+      sessionStorage.removeItem(REGISTER_DRAFT_KEY);
       toast.success("Registration successful!");
       navigate("/passenger", { replace: true });
     } catch (error) {
@@ -780,12 +873,14 @@ export default function RegisterPage() {
         };
         setUser(completeUserData);
 
+        sessionStorage.removeItem(REGISTER_DRAFT_KEY);
         toast.success("Driver application submitted for admin approval.");
         navigate("/pending-approval", { replace: true });
         return;
       }
 
       const generatedOtp = createDemoOtp();
+      sessionStorage.removeItem(REGISTER_DRAFT_KEY);
       toast.success(`Demo OTP generated: ${generatedOtp}`, { duration: 10000 });
       navigate("/otp", {
         state: {
@@ -1578,7 +1673,7 @@ export default function RegisterPage() {
                   <Checkbox
                     id="terms"
                     checked={agreedToTerms}
-                    onCheckedChange={(checked) => setAgreedToTerms(checked as boolean)}
+                    onCheckedChange={(checked) => handleTermsCheckedChange(checked as boolean)}
                     className="mt-1"
                     required
                   />
@@ -1603,25 +1698,47 @@ export default function RegisterPage() {
                     </button>
                   </div>
                 </div>
+                {showValidationErrors && !agreedToTerms && (
+                  <p className="text-sm font-medium text-red-600">Please read and accept the Terms & Conditions before continuing.</p>
+                )}
 
                 {/* Terms Popup */}
                 <Dialog open={showTermsPopup} onOpenChange={setShowTermsPopup}>
-                  <DialogContent className="max-w-sm max-h-[70vh] overflow-y-auto">
-                    <DialogHeader>
+                  <DialogContent className="max-w-sm overflow-hidden p-0">
+                    <DialogHeader className="border-b px-6 py-4">
                       <DialogTitle>Terms &amp; Conditions</DialogTitle>
                     </DialogHeader>
-                    <div className="text-sm text-gray-600 space-y-3 leading-relaxed">
+                    <div
+                      onScroll={handleTermsScroll}
+                      className="max-h-[36vh] scroll-smooth overflow-y-auto px-6 py-4 text-sm text-gray-600 space-y-3 leading-relaxed"
+                    >
                       <p>By using Arangkada, you agree to use the platform lawfully, treat all users respectfully, and provide accurate information.</p>
                       <p>Passengers must pay agreed fares and must not damage driver vehicles. Drivers must hold valid licenses, comply with safety standards, and complete accepted rides.</p>
                       <p>Driver accounts require admin approval before accepting rides. Arangkada may suspend accounts that violate these Terms.</p>
                       <p>Arangkada is a technology intermediary and is not liable for the conduct of drivers or passengers.</p>
+                      <p>Users must not create fake accounts, harass other users, manipulate fares or ratings, or use the service for illegal activity.</p>
+                      <p>Location data is used only to support pickup, destination, live tracking, and ride safety during active booking flows.</p>
+                      <p>Repeated cancellations, abusive behavior, inaccurate documents, or unsafe driving may lead to temporary suspension or account removal.</p>
                       <button
                         type="button"
                         className="text-[#4B0F14] hover:underline text-sm font-medium"
-                        onClick={() => { setShowTermsPopup(false); navigate("/terms"); }}
+                        onClick={openFullTerms}
                       >
                         Read the full Terms &amp; Conditions →
                       </button>
+                    </div>
+                    <div className="sticky bottom-0 border-t bg-white px-6 py-4">
+                      {!termsScrolledToBottom && (
+                        <p className="mb-2 text-xs font-medium text-gray-500">Scroll to the bottom to enable Agree.</p>
+                      )}
+                      <Button
+                        type="button"
+                        className="w-full bg-[#4B0F14] text-white hover:bg-[#360a0d]"
+                        disabled={!termsScrolledToBottom}
+                        onClick={handleTermsAccepted}
+                      >
+                        Agree
+                      </Button>
                     </div>
                   </DialogContent>
                 </Dialog>
@@ -2098,7 +2215,7 @@ export default function RegisterPage() {
                   <Checkbox
                     id="terms"
                     checked={agreedToTerms}
-                    onCheckedChange={(checked) => setAgreedToTerms(checked as boolean)}
+                    onCheckedChange={(checked) => handleTermsCheckedChange(checked as boolean)}
                     className="mt-1"
                     required
                   />
@@ -2123,25 +2240,47 @@ export default function RegisterPage() {
                     </button>
                   </div>
                 </div>
+                {showValidationErrors && !agreedToTerms && (
+                  <p className="text-sm font-medium text-red-600">Please read and accept the Terms & Conditions before continuing.</p>
+                )}
 
                 {/* Terms Popup */}
                 <Dialog open={showTermsPopup} onOpenChange={setShowTermsPopup}>
-                  <DialogContent className="max-w-sm max-h-[70vh] overflow-y-auto">
-                    <DialogHeader>
+                  <DialogContent className="max-w-sm overflow-hidden p-0">
+                    <DialogHeader className="border-b px-6 py-4">
                       <DialogTitle>Terms &amp; Conditions</DialogTitle>
                     </DialogHeader>
-                    <div className="text-sm text-gray-600 space-y-3 leading-relaxed">
+                    <div
+                      onScroll={handleTermsScroll}
+                      className="max-h-[36vh] scroll-smooth overflow-y-auto px-6 py-4 text-sm text-gray-600 space-y-3 leading-relaxed"
+                    >
                       <p>By using Arangkada, you agree to use the platform lawfully, treat all users respectfully, and provide accurate information.</p>
                       <p>Passengers must pay agreed fares and must not damage driver vehicles. Drivers must hold valid licenses, comply with safety standards, and complete accepted rides.</p>
                       <p>Driver accounts require admin approval before accepting rides. Arangkada may suspend accounts that violate these Terms.</p>
                       <p>Arangkada is a technology intermediary and is not liable for the conduct of drivers or passengers.</p>
+                      <p>Users must not create fake accounts, harass other users, manipulate fares or ratings, or use the service for illegal activity.</p>
+                      <p>Location data is used only to support pickup, destination, live tracking, and ride safety during active booking flows.</p>
+                      <p>Repeated cancellations, abusive behavior, inaccurate documents, or unsafe driving may lead to temporary suspension or account removal.</p>
                       <button
                         type="button"
                         className="text-[#4B0F14] hover:underline text-sm font-medium"
-                        onClick={() => { setShowTermsPopup(false); navigate("/terms"); }}
+                        onClick={openFullTerms}
                       >
                         Read the full Terms &amp; Conditions →
                       </button>
+                    </div>
+                    <div className="sticky bottom-0 border-t bg-white px-6 py-4">
+                      {!termsScrolledToBottom && (
+                        <p className="mb-2 text-xs font-medium text-gray-500">Scroll to the bottom to enable Agree.</p>
+                      )}
+                      <Button
+                        type="button"
+                        className="w-full bg-[#4B0F14] text-white hover:bg-[#360a0d]"
+                        disabled={!termsScrolledToBottom}
+                        onClick={handleTermsAccepted}
+                      >
+                        Agree
+                      </Button>
                     </div>
                   </DialogContent>
                 </Dialog>
@@ -2551,7 +2690,7 @@ export default function RegisterPage() {
                 <Checkbox
                   id="terms"
                   checked={agreedToTerms}
-                  onCheckedChange={(checked) => setAgreedToTerms(checked as boolean)}
+                  onCheckedChange={(checked) => handleTermsCheckedChange(checked as boolean)}
                   className="mt-1"
                   required
                 />
@@ -2576,25 +2715,47 @@ export default function RegisterPage() {
                   </button>
                 </div>
               </div>
+              {showValidationErrors && !agreedToTerms && (
+                <p className="text-sm font-medium text-red-600">Please read and accept the Terms & Conditions before continuing.</p>
+              )}
 
               {/* Terms Popup */}
               <Dialog open={showTermsPopup} onOpenChange={setShowTermsPopup}>
-                <DialogContent className="max-w-sm max-h-[70vh] overflow-y-auto">
-                  <DialogHeader>
+                <DialogContent className="max-w-sm overflow-hidden p-0">
+                  <DialogHeader className="border-b px-6 py-4">
                     <DialogTitle>Terms &amp; Conditions</DialogTitle>
                   </DialogHeader>
-                  <div className="text-sm text-gray-600 space-y-3 leading-relaxed">
+                  <div
+                    onScroll={handleTermsScroll}
+                    className="max-h-[36vh] scroll-smooth overflow-y-auto px-6 py-4 text-sm text-gray-600 space-y-3 leading-relaxed"
+                  >
                     <p>By using Arangkada, you agree to use the platform lawfully, treat all users respectfully, and provide accurate information.</p>
                     <p>Passengers must pay agreed fares and must not damage driver vehicles. Drivers must hold valid licenses, comply with safety standards, and complete accepted rides.</p>
                     <p>Driver accounts require admin approval before accepting rides. Arangkada may suspend accounts that violate these Terms.</p>
                     <p>Arangkada is a technology intermediary and is not liable for the conduct of drivers or passengers.</p>
+                    <p>Users must not create fake accounts, harass other users, manipulate fares or ratings, or use the service for illegal activity.</p>
+                    <p>Location data is used only to support pickup, destination, live tracking, and ride safety during active booking flows.</p>
+                    <p>Repeated cancellations, abusive behavior, inaccurate documents, or unsafe driving may lead to temporary suspension or account removal.</p>
                     <button
                       type="button"
                       className="text-[#4B0F14] hover:underline text-sm font-medium"
-                      onClick={() => { setShowTermsPopup(false); navigate("/terms"); }}
+                      onClick={openFullTerms}
                     >
                       Read the full Terms &amp; Conditions →
                     </button>
+                  </div>
+                  <div className="sticky bottom-0 border-t bg-white px-6 py-4">
+                    {!termsScrolledToBottom && (
+                      <p className="mb-2 text-xs font-medium text-gray-500">Scroll to the bottom to enable Agree.</p>
+                    )}
+                    <Button
+                      type="button"
+                      className="w-full bg-[#4B0F14] text-white hover:bg-[#360a0d]"
+                      disabled={!termsScrolledToBottom}
+                      onClick={handleTermsAccepted}
+                    >
+                      Agree
+                    </Button>
                   </div>
                 </DialogContent>
               </Dialog>
