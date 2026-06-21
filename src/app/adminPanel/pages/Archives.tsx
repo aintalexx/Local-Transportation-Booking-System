@@ -30,7 +30,6 @@ function ArchiveDetailModal({
 
   const docs = [
     { label: "Profile Photo",           photo: driver.profilePhoto,                              icon: <User size={15} /> },
-    { label: "Valid ID / License",       photo: driver.validIdPhoto || driver.driverLicensePhoto, icon: <IdCard size={15} /> },
     { label: "OR/CR Document",           photo: driver.orCrPhoto,                                icon: <FileText size={15} /> },
     { label: "Barangay/NBI Clearance",   photo: driver.clearancePhoto,                           icon: <ClipboardList size={15} /> },
     { label: "Vehicle Photo",            photo: driver.vehiclePhoto,                             icon: <Car size={15} /> },

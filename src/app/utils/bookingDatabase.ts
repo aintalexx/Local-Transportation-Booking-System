@@ -45,10 +45,6 @@ export interface BookingData {
   completedAt?: string;
   cancelledAt?: string;
   cancellationReason?: string;
-  discount?: {
-    type: string;
-    amount: number;
-  };
 }
 
 export type BookingStatus =

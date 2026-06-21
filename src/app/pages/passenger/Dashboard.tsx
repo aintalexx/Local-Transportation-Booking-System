@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { Bell, MapPin, Clock, Star, Zap, User, Navigation2, ChevronRight, ShieldCheck } from "lucide-react";
+import { Bell, MapPin, Clock, Star, User, Navigation2, ChevronRight, ShieldCheck } from "lucide-react";
 import { useUser } from "../../context/UserContext";
 import {
   getPassengerBookingHistory,
@@ -87,13 +87,6 @@ export default function PassengerDashboard() {
       cancelled = true;
     };
   }, [currentUser]);
-
-
-
-  const promos = [
-    { code: "RIDE20", label: "20% OFF", desc: "First ride discount" },
-    { code: "STUDENT", label: "Beep 20%", desc: "Student discount" },
-  ];
 
   return (
     <div className="min-h-screen" style={{ background: CREAM }}>
@@ -210,29 +203,6 @@ export default function PassengerDashboard() {
                 <span className="shrink-0" style={{ fontSize: 20 }}>{dest.icon}</span>
                 <p className="min-w-0 break-words" style={{ color: "#1E1E1E", fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>{dest.name}</p>
               </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Promos */}
-        <div className="mb-5">
-          <p style={{ color: "#1E1E1E", fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Promos</p>
-          <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
-            {promos.map((promo) => (
-              <div
-                key={promo.code}
-                className="flex-shrink-0 rounded-2xl px-4 py-3 flex items-center gap-3"
-                style={{ background: MAROON, minWidth: 160, boxShadow: "0 4px 12px rgba(75,15,20,0.25)" }}
-              >
-                <div>
-                  <div className="rounded-lg px-2 py-0.5 mb-1 inline-block" style={{ background: GOLD }}>
-                    <p style={{ color: MAROON, fontSize: 11, fontWeight: 800 }}>{promo.label}</p>
-                  </div>
-                  <p style={{ color: CREAM, fontSize: 12, fontWeight: 700 }}>{promo.code}</p>
-                  <p style={{ color: "rgba(255,248,231,0.65)", fontSize: 11 }}>{promo.desc}</p>
-                </div>
-                <Zap size={28} color="rgba(212,175,55,0.3)" />
-              </div>
             ))}
           </div>
         </div>

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
-  MapPin, Locate, ArrowLeft, X, Tag, Search,
+  MapPin, Locate, ArrowLeft, Search,
   Navigation2, Clock, Ruler, CreditCard,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -11,7 +11,6 @@ import { useUser } from "../../context/UserContext";
 import { useBooking } from "../../context/BookingContext";
 import { getPassengerActiveBooking } from "../../utils/bookingDatabase";
 import { createSupabaseBooking, getSupabasePassengerActiveBooking } from "../../utils/supabaseBookings";
-import { applyRideDiscounts, calculateFare } from "../../utils/fareCalculator";
 import {
   Dialog, DialogPortal,
 } from "../../components/ui/dialog";
@@ -32,7 +31,6 @@ const GREEN  = "#16A34A";
 const DEFAULT_CENTER = { lat: 14.6042, lng: 121.0120 };
 
 type RideType      = "solo" | "group";
-type PassengerType = "regular" | "student" | "pwd";
 type PaymentMethod = "cash" | "epayment";
 type PinMode       = "pickup" | "dropoff";
 
@@ -155,23 +153,6 @@ async function fetchOSRMRoute(from: LatLng, to: LatLng): Promise<{
   }
 }
 
-function calcFinalPrice(
-  baseFare: number,
-  rideType: RideType,
-  passengerType: PassengerType,
-  promoDiscount?: number
-) {
-  return applyRideDiscounts(baseFare, { rideType, passengerType, promoDiscount });
-}
-
-const AVAILABLE_PROMOS = [
-  { code: "ARANGKADA",   description: "Welcome to Arangkada! 20% off",       discount: 20 },
-  { code: "STAMESARIDE", description: "Sta. Mesa pride! 15% off your ride",  discount: 15 },
-  { code: "PUPSAKAY",    description: "PUP x Arangkada - 12% off",           discount: 12 },
-  { code: "SAKTOLANG",   description: "Enjoy your ride! 10% off",            discount: 10 },
-  { code: "FLASH30",     description: "Flash promo! 30% off today only",     discount: 30 },
-];
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 function BookingPage() {
   const navigate     = useNavigate();
@@ -195,9 +176,6 @@ function BookingPage() {
   const [pickup,  setPickup]            = useState<LatLng | null>(null);
   const [dropoff, setDropoff]           = useState<LatLng | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
-  const [promoCode,  setPromoCode]      = useState("");
-  const [appliedPromo, setAppliedPromo] = useState<typeof AVAILABLE_PROMOS[0] | null>(null);
-  const [showPromoInput, setShowPromoInput] = useState(false);
   const [showOptions,   setShowOptions] = useState(false);
   const [showConfirm,   setShowConfirm] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
@@ -293,10 +271,7 @@ function BookingPage() {
 
   const basePrice = totalFare;
 
-  let finalPrice = basePrice;
-  if (appliedPromo) {
-    finalPrice = Math.max(1, Math.round(basePrice * (1 - appliedPromo.discount / 100)));
-  }
+  const finalPrice = basePrice;
 
   const individualShare = splitPaymentEnabled && rideType === "group"
     ? Math.round((finalPrice / calculatedPassengerCount) * 100) / 100
@@ -503,19 +478,6 @@ function BookingPage() {
        { enableHighAccuracy: true, timeout: 10000 });
   };
 
-  // ── Promo ────────────────────────────────────────────────────────────────────
-  const applyPromo = () => {
-    const promo = AVAILABLE_PROMOS.find(p => p.code === promoCode.toUpperCase());
-    if (promo) {
-      setAppliedPromo(promo);
-      toast.success(`Promo "${promo.code}" applied! ${promo.discount}% off`);
-      setShowPromoInput(false);
-      setPromoCode("");
-    } else {
-      toast.error("Invalid promo code");
-    }
-  };
-
   // ── Book ─────────────────────────────────────────────────────────────────────
   const handleBook = async () => {
     if (!user || !pickup || !dropoff) { toast.error("Please set pickup and drop-off"); return; }
@@ -531,10 +493,6 @@ function BookingPage() {
         navigate(existingBooking.status === "pending" ? "/passenger/finding-driver" : "/passenger/ongoing-booking");
         return;
       }
-
-      const discount = appliedPromo
-        ? { type: appliedPromo.code, amount: appliedPromo.discount }
-        : undefined;
 
       const pCount = calculatedPassengerCount;
       const resEntire = rideType === "solo" ? false : reserveEntire;
@@ -555,7 +513,6 @@ function BookingPage() {
         totalFare: totalFare,
         individualShare: individualShare,
         splitPaymentEnabled: splitPaymentEnabled && rideType === "group",
-        discount,
       });
 
       if (supabaseBooking) {
@@ -975,7 +932,7 @@ function BookingPage() {
           style={{ color: "#6b7280" }}
         >
           <span>{showOptions ? "▲" : "▼"}</span>
-          Ride options & promo
+          Payment options
         </button>
 
         {/* ── Collapsible options ── */}
@@ -1005,45 +962,6 @@ function BookingPage() {
               ))}
             </div>
 
-            {/* Promo */}
-            {appliedPromo ? (
-              <div className="flex items-center justify-between px-3 py-2 rounded-xl"
-                style={{ background: "rgba(22,163,74,0.07)", border: "1px solid rgba(22,163,74,0.2)" }}>
-                <div className="flex items-center gap-2">
-                  <Tag size={13} color={GREEN} />
-                  <span className="text-xs font-bold" style={{ color: GREEN }}>
-                    {appliedPromo.code} — {appliedPromo.discount}% off
-                  </span>
-                </div>
-                <button onClick={() => setAppliedPromo(null)}>
-                  <X size={13} color="#ef4444" />
-                </button>
-              </div>
-            ) : showPromoInput ? (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Promo code"
-                  value={promoCode}
-                  onChange={e => setPromoCode(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 20))}
-                  className="flex-1 px-3 rounded-xl outline-none text-sm"
-                  style={{ height: 40, border: `1.5px solid ${MAROON}`, background: "#fff" }}
-                />
-                <button onClick={applyPromo} className="px-4 rounded-xl text-sm font-bold"
-                  style={{ background: MAROON, color: GOLD, height: 40 }}>Apply</button>
-                <button onClick={() => setShowPromoInput(false)}
-                  className="w-10 h-10 rounded-xl flex items-center justify-center"
-                  style={{ background: "#f3f4f6" }}>
-                  <X size={13} color="#6b7280" />
-                </button>
-              </div>
-            ) : (
-              <button onClick={() => setShowPromoInput(true)}
-                className="flex items-center gap-2 text-xs font-semibold"
-                style={{ color: MAROON }}>
-                <Tag size={12} /> Add promo code
-              </button>
-            )}
           </div>
         )}
 
@@ -1065,11 +983,6 @@ function BookingPage() {
                 )}
                 <p>Driver Earnings: <span className="font-bold font-black" style={{ color: GREEN }}>₱{finalPrice}</span></p>
               </div>
-            )}
-            {appliedPromo && dropoff && (
-              <p className="text-[10px]" style={{ color: GREEN }}>
-                incl. {appliedPromo.discount}% off
-              </p>
             )}
           </div>
           <button

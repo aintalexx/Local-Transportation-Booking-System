@@ -183,7 +183,6 @@ export default function RegisterPage() {
     vehicleType: "tricycle" as "tricycle",
     plateNumber: "",
     licenseNumber: "",
-    validIdPhoto: null as string | null,
     orCrPhoto: null as string | null,
     clearancePhoto: null as string | null,
     profilePhoto: null as string | null,
@@ -538,9 +537,7 @@ export default function RegisterPage() {
         totalEarnings: 0,
         vehicleType: "",
         plateNumber: "",
-        driverLicensePhoto: "",
         licenseNumber: "",
-        validIdPhoto: "",
         orCrPhoto: "",
         clearancePhoto: "",
         profilePhoto: "",
@@ -784,9 +781,7 @@ export default function RegisterPage() {
         totalEarnings: 0,
         vehicleType: role === "driver" ? "Tricycle" : "",
         plateNumber: role === "driver" ? normalizedPlate : "",
-        driverLicensePhoto: role === "driver" ? (formData.validIdPhoto || "") : "",
         licenseNumber: role === "driver" ? formData.licenseNumber.trim().toUpperCase() : "",
-        validIdPhoto: role === "driver" ? (formData.validIdPhoto || "") : "",
         orCrPhoto: role === "driver" ? (formData.orCrPhoto || "") : "",
         clearancePhoto: role === "driver" ? (formData.clearancePhoto || "") : "",
         profilePhoto: role === "driver" ? (formData.profilePhoto || "") : "",
@@ -804,13 +799,6 @@ export default function RegisterPage() {
           if (formData.profilePhoto && formData.profilePhoto.startsWith("data:")) {
             const url = await uploadBase64ToStorage(formData.profilePhoto, `profiles/${phoneDigits}_profile.jpg`);
             if (url) userData.profilePhoto = url;
-          }
-          if (formData.validIdPhoto && formData.validIdPhoto.startsWith("data:")) {
-            const url = await uploadBase64ToStorage(formData.validIdPhoto, `documents/${phoneDigits}_valid_id.jpg`);
-            if (url) {
-              userData.validIdPhoto = url;
-              userData.driverLicensePhoto = url;
-            }
           }
           if (formData.orCrPhoto && formData.orCrPhoto.startsWith("data:")) {
             const url = await uploadBase64ToStorage(formData.orCrPhoto, `documents/${phoneDigits}_or_cr.jpg`);
@@ -901,7 +889,7 @@ export default function RegisterPage() {
     }
   };
 
-  const handlePhotoUpload = (key: "validIdPhoto" | "orCrPhoto" | "clearancePhoto" | "profilePhoto" | "vehiclePhoto") => async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = (key: "orCrPhoto" | "clearancePhoto" | "profilePhoto" | "vehiclePhoto") => async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (!file.type.startsWith("image/")) {
@@ -921,7 +909,7 @@ export default function RegisterPage() {
 
   const renderUploadCard = (
     label: string, 
-    key: "validIdPhoto" | "orCrPhoto" | "clearancePhoto" | "profilePhoto" | "vehiclePhoto",
+    key: "orCrPhoto" | "clearancePhoto" | "profilePhoto" | "vehiclePhoto",
     icon: React.ReactNode
   ) => {
     const photo = formData[key];
@@ -1569,10 +1557,9 @@ export default function RegisterPage() {
                   </p>
                 </div>
 
-                {/* 5 Documents Grid */}
+                {/* Documents Grid */}
                 <div className="grid grid-cols-2 gap-3 pt-1">
                   {renderUploadCard("Driver Profile Photo", "profilePhoto", <UserCircle className="h-5 w-5 text-gray-400" />)}
-                  {renderUploadCard("Valid ID / License", "validIdPhoto", <Camera className="h-5 w-5 text-gray-400" />)}
                   {renderUploadCard("OR/CR Document", "orCrPhoto", <Navigation className="h-5 w-5 text-gray-400" />)}
                   {renderUploadCard("Barangay/NBI Clearance", "clearancePhoto", <User className="h-5 w-5 text-gray-400" />)}
                   <div className="col-span-2">

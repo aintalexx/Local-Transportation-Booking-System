@@ -51,21 +51,4 @@ export function calculateFare(distanceKm: number): FareEstimate {
   };
 }
 
-// Backward-compatible alias used by older pages.
 export const calculateDemoFare = calculateFare;
-
-export function applyRideDiscounts(
-  fare: number,
-  options: {
-    rideType: "solo" | "group" | "shared";
-    passengerType: "regular" | "student" | "pwd";
-    promoDiscount?: number;
-  }
-): number {
-  let total = fare;
-
-  if (options.rideType === "shared") total *= 0.7;
-  if (options.promoDiscount) total *= 1 - options.promoDiscount / 100;
-
-  return Math.max(1, Math.round(total));
-}

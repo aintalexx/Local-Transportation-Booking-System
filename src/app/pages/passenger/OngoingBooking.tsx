@@ -391,7 +391,6 @@ export default function OngoingBooking() {
               duration={tripEta || estimateTravelMinutes(activeBooking.distance)}
               fare={activeBooking.finalPrice}
               paymentMethod={activeBooking.paymentMethod}
-              discount={activeBooking.discount}
               bookingType={activeBooking.bookingType}
               passengerCount={activeBooking.passengerCount}
               totalFare={activeBooking.totalFare}
@@ -458,7 +457,6 @@ function TripDetails({
   duration,
   fare,
   paymentMethod,
-  discount,
   bookingType,
   passengerCount,
   totalFare,
@@ -472,7 +470,6 @@ function TripDetails({
   duration: number;
   fare: number;
   paymentMethod: string;
-  discount?: { type: string; amount: number };
   bookingType?: string;
   passengerCount?: number;
   totalFare?: number;
@@ -524,12 +521,6 @@ function TripDetails({
           <span className="text-gray-600">Payment Method</span>
           <span className="font-semibold">{paymentMethod}</span>
         </div>
-        {discount && (
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm">
-            <span className="text-gray-600">Discount Applied</span>
-            <Badge variant="secondary">{discount.type} (-{discount.amount}%)</Badge>
-          </div>
-        )}
       </div>
     </div>
   );

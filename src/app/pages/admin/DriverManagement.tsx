@@ -160,16 +160,6 @@ export default function DriverManagement() {
                           <span className="text-sm text-gray-600">{driver.totalTrips} trips</span>
                         </div>
                       )}
-                      {driver.driverLicensePhoto && (
-                        <div className="mt-2">
-                          <p className="text-xs text-gray-500 mb-1">Driver's License:</p>
-                          <img
-                            src={driver.driverLicensePhoto}
-                            alt="Driver License"
-                            className="h-16 object-contain rounded border"
-                          />
-                        </div>
-                      )}
                     </div>
                     <div className="flex shrink-0 flex-row flex-wrap gap-2 sm:flex-col">
                       {status === "pending" && (

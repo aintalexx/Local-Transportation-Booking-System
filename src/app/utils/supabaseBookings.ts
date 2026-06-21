@@ -56,8 +56,6 @@ type SupabaseBookingRow = {
   individual_share?: number | string | null;
   split_payment_enabled?: boolean | null;
   status: BookingStatus;
-  discount_type: string | null;
-  discount_amount: number | string | null;
   created_at: string;
   accepted_at: string | null;
   completed_at: string | null;
@@ -88,7 +86,6 @@ export type CreateSupabaseBookingInput = {
   totalFare?: number;
   individualShare?: number;
   splitPaymentEnabled?: boolean;
-  discount?: BookingData["discount"];
 };
 
 export async function createSupabaseBooking(input: CreateSupabaseBookingInput): Promise<BookingData | null> {
@@ -124,8 +121,6 @@ export async function createSupabaseBooking(input: CreateSupabaseBookingInput): 
       individual_share: input.individualShare ?? input.finalPrice,
       split_payment_enabled: input.splitPaymentEnabled || false,
       status: "pending",
-      discount_type: input.discount?.type || null,
-      discount_amount: input.discount?.amount ?? null,
       created_at: new Date().toISOString(),
     })
     .select()
@@ -522,12 +517,6 @@ function mapSupabaseBooking(row: SupabaseBookingRow): BookingData {
     createdAt: row.created_at,
     acceptedAt: row.accepted_at || undefined,
     completedAt: row.completed_at || undefined,
-    discount: row.discount_type
-      ? {
-          type: row.discount_type,
-          amount: Number(row.discount_amount || 0),
-        }
-      : undefined,
   };
 }
 

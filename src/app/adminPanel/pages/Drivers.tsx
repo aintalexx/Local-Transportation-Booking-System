@@ -56,7 +56,6 @@ function DriverDetailModal({
 
   const docs = [
     { label: "Profile Photo",           photo: driver.profilePhoto,                                    icon: <User size={16} /> },
-    { label: "Valid ID / License",       photo: driver.validIdPhoto || driver.driverLicensePhoto,       icon: <IdCard size={16} /> },
     { label: "OR/CR Document",           photo: driver.orCrPhoto,                                       icon: <FileText size={16} /> },
     { label: "Barangay/NBI Clearance",   photo: driver.clearancePhoto,                                  icon: <ClipboardList size={16} /> },
     { label: "Vehicle / Tricycle Photo", photo: driver.vehiclePhoto,                                    icon: <Car size={16} /> },
