@@ -10,7 +10,13 @@ import { Alert, AlertDescription } from "../../components/ui/alert";
 import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
 import { useBooking } from "../../context/BookingContext";
-import { type BookingData } from "../../utils/bookingDatabase";
+import {
+  acceptBooking,
+  getDriverActiveBooking,
+  getPendingBookings,
+  updateBookingStatus,
+  type BookingData,
+} from "../../utils/bookingDatabase";
 import {
   acceptSupabaseBooking,
   getSupabaseDriverDashboardSummary,
@@ -50,7 +56,7 @@ export default function DriverDashboard() {
 
     const checkActiveBooking = async () => {
       await syncSupabaseProfile(currentUser);
-      const driverActiveBooking = await getSupabaseDriverActiveBooking(currentUser);
+      const driverActiveBooking = await getSupabaseDriverActiveBooking(currentUser) || getDriverActiveBooking(currentUser.username);
       if (driverActiveBooking && isUsableDriverActiveBooking(driverActiveBooking)) {
         setActiveBooking(driverActiveBooking);
         navigate("/driver/active-ride");
@@ -74,11 +80,13 @@ export default function DriverDashboard() {
     const loadBookings = async () => {
       setRequestsLoading(true);
       const result = await getSupabasePendingBookingsForDriverResult(currentUser, currentUser.vehicleType || "Tricycle");
+      const localBookings = getPendingBookings(currentUser.vehicleType || "Tricycle");
+      const mergedBookings = removeDuplicateBookings([...result.bookings, ...localBookings]);
       if (cancelled) return;
 
       setRequestsError(result.error);
       setPendingBookings(
-        removeDuplicateBookings(result.bookings)
+        mergedBookings
           .filter(booking => !dismissedBookingIds.has(booking.id))
       );
       setRequestsLoading(false);
@@ -155,6 +163,30 @@ export default function DriverDashboard() {
   const handleAcceptRequest = async (bookingId: string) => {
     if (!currentUser) return;
 
+    if (bookingId.startsWith("BK")) {
+      const booking = pendingBookings.find((item) => item.id === bookingId);
+      const accepted = acceptBooking(
+        bookingId,
+        currentUser.username,
+        formatPersonName(currentUser, currentUser.username),
+        currentUser.phoneNumber || "",
+        currentUser.vehicleType || booking?.vehicleType || "Tricycle",
+        currentUser.plateNumber || ""
+      );
+
+      if (accepted) {
+        const localActiveBooking = getDriverActiveBooking(currentUser.username);
+        if (localActiveBooking) setActiveBooking(localActiveBooking);
+        toast.success("Ride accepted! Navigate to pickup location.");
+        refreshBooking();
+        navigate("/driver/active-ride");
+        return;
+      }
+
+      toast.error("Failed to accept booking. It may have been taken by another driver.");
+      return;
+    }
+
     const supabaseBooking = await acceptSupabaseBooking(bookingId, currentUser);
     if (supabaseBooking) {
       setActiveBooking(supabaseBooking);
@@ -168,9 +200,13 @@ export default function DriverDashboard() {
   };
 
   const handleRejectRequest = (bookingId: string) => {
+    if (bookingId.startsWith("BK")) {
+      updateBookingStatus(bookingId, "rejected");
+      refreshBooking();
+    }
     setDismissedBookingIds(prev => new Set(prev).add(bookingId));
     setPendingBookings(prev => prev.filter(b => b.id !== bookingId));
-    toast.info("Ride request declined. It remains available for other drivers.");
+    toast.info(bookingId.startsWith("BK") ? "Ride request declined." : "Ride request declined. It remains available for other drivers.");
   };
 
   return (

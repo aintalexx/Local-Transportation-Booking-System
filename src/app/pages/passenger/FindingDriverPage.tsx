@@ -126,6 +126,13 @@ export default function FindingDriverPage() {
   }, [driverFound]);
 
   useEffect(() => {
+    if (activeBooking?.status !== "rejected") return;
+    setActiveBooking(null);
+    toast.info("The driver declined your request. You can search again.");
+    navigate("/passenger/book", { replace: true });
+  }, [activeBooking?.status, navigate, setActiveBooking]);
+
+  useEffect(() => {
     if (!activeBooking || driverFound || showNoDriversCard) return;
 
     const timeout = setTimeout(() => {
