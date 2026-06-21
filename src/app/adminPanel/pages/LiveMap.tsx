@@ -12,6 +12,7 @@ import {
   BTN_OUTLINE_SM, BTN_SECONDARY, BTN_ICON_SM,
   CARD, CARD_HEADER, SECTION_TITLE, PAGE_TITLE, PAGE_SUBTITLE,
 } from "../lib/ui";
+import type { MapDriverTarget } from "../context/NavigationContext";
 import {
   getLatestDriverLocations,
   subscribeToAllDriverLocations,
@@ -74,6 +75,29 @@ const formatLastUpdate = (updatedAt?: string) => {
 
 const isValidCoordinate = (lat: number, lng: number) =>
   Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+
+function locationMatchesTarget(location: AdminLiveDriverLocation, target: MapDriverTarget) {
+  const locationUsername = normalizeKey(location.driverUsername);
+  const locationPhone = normalizePhone(location.driverUsername);
+  const targetId = normalizeKey(target.id);
+  const targetPhone = normalizePhone(target.phone);
+
+  return Boolean(
+    (targetId && locationUsername === targetId) ||
+    (targetPhone && locationPhone === targetPhone) ||
+    (targetPhone && locationPhone.includes(targetPhone)) ||
+    (targetPhone && locationUsername.includes(targetPhone))
+  );
+}
+
+function findDriverLocation(
+  target: MapDriverTarget,
+  locations: AdminLiveDriverLocation[]
+) {
+  return locations.find(location =>
+    isValidCoordinate(location.lat, location.lng) && locationMatchesTarget(location, target)
+  );
+}
 
 function buildDriverMarkers(
   profiles: LiveDriverProfile[],
@@ -174,7 +198,7 @@ const createCustomIcon = (m: MarkerData, isSelected: boolean) => {
 };
 
 export function LiveMap() {
-  const { navigate } = useNavigate();
+  const { navigate, mapDriverTarget } = useNavigate();
   const [selected, setSelected]       = useState<MarkerData | null>(null);
   const [markers, setMarkers]         = useState<MarkerData[]>([]);
   const [showDrivers, setShowDrivers] = useState(true);
@@ -182,6 +206,7 @@ export function LiveMap() {
   const [refreshing, setRefreshing]   = useState(false);
   const [loadingDrivers, setLoadingDrivers] = useState(true);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [driverLocationMissing, setDriverLocationMissing] = useState(false);
 
   const visible = useMemo(() => showDrivers ? markers : [], [showDrivers, markers]);
   const syncLabel = lastSyncedAt
@@ -201,7 +226,43 @@ export function LiveMap() {
         getLatestDriverLocations(),
       ]);
 
-      const nextMarkers = buildDriverMarkers(profiles, locations);
+      let nextMarkers = buildDriverMarkers(profiles, locations);
+
+      if (mapDriverTarget) {
+        const targetPhone = normalizePhone(mapDriverTarget.phone);
+        const existingMarker = nextMarkers.find(marker =>
+          marker.id === mapDriverTarget.id ||
+          Boolean(targetPhone && normalizePhone(marker.phone) === targetPhone)
+        );
+        const targetLocation = findDriverLocation(mapDriverTarget, locations);
+
+        if (existingMarker) {
+          setSelected(existingMarker);
+          setDriverLocationMissing(false);
+        } else if (targetLocation) {
+          const targetMarker: MarkerData = {
+            id: `selected-${mapDriverTarget.id}`,
+            type: "driver",
+            name: mapDriverTarget.name,
+            detail: "Selected driver - real GPS location",
+            status: "Active",
+            lat: targetLocation.lat,
+            lng: targetLocation.lng,
+            route: formatLastUpdate(targetLocation.updatedAt),
+            phone: mapDriverTarget.phone,
+          };
+          nextMarkers = [targetMarker, ...nextMarkers];
+          setSelected(targetMarker);
+          setShowDrivers(true);
+          setDriverLocationMissing(false);
+        } else {
+          setSelected(null);
+          setDriverLocationMissing(true);
+        }
+      } else {
+        setDriverLocationMissing(false);
+      }
+
       setMarkers(nextMarkers);
       setLastSyncedAt(new Date().toISOString());
 
@@ -218,7 +279,7 @@ export function LiveMap() {
       setLoadingDrivers(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [mapDriverTarget]);
 
   useEffect(() => {
     void loadLiveDrivers();
@@ -387,6 +448,12 @@ export function LiveMap() {
           <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: MAROON }} /> On Ride</span>
         </div>
       </div>
+
+      {driverLocationMissing && mapDriverTarget && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+          Driver location not available for {mapDriverTarget.name}. No real GPS coordinates exist for this driver yet.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* ── Map canvas ── */}

@@ -699,7 +699,16 @@ export function Drivers() {
           onReject={() => { rejectDriver(modalDriver.id); closeModal(); }}
           onBlock={() => { blockDriver(modalDriver.id); closeModal(); }}
           onReinstate={() => { reinstateDriver(modalDriver.id); closeModal(); }}
-          onNavigateMap={() => { navigate("map"); closeModal(); }}
+          onNavigateMap={() => {
+            navigate("map", {
+              mapDriverTarget: {
+                id: modalDriver.id,
+                name: modalDriver.name,
+                phone: modalDriver.phone,
+              },
+            });
+            closeModal();
+          }}
           onArchive={() => { archiveDriver(modalDriver.id); closeModal(); }}
         />
       )}

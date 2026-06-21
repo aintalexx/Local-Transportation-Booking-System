@@ -8,7 +8,7 @@ import {
   Archive, MonitorX,
 } from "lucide-react";
 import { useUser } from "../context/UserContext";
-import { NavigationContext, type PageKey } from "./context/NavigationContext";
+import { NavigationContext, type MapDriverTarget, type PageKey } from "./context/NavigationContext";
 import { AppStateProvider, useAppState } from "./context/AppStateContext";
 import { Overview }  from "./pages/Overview";
 import { Drivers }   from "./pages/Drivers";
@@ -81,6 +81,7 @@ function AppShell({ onLogout, onSignOutAllDevices }: { onLogout: () => void; onS
   const [sidebarOpen,  setSidebarOpen]  = useState(true);
   const [notifOpen,    setNotifOpen]    = useState(false);
   const [bellPulse,    setBellPulse]    = useState(false);
+  const [mapDriverTarget, setMapDriverTarget] = useState<MapDriverTarget | null>(null);
   const notifRef   = useRef<HTMLDivElement>(null);
   const prevUnread = useRef(unreadCount);
 
@@ -94,7 +95,13 @@ function AppShell({ onLogout, onSignOutAllDevices }: { onLogout: () => void; onS
     prevUnread.current = unreadCount;
   }, [unreadCount]);
 
-  function navigate(target: PageKey) {
+  function navigate(target: PageKey, options?: { mapDriverTarget?: MapDriverTarget | null }) {
+    if (Object.prototype.hasOwnProperty.call(options || {}, "mapDriverTarget")) {
+      setMapDriverTarget(options?.mapDriverTarget || null);
+    } else {
+      setMapDriverTarget(null);
+    }
+
     if (target === page) return;
     setTransitioning(true);
     routerNavigate(PAGE_PATHS[target]);
@@ -138,7 +145,7 @@ function AppShell({ onLogout, onSignOutAllDevices }: { onLogout: () => void; onS
   };
 
   return (
-    <NavigationContext.Provider value={{ page, navigate }}>
+    <NavigationContext.Provider value={{ page, navigate, mapDriverTarget, clearMapDriverTarget: () => setMapDriverTarget(null) }}>
       <div className="admin-figma-theme flex h-screen overflow-hidden bg-background" style={{ fontFamily: "'Nunito', sans-serif" }}>
         {/* MARKER-MAKE-KIT-INVOKED */}
         <Toaster position="top-right" richColors closeButton />
