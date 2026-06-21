@@ -10,7 +10,7 @@ import {
 import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
 import { useBooking } from "../../context/BookingContext";
-import { getPassengerActiveBooking } from "../../utils/bookingDatabase";
+import { createBooking, getPassengerActiveBooking } from "../../utils/bookingDatabase";
 import { createSupabaseBooking, getSupabasePassengerActiveBooking } from "../../utils/supabaseBookings";
 import {
   Dialog, DialogPortal,
@@ -566,7 +566,29 @@ function BookingPage() {
         return;
       }
 
-      toast.error("Booking was not saved online. Please check Supabase connection and try again.");
+      const localBooking = createBooking({
+        passengerUsername: user.username,
+        passengerName: `${user.firstName || ""} ${user.surname || ""}`.trim() || user.username,
+        passengerPhone: user.phoneNumber || "",
+        pickupLocation: pickup,
+        destination: { lat: dropoff.lat, lng: dropoff.lng, address: dropoff.address },
+        distance: distanceKm,
+        basePrice,
+        finalPrice,
+        paymentMethod: paymentMethod === "epayment" ? "E-Payment" : "Cash",
+        vehicleType: "Tricycle",
+        rideType,
+        passengerCount: pCount,
+        reserveEntire: resEntire,
+        bookingType: rideType,
+        totalFare,
+        individualShare,
+        splitPaymentEnabled: splitPaymentEnabled && rideType === "group",
+      });
+      setActiveBooking(localBooking);
+      refreshBooking();
+      toast.success("Booking saved locally. Waiting for a driver to accept.");
+      navigate("/passenger/finding-driver");
     } catch {
       toast.error("Booking failed. Please try again.");
     } finally {
