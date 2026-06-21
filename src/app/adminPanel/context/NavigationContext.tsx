@@ -1,6 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react";
 
-export type PageKey = "overview" | "drivers" | "bookings" | "map" | "analytics" | "settings" | "archives";
+export type PageKey = "overview" | "drivers" | "bookings" | "map" | "analytics" | "settings" | "archives" | "logs";
 
 export type MapDriverTarget = {
   id: string;

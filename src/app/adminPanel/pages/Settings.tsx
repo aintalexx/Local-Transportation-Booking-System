@@ -11,6 +11,7 @@ import {
   CARD, CARD_HEADER, SECTION_TITLE, PAGE_TITLE, PAGE_SUBTITLE,
 } from "../lib/ui";
 import { AdminActionConfirmModal } from "../components/AdminActionConfirmModal";
+import { logAdminActivity } from "../../utils/adminActivityLogs";
 
 const MAROON = "#6B0E1A";
 const GOLD = "#C49A1A";
@@ -95,6 +96,12 @@ function GeneralTab() {
   });
 
   function handleSave() {
+    void logAdminActivity({
+      action: "Record Update",
+      actionType: "admin",
+      target: "General Settings",
+      details: "Updated general admin settings",
+    });
     toast.success("Settings saved", {
       description: "General configuration has been updated.",
       duration: 3000,
@@ -277,6 +284,12 @@ function RoutesTab() {
           description: r.name,
           duration: 2500,
         });
+        void logAdminActivity({
+          action: "Record Update",
+          actionType: "system",
+          target: r.name,
+          details: `Route ${next.active ? "activated" : "deactivated"}`,
+        });
         return next;
       })
     );
@@ -284,8 +297,15 @@ function RoutesTab() {
 
   function addRoute() {
     if (!newRoute.trim()) return;
-    setRouteList((prev) => [...prev, { id: Date.now(), name: newRoute.trim(), drivers: 0, active: true }]);
-    toast.success("Route added", { description: newRoute.trim(), duration: 2500 });
+    const routeName = newRoute.trim();
+    setRouteList((prev) => [...prev, { id: Date.now(), name: routeName, drivers: 0, active: true }]);
+    void logAdminActivity({
+      action: "Record Update",
+      actionType: "system",
+      target: routeName,
+      details: "Added route record",
+    });
+    toast.success("Route added", { description: routeName, duration: 2500 });
     setNewRoute("");
     setAdding(false);
   }
@@ -293,6 +313,12 @@ function RoutesTab() {
   function removeRoute(id: number) {
     const route = routeList.find((r) => r.id === id);
     setRouteList((prev) => prev.filter((r) => r.id !== id));
+    void logAdminActivity({
+      action: "Record Deletion",
+      actionType: "system",
+      target: route?.name || `Route ${id}`,
+      details: "Deleted route record",
+    });
     toast.error("Route removed", { description: route?.name, duration: 2500 });
   }
 
@@ -388,6 +414,12 @@ function AccessTab() {
     if (!admin) return;
     setAdminList((prev) => prev.filter((a) => a.email !== email));
     setDeletedAdmins((prev) => [{ ...admin }, ...prev.filter((a) => a.email !== email)]);
+    void logAdminActivity({
+      action: "Admin Management Action",
+      actionType: "admin",
+      target: `${admin.name} (${admin.email})`,
+      details: "Removed admin access",
+    });
     toast.error("User archived", { description: email, duration: 2500 });
   }
 
@@ -396,6 +428,12 @@ function AccessTab() {
     if (!admin) return;
     setDeletedAdmins((prev) => prev.filter((a) => a.email !== email));
     setAdminList((prev) => [...prev, admin]);
+    void logAdminActivity({
+      action: "Admin Management Action",
+      actionType: "admin",
+      target: `${admin.name} (${admin.email})`,
+      details: "Restored admin access",
+    });
     toast.success("Admin restored", { description: email, duration: 2500 });
   }
 

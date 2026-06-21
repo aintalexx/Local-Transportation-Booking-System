@@ -8,6 +8,7 @@ import { getAllUsers, getAllUsersIncludingDeleted, restoreUser, updateUser } fro
 import { getAllDriverRatingSummaries, subscribeToRatings } from "../../utils/supabaseRatings";
 import { isSoftDeletedRecord, restoreSupabaseRecord, softDeleteSupabaseRecord } from "../../utils/softDelete";
 import { validateBookingStatusTransition, validateDriverWorkflowTransition, type AdminDriverAction, type AdminDriverStatus } from "../../utils/adminWorkflowValidation";
+import { logAdminActivity } from "../../utils/adminActivityLogs";
 
 /** Returns true if the string looks like a Supabase UUID */
 function isUUID(id: string): boolean {
@@ -151,6 +152,11 @@ function sameDriverRecord(a: Partial<Driver>, b: Partial<Driver>): boolean {
 
 function isArchivedDriver(driver: Partial<Driver>, archive = getArchivedDrivers()): boolean {
   return archive.some(archived => sameDriverRecord(driver, archived));
+}
+
+function getDriverLogTarget(driver: Partial<Driver> | null | undefined, fallbackId: string): string {
+  if (!driver) return fallbackId;
+  return `${driver.name || "Driver"} (${driver.id || fallbackId})`;
 }
 
 function findMatchingLocalDriver(driver: Partial<Driver>, users = getAllUsers()) {
@@ -704,11 +710,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   const approveDriver = useCallback(async (id: string) => {
-    if (!validateDriverAction(id, "approve")) return;
+    const driver = validateDriverAction(id, "approve");
+    if (!driver) return;
 
     if (!isUUID(id)) {
       updateDriverState(id, "approved", "Active", "Approved");
       await syncLocalDriverApprovalToSupabase(id, "approved");
+      void logAdminActivity({
+        action: "Driver Approval",
+        actionType: "driver",
+        target: getDriverLogTarget(driver, id),
+        details: "Approved driver application",
+      });
       toast.success("Driver approved successfully");
       return;
     }
@@ -718,17 +731,30 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       toast.error("Failed to approve driver", { description: approval.error });
     } else {
       updateDriverState(id, "approved", "Active", "Approved");
+      void logAdminActivity({
+        action: "Driver Approval",
+        actionType: "driver",
+        target: getDriverLogTarget(driver, id),
+        details: "Approved driver application",
+      });
       toast.success("Driver approved successfully");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const rejectDriver = useCallback(async (id: string) => {
-    if (!validateDriverAction(id, "reject")) return;
+    const driver = validateDriverAction(id, "reject");
+    if (!driver) return;
 
     if (!isUUID(id)) {
       updateDriverState(id, "rejected", "Blocked", "Blocked");
       await syncLocalDriverApprovalToSupabase(id, "rejected");
+      void logAdminActivity({
+        action: "Driver Rejection",
+        actionType: "driver",
+        target: getDriverLogTarget(driver, id),
+        details: "Rejected driver application",
+      });
       toast.success("Driver application rejected");
       return;
     }
@@ -742,17 +768,30 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     } else {
       await supabase.from("profiles").update({ approval_status: "rejected", updated_at: new Date().toISOString() }).eq("id", id);
       updateDriverState(id, "rejected", "Blocked", "Blocked");
+      void logAdminActivity({
+        action: "Driver Rejection",
+        actionType: "driver",
+        target: getDriverLogTarget(driver, id),
+        details: "Rejected driver application",
+      });
       toast.success("Driver application rejected");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const blockDriver = useCallback(async (id: string) => {
-    if (!validateDriverAction(id, "block")) return;
+    const driver = validateDriverAction(id, "block");
+    if (!driver) return;
 
     if (!isUUID(id)) {
       updateDriverState(id, "rejected", "Blocked", "Blocked");
       await syncLocalDriverApprovalToSupabase(id, "rejected");
+      void logAdminActivity({
+        action: "Suspend User",
+        actionType: "user",
+        target: getDriverLogTarget(driver, id),
+        details: "Suspended driver account",
+      });
       toast.warning("Driver blocked successfully");
       return;
     }
@@ -766,17 +805,30 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     } else {
       await supabase.from("profiles").update({ approval_status: "rejected", updated_at: new Date().toISOString() }).eq("id", id);
       updateDriverState(id, "rejected", "Blocked", "Blocked");
+      void logAdminActivity({
+        action: "Suspend User",
+        actionType: "user",
+        target: getDriverLogTarget(driver, id),
+        details: "Suspended driver account",
+      });
       toast.warning("Driver blocked successfully");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const reinstateDriver = useCallback(async (id: string) => {
-    if (!validateDriverAction(id, "reinstate")) return;
+    const driver = validateDriverAction(id, "reinstate");
+    if (!driver) return;
 
     if (!isUUID(id)) {
       updateDriverState(id, "approved", "Active", "Approved");
       await syncLocalDriverApprovalToSupabase(id, "approved");
+      void logAdminActivity({
+        action: "Record Update",
+        actionType: "driver",
+        target: getDriverLogTarget(driver, id),
+        details: "Reinstated driver account",
+      });
       toast.success("Driver reinstated successfully");
       return;
     }
@@ -786,6 +838,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       toast.error("Failed to reinstate driver", { description: approval.error });
     } else {
       updateDriverState(id, "approved", "Active", "Approved");
+      void logAdminActivity({
+        action: "Record Update",
+        actionType: "driver",
+        target: getDriverLogTarget(driver, id),
+        details: "Reinstated driver account",
+      });
       toast.success("Driver reinstated successfully");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -842,6 +900,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     toast.success(`Approved ${pendingDrivers.length} driver${pendingDrivers.length > 1 ? "s" : ""}`);
+    void logAdminActivity({
+      action: "Driver Approval",
+      actionType: "driver",
+      target: `${pendingDrivers.length} pending driver${pendingDrivers.length > 1 ? "s" : ""}`,
+      details: "Batch approval",
+    });
   }, [drivers]);
 
   // ─── Archive actions ──────────────────────────────────────────────────────
@@ -901,6 +965,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     toast.success(`${driver.name} has been archived.`);
+    void logAdminActivity({
+      action: "Record Deletion",
+      actionType: "driver",
+      target: getDriverLogTarget(driver, id),
+      details: "Soft-deleted driver record",
+    });
     pushNotification({
       type: "warning",
       title: "Driver Archived",
@@ -954,6 +1024,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     toast.success(`${driver.name} has been restored.`);
+    void logAdminActivity({
+      action: "Record Update",
+      actionType: "driver",
+      target: getDriverLogTarget(driver, id),
+      details: "Restored archived driver record",
+    });
     pushNotification({
       type: "success",
       title: "Driver Restored",
@@ -985,6 +1061,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (error) {
       toast.error("Failed to cancel booking", { description: error.message });
     } else {
+      void logAdminActivity({
+        action: "Record Update",
+        actionType: "system",
+        target: `Booking ${booking.id}`,
+        details: "Cancelled booking",
+      });
       toast.success("Booking cancelled successfully");
     }
   }, [bookings]);

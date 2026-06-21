@@ -17,6 +17,7 @@ import { LiveMap }   from "./pages/LiveMap";
 import { Analytics } from "./pages/Analytics";
 import { Settings }  from "./pages/Settings";
 import { Archives }  from "./pages/Archives";
+import { ActivityLogs } from "./pages/ActivityLogs";
 
 const MAROON        = "#3E0710";
 const MAROON_ACCENT = "#6B0E1A";
@@ -30,6 +31,7 @@ const PAGE_PATHS: Record<PageKey, string> = {
   analytics:"/admin/analytics",
   settings: "/admin/settings",
   archives: "/admin/archives",
+  logs:     "/admin/activity-logs",
 };
 
 function getPageFromPath(pathname: string): PageKey {
@@ -39,6 +41,7 @@ function getPageFromPath(pathname: string): PageKey {
   if (pathname.startsWith("/admin/analytics"))return "analytics";
   if (pathname.startsWith("/admin/settings")) return "settings";
   if (pathname.startsWith("/admin/archives")) return "archives";
+  if (pathname.startsWith("/admin/activity-logs")) return "logs";
   return "overview";
 }
 
@@ -50,6 +53,7 @@ const PAGE_TITLES: Record<PageKey, string> = {
   analytics: "Analytics & Reports",
   settings:  "Settings",
   archives:  "Archives",
+  logs:      "Activity Logs",
 };
 
 const NOTIF_ICON: Record<string, any> = {
@@ -132,6 +136,7 @@ function AppShell({ onLogout, onSignOutAllDevices }: { onLogout: () => void; onS
     { key: "map",       label: "Live Map",  icon: Map },
     { key: "analytics", label: "Analytics", icon: BarChart3 },
     { key: "archives",  label: "Archives",  icon: Archive },
+    { key: "logs",      label: "Activity Logs", icon: Shield },
   ];
 
   const pageMap: Record<PageKey, () => React.ReactNode> = {
@@ -142,6 +147,7 @@ function AppShell({ onLogout, onSignOutAllDevices }: { onLogout: () => void; onS
     analytics: () => <Analytics />,
     settings:  () => <Settings  />,
     archives:  () => <Archives  />,
+    logs:      () => <ActivityLogs />,
   };
 
   return (

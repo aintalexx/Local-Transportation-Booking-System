@@ -12,6 +12,7 @@ import type { Driver } from "../context/AppStateContext";
 import { supabase } from "../../lib/supabase";
 import { getAllUsersIncludingDeleted, restoreUser } from "../../utils/userDatabase";
 import { isSoftDeletedRecord, restoreSupabaseRecord, type SoftDeleteTable } from "../../utils/softDelete";
+import { logAdminActivity } from "../../utils/adminActivityLogs";
 
 type DeletedRecordKind = "Passenger" | "Booking" | "Rating" | "Admin";
 type DeletedRecord = {
@@ -293,6 +294,12 @@ export function Archives() {
         });
         if (!result.success) throw new Error(result.error);
       }
+      void logAdminActivity({
+        action: "Record Update",
+        actionType: record.type === "Admin" ? "admin" : "system",
+        target: `${record.type}: ${record.label} (${record.id})`,
+        details: "Restored soft-deleted record",
+      });
       await loadDeletedRecords();
     } catch (error) {
       console.error("Failed to restore soft-deleted record:", error);
