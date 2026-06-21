@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Search, Filter, Eye, Check, X, ChevronDown,
-  UserCheck, Star, Download,
+  UserCheck, Star,
   CheckCircle, XCircle, ShieldOff, MapPin,
   User, FileText, Car, Phone as PhoneIcon, Calendar,
   Hash, IdCard, ClipboardList, Archive,
@@ -16,7 +16,6 @@ import {
 } from "../lib/ui";
 import { toast } from "sonner";
 import type { Driver } from "../context/AppStateContext";
-import { exportDriversCsv } from "../../utils/adminCsvExports";
 
 const MAROON = "#6B0E1A";
 const GOLD   = "#C49A1A";
@@ -455,14 +454,6 @@ export function Drivers() {
 
   function openModal(id: string) { setModalDriverId(id); }
   function closeModal()          { setModalDriverId(null); }
-  function handleExport() {
-    const result = exportDriversCsv(filtered);
-    if (result.success) {
-      toast.success("Driver CSV exported", { description: `${result.count} filtered driver record${result.count === 1 ? "" : "s"} downloaded.`, duration: 3000 });
-    } else {
-      toast.error("Export failed", { description: result.error, duration: 3000 });
-    }
-  }
 
   return (
     <div className="space-y-5">
@@ -473,12 +464,6 @@ export function Drivers() {
           <p className={PAGE_SUBTITLE}>{drivers.length} total drivers registered</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleExport}
-            className={BTN_SECONDARY}
-          >
-            <Download size={14} /> Export
-          </button>
           <button
             onClick={approveBatch}
             className={`${BTN_PRIMARY} relative`}
