@@ -16,6 +16,12 @@ import {
   touchCurrentSession,
   type SessionRecord,
 } from "../utils/sessionControls";
+import {
+  clearSupabaseSession,
+  registerSupabaseSession,
+  signOutAllSupabaseSessions,
+  touchSupabaseSession,
+} from "../utils/supabaseSessions";
 
 type SetUserOptions = {
   rememberTrustedDevice?: boolean;
@@ -58,7 +64,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const userRef = useRef<UserData | null>(user);
 
   const clearLocalUser = useCallback((userToClear: UserData | null, clearSession = true) => {
-    if (clearSession) clearCurrentSession(userToClear);
+    if (clearSession) {
+      clearCurrentSession(userToClear);
+      void clearSupabaseSession();
+    }
     localStorage.removeItem("current_user");
     setUserState(null);
     setCurrentSession(null);
@@ -79,12 +88,24 @@ export function UserProvider({ children }: { children: ReactNode }) {
       lastActivityRef.current = Date.now();
       console.log("Current user set:", userData.username);
 
-      if (sessionResult.hasConcurrentSession) {
-        toast.warning("Another active session was detected for this account.", {
+      if (sessionResult.concurrentSessions.length + 1 >= 3) {
+        toast.warning("3 or more active sessions were detected for this account.", {
           description: "Review your device access or use Sign out all devices from your profile.",
           duration: 6000,
         });
       }
+
+      void registerSupabaseSession(userData, Boolean(options.rememberTrustedDevice)).then((remoteSessionResult) => {
+        if (!remoteSessionResult) return;
+        setConcurrentSessionCount(remoteSessionResult.concurrentSessionCount);
+
+        if (remoteSessionResult.shouldWarnConcurrentLimit) {
+          toast.warning("3 or more active sessions were detected for this account.", {
+            description: "This account is signed in from multiple browsers or devices.",
+            duration: 7000,
+          });
+        }
+      });
     } else {
       console.log("User session cleared");
       if (supabase) {
@@ -106,6 +127,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (!activeUser) return;
 
     signOutAllSessions(activeUser);
+    await signOutAllSupabaseSessions(activeUser);
     localStorage.removeItem("current_user");
     setUserState(null);
     setCurrentSession(null);
@@ -138,6 +160,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
       setCurrentSession(session);
       setConcurrentSessionCount(getConcurrentSessionCount(user));
       lastActivityRef.current = Date.now();
+      void touchSupabaseSession(user).then((remoteSessionResult) => {
+        if (remoteSessionResult) {
+          setConcurrentSessionCount(remoteSessionResult.concurrentSessionCount);
+        }
+      });
     }
   }, [user]);
 
@@ -173,7 +200,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
           supabase.auth.signOut().catch(err => console.error("Supabase idle signOut error:", err));
         }
         toast.info(`Session expired after ${formatTimeout(timeoutMs)} of inactivity.`);
+        return;
       }
+
+      void touchSupabaseSession(activeUser).then((remoteSessionResult) => {
+        if (remoteSessionResult) {
+          setConcurrentSessionCount(remoteSessionResult.concurrentSessionCount);
+        }
+      });
     }, 15000);
 
     return () => {
