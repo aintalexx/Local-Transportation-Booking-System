@@ -1,6 +1,5 @@
 import { supabase } from "../lib/supabase";
-import type { Booking, Driver } from "../adminPanel/context/AppStateContext";
-import { createCsvFilename, downloadCsv, type CsvRow } from "./csvExport";
+import { createCsvFilename, downloadCsv, formatExportTimestamp, type CsvRow } from "./csvExport";
 
 type ExportResult = {
   success: boolean;
@@ -15,58 +14,42 @@ function normalize(value: unknown): string {
 function matchesSearch(row: Record<string, unknown>, search: string): boolean {
   const q = normalize(search);
   if (!q) return true;
-
   return Object.values(row).some((value) => normalize(value).includes(q));
 }
 
-export function exportDriversCsv(drivers: Driver[]): ExportResult {
-  const rows: CsvRow[] = drivers.map((driver) => ({
-    id: driver.id,
-    name: driver.name,
-    phone: driver.phone,
-    vehicle: driver.vehicle,
-    plate_number: driver.plate,
-    route: driver.route,
-    status: driver.status,
-    license_status: driver.license,
-    license_number: driver.licenseNumber,
-    total_rides: driver.rides,
-    rating: driver.rating,
-    rating_count: driver.ratingCount || 0,
-    joined: driver.joined,
-  }));
-
-  const success = downloadCsv(createCsvFilename("drivers-export"), rows);
-  return success ? { success, count: rows.length } : { success, count: 0, error: "No driver records match the active filters." };
+function fullName(row: { full_name?: string | null; first_name?: string | null; middle_name?: string | null; surname?: string | null; username?: string | null; }): string {
+  return [
+    row.full_name,
+    row.first_name,
+    row.middle_name,
+    row.surname,
+  ].filter(Boolean).join(" ").trim() || row.username || "";
 }
 
-export function exportBookingsCsv(bookings: Booking[]): ExportResult {
-  const rows: CsvRow[] = bookings.map((booking) => ({
-    id: booking.id,
-    passenger: booking.passenger,
-    passenger_phone: booking.passengerPhone,
-    driver: booking.driver,
-    driver_phone: booking.driverPhone,
-    vehicle: booking.vehicle,
-    pickup: booking.from,
-    destination: booking.to,
-    fare: booking.fare,
-    distance: booking.distance,
-    duration: booking.duration,
-    status: booking.status,
-    seats: booking.seats,
-    booking_type: booking.bookingType || "",
-    passenger_count: booking.passengerCount,
-    total_fare: booking.totalFare,
-    individual_share: booking.individualShare,
-    split_payment_enabled: booking.splitPaymentEnabled,
-    driver_earnings: booking.driverEarnings,
-    booked_at: booking.booked,
-    ended_at: booking.ended,
-  }));
+function safeDate(value?: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const hour24 = date.getHours();
+  const hour12 = hour24 % 12 || 12;
+  const minute = pad(date.getMinutes());
+  const suffix = hour24 >= 12 ? "PM" : "AM";
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(hour12)}:${minute} ${suffix}`;
+}
 
-  const success = downloadCsv(createCsvFilename("bookings-export"), rows);
-  return success ? { success, count: rows.length } : { success, count: 0, error: "No booking records match the active filters." };
+function reportTitle(): string[] {
+  const now = formatExportTimestamp();
+  return [
+    "Arangkada Transportation Booking System",
+    `Export generated: ${now}`,
+    "",
+  ];
+}
+
+function downloadReport(prefix: string, rows: CsvRow[]): ExportResult {
+  const success = downloadCsv(createCsvFilename(prefix), rows, reportTitle());
+  return success ? { success, count: rows.length } : { success, count: 0, error: "No records found for export." };
 }
 
 export async function exportPassengersCsv(search: string): Promise<ExportResult> {
@@ -74,7 +57,7 @@ export async function exportPassengersCsv(search: string): Promise<ExportResult>
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, username, full_name, first_name, middle_name, surname, suffix, email, phone, account_status, registration_date, created_at, updated_at")
+    .select("id, username, full_name, first_name, middle_name, surname, suffix, email, phone, address, account_status, registration_date, created_at")
     .eq("role", "passenger")
     .eq("is_deleted", false)
     .order("created_at", { ascending: false });
@@ -84,31 +67,25 @@ export async function exportPassengersCsv(search: string): Promise<ExportResult>
   const rows = ((data || []) as Record<string, unknown>[])
     .filter((row) => matchesSearch(row, search))
     .map((passenger) => ({
-      id: passenger.id as string,
-      username: passenger.username as string,
-      full_name: passenger.full_name as string,
-      first_name: passenger.first_name as string,
-      middle_name: passenger.middle_name as string,
-      surname: passenger.surname as string,
-      suffix: passenger.suffix as string,
-      email: passenger.email as string,
-      phone: passenger.phone as string,
-      account_status: passenger.account_status as string,
-      registration_date: passenger.registration_date as string,
-      created_at: passenger.created_at as string,
-      updated_at: passenger.updated_at as string,
+      "Passenger ID": passenger.id || "",
+      "Full Name": fullName(passenger),
+      "Username": passenger.username || "",
+      "Email": passenger.email || "",
+      "Mobile Number": passenger.phone || "",
+      "Address": passenger.address || "",
+      "Account Status": passenger.account_status || "",
+      "Date Registered": safeDate((passenger.registration_date as string) || (passenger.created_at as string)),
     }));
 
-  const success = downloadCsv(createCsvFilename("passengers-export"), rows);
-  return success ? { success, count: rows.length } : { success, count: 0, error: "No passenger records match the active search." };
+  return downloadReport("passengers_export", rows);
 }
 
-export async function exportRatingsCsv(search: string): Promise<ExportResult> {
+export async function exportDriversCsv(search: string): Promise<ExportResult> {
   if (!supabase) return { success: false, count: 0, error: "Supabase is not configured." };
 
   const { data, error } = await supabase
-    .from("ratings")
-    .select("id, booking_id, passenger_id, driver_id, rating, feedback, created_at")
+    .from("drivers")
+    .select("id, phone, first_name, middle_name, surname, suffix, vehicle_type, plate_number, approval_status, account_status, created_at, is_online")
     .eq("is_deleted", false)
     .order("created_at", { ascending: false });
 
@@ -116,16 +93,82 @@ export async function exportRatingsCsv(search: string): Promise<ExportResult> {
 
   const rows = ((data || []) as Record<string, unknown>[])
     .filter((row) => matchesSearch(row, search))
-    .map((rating) => ({
-      id: rating.id as string,
-      booking_id: rating.booking_id as string,
-      passenger_id: rating.passenger_id as string,
-      driver_id: rating.driver_id as string,
-      rating: Number(rating.rating || 0),
-      feedback: rating.feedback as string,
-      created_at: rating.created_at as string,
+    .map((driver) => ({
+      "Driver ID": driver.id || "",
+      "Full Name": fullName(driver),
+      "Username": driver.phone || "",
+      "Mobile Number": driver.phone || "",
+      "Vehicle Type": driver.vehicle_type || "",
+      "Plate Number": driver.plate_number || "",
+      "Approval Status": driver.approval_status || "",
+      "Online Status": Number(driver.is_online) ? "Online" : "Offline",
+      "Date Registered": safeDate(driver.created_at as string),
     }));
 
-  const success = downloadCsv(createCsvFilename("ratings-export"), rows);
-  return success ? { success, count: rows.length } : { success, count: 0, error: "No rating records match the active search." };
+  return downloadReport("drivers_export", rows);
+}
+
+export async function exportBookingsCsv(search: string): Promise<ExportResult> {
+  if (!supabase) return { success: false, count: 0, error: "Supabase is not configured." };
+
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("id, passenger_name, driver_name, pickup_address, destination_address, final_price, discount_type, status, created_at")
+    .eq("is_deleted", false)
+    .order("created_at", { ascending: false });
+
+  if (error) return { success: false, count: 0, error: error.message };
+
+  const rows = ((data || []) as Record<string, unknown>[])
+    .filter((row) => matchesSearch(row, search))
+    .map((booking) => {
+      const created = safeDate(booking.created_at as string);
+      const [datePart, timePart] = created.split(" ");
+      return {
+        "Booking ID": booking.id || "",
+        "Passenger Name": booking.passenger_name || "",
+        "Driver Name": booking.driver_name || "",
+        "Pickup Location": booking.pickup_address || "",
+        "Drop-off Location": booking.destination_address || "",
+        "Fare": Number(booking.final_price || 0),
+        "Discount Type": booking.discount_type || "",
+        "Booking Status": booking.status || "",
+        "Booking Date": datePart || "",
+        "Booking Time": `${timePart || ""} ${created.split(" ").slice(2).join(" ")}`.trim(),
+      };
+    });
+
+  return downloadReport("bookings_export", rows);
+}
+
+export async function exportRatingsCsv(search: string): Promise<ExportResult> {
+  if (!supabase) return { success: false, count: 0, error: "Supabase is not configured." };
+
+  const [ratingsResult, passengersResult, driversResult] = await Promise.all([
+    supabase.from("ratings").select("id, booking_id, passenger_id, driver_id, rating, feedback, created_at").eq("is_deleted", false).order("created_at", { ascending: false }),
+    supabase.from("profiles").select("id, full_name, first_name, middle_name, surname, username").eq("is_deleted", false),
+    supabase.from("drivers").select("id, first_name, middle_name, surname, username, phone").eq("is_deleted", false),
+  ]);
+
+  if (ratingsResult.error) return { success: false, count: 0, error: ratingsResult.error.message };
+
+  const passengers = (passengersResult.data || []) as Record<string, unknown>[];
+  const drivers = (driversResult.data || []) as Record<string, unknown>[];
+
+  const rows = ((ratingsResult.data || []) as Record<string, unknown>[])
+    .filter((row) => matchesSearch(row, search))
+    .map((rating) => {
+      const passenger = passengers.find((row) => row.id === rating.passenger_id);
+      const driver = drivers.find((row) => row.id === rating.driver_id);
+      return {
+        "Rating ID": rating.id || "",
+        "Passenger Name": passenger ? fullName(passenger) : "",
+        "Driver Name": driver ? fullName(driver) : "",
+        "Rating": Number(rating.rating || 0),
+        "Feedback": rating.feedback || "",
+        "Date Submitted": safeDate(rating.created_at as string),
+      };
+    });
+
+  return downloadReport("ratings_export", rows);
 }
