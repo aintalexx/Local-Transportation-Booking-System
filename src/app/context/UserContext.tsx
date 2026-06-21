@@ -1,43 +1,36 @@
-import { createContext, useCallback, useContext, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from "react";
+import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import type { UserData } from "../utils/userDatabase";
+import {
+  clearCurrentSession,
+  DEFAULT_IDLE_TIMEOUT_MS,
+  forgetCurrentTrustedDevice,
+  formatTimeout,
+  getConcurrentSessionCount,
+  getIdleTimeoutMs,
+  registerUserSession,
+  SESSION_SIGN_OUT_ALL_KEY,
+  shouldSessionSignOut,
+  signOutAllSessions,
+  touchCurrentSession,
+  type SessionRecord,
+} from "../utils/sessionControls";
 
-interface UserData {
-  supabaseId?: string;
-  displayName?: string;
-  username: string;
-  phoneNumber: string;
-  surname: string;
-  firstName: string;
-  middleName: string;
-  suffix: string;
-  email: string;
-  emailConfirmed?: boolean;
-  birthdate: string;
-  role: "passenger" | "driver" | "admin";
-  guardianName?: string;
-  guardianPhone?: string;
-  rating?: number;
-  totalTrips?: number;
-  totalEarnings?: number;
-  vehicleType?: string;
-  plateNumber?: string;
-  driverLicensePhoto?: string;
-  licenseNumber?: string;
-  validIdPhoto?: string;
-  orCrPhoto?: string;
-  clearancePhoto?: string;
-  vehiclePhoto?: string;
-  vehicleColor?: string;
-  memberSince?: string;
-  approvalStatus?: "pending" | "approved" | "rejected";
-  profilePhoto?: string;
-  accountStatus?: "Active" | "Blocked" | "Archived" | "Suspended";
-}
+type SetUserOptions = {
+  rememberTrustedDevice?: boolean;
+};
 
 interface UserContextType {
   user: UserData | null;
-  setUser: (user: UserData | null) => void;
+  currentSession: SessionRecord | null;
+  setUser: (user: UserData | null, options?: SetUserOptions) => void;
   logout: () => void;
+  signOutAllDevices: () => Promise<void>;
+  forgetTrustedDevice: () => void;
+  isTrustedDevice: boolean;
+  concurrentSessionCount: number;
+  idleTimeoutMinutes: number;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -49,42 +42,172 @@ export function UserProvider({ children }: { children: ReactNode }) {
       if (!currentUser) return null;
 
       const parsedUser = JSON.parse(currentUser) as UserData;
+      if (shouldSessionSignOut(parsedUser)) {
+        localStorage.removeItem("current_user");
+        return null;
+      }
       return parsedUser;
     } catch {
       localStorage.removeItem("current_user");
       return null;
     }
   });
+  const [currentSession, setCurrentSession] = useState<SessionRecord | null>(null);
+  const [concurrentSessionCount, setConcurrentSessionCount] = useState(0);
+  const lastActivityRef = useRef(Date.now());
+  const userRef = useRef<UserData | null>(user);
 
-  const setUser = useCallback((userData: UserData | null) => {
-    // Clear old session/user state before setting the new logged-in user
+  const clearLocalUser = useCallback((userToClear: UserData | null, clearSession = true) => {
+    if (clearSession) clearCurrentSession(userToClear);
     localStorage.removeItem("current_user");
     setUserState(null);
+    setCurrentSession(null);
+    setConcurrentSessionCount(0);
+    userRef.current = null;
+  }, []);
+
+  const setUser = useCallback((userData: UserData | null, options: SetUserOptions = {}) => {
+    clearLocalUser(userRef.current);
 
     if (userData) {
-      // Store current logged-in user (without password field)
+      const sessionResult = registerUserSession(userData, Boolean(options.rememberTrustedDevice));
       localStorage.setItem("current_user", JSON.stringify(userData));
       setUserState(userData);
+      setCurrentSession(sessionResult.currentSession);
+      setConcurrentSessionCount(sessionResult.concurrentSessions.length);
+      userRef.current = userData;
+      lastActivityRef.current = Date.now();
       console.log("Current user set:", userData.username);
+
+      if (sessionResult.hasConcurrentSession) {
+        toast.warning("Another active session was detected for this account.", {
+          description: "Review your device access or use Sign out all devices from your profile.",
+          duration: 6000,
+        });
+      }
     } else {
       console.log("User session cleared");
       if (supabase) {
         supabase.auth.signOut().catch(err => console.error("SignOut error during setUser(null):", err));
       }
     }
-  }, []);
+  }, [clearLocalUser]);
 
   const logout = useCallback(async () => {
-    localStorage.removeItem("current_user");
-    setUserState(null);
+    clearLocalUser(userRef.current);
     if (supabase) {
       await supabase.auth.signOut().catch(err => console.error("Supabase signOut error:", err));
     }
     console.log("User logged out and session cleared");
+  }, [clearLocalUser]);
+
+  const signOutAllDevices = useCallback(async () => {
+    const activeUser = userRef.current;
+    if (!activeUser) return;
+
+    signOutAllSessions(activeUser);
+    localStorage.removeItem("current_user");
+    setUserState(null);
+    setCurrentSession(null);
+    setConcurrentSessionCount(0);
+    userRef.current = null;
+
+    if (supabase) {
+      await supabase.auth.signOut({ scope: "global" }).catch(async (err) => {
+        console.error("Supabase global signOut error:", err);
+        await supabase.auth.signOut().catch(signOutErr => console.error("Supabase signOut fallback error:", signOutErr));
+      });
+    }
+    toast.success("Signed out on all devices.");
   }, []);
 
+  const forgetTrustedDevice = useCallback(() => {
+    const activeUser = userRef.current;
+    if (!activeUser) return;
+
+    forgetCurrentTrustedDevice(activeUser);
+    const session = touchCurrentSession(activeUser);
+    setCurrentSession(session);
+    toast.success("This device is no longer trusted.");
+  }, []);
+
+  useEffect(() => {
+    userRef.current = user;
+    if (user) {
+      const session = touchCurrentSession(user);
+      setCurrentSession(session);
+      setConcurrentSessionCount(getConcurrentSessionCount(user));
+      lastActivityRef.current = Date.now();
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const activityEvents = ["click", "keydown", "mousemove", "touchstart", "scroll"];
+    const markActive = () => {
+      lastActivityRef.current = Date.now();
+      if (userRef.current) {
+        const session = touchCurrentSession(userRef.current);
+        setCurrentSession(session);
+        setConcurrentSessionCount(getConcurrentSessionCount(userRef.current));
+      }
+    };
+
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, markActive, { passive: true }));
+
+    const timer = window.setInterval(() => {
+      const activeUser = userRef.current;
+      if (!activeUser) return;
+
+      if (shouldSessionSignOut(activeUser)) {
+        clearLocalUser(activeUser, false);
+        toast.info("You were signed out because this account was signed out on another device.");
+        return;
+      }
+
+      const timeoutMs = getIdleTimeoutMs(activeUser) || DEFAULT_IDLE_TIMEOUT_MS;
+      if (Date.now() - lastActivityRef.current >= timeoutMs) {
+        clearLocalUser(activeUser);
+        if (supabase) {
+          supabase.auth.signOut().catch(err => console.error("Supabase idle signOut error:", err));
+        }
+        toast.info(`Session expired after ${formatTimeout(timeoutMs)} of inactivity.`);
+      }
+    }, 15000);
+
+    return () => {
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, markActive));
+      window.clearInterval(timer);
+    };
+  }, [user, clearLocalUser]);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== SESSION_SIGN_OUT_ALL_KEY || !userRef.current) return;
+      if (!shouldSessionSignOut(userRef.current)) return;
+      clearLocalUser(userRef.current, false);
+      toast.info("You were signed out because this account was signed out on another device.");
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [clearLocalUser]);
+
   return (
-    <UserContext.Provider value={{ user, setUser, logout }}>
+    <UserContext.Provider
+      value={{
+        user,
+        currentSession,
+        setUser,
+        logout,
+        signOutAllDevices,
+        forgetTrustedDevice,
+        isTrustedDevice: Boolean(currentSession?.trusted),
+        concurrentSessionCount,
+        idleTimeoutMinutes: Math.round((user ? getIdleTimeoutMs(user) : DEFAULT_IDLE_TIMEOUT_MS) / 60000),
+      }}
+    >
       {children}
     </UserContext.Provider>
   );

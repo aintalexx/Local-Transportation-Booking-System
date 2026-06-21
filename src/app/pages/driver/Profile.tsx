@@ -1,9 +1,9 @@
 import { useNavigate } from "react-router";
 import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
 import { Badge } from "../../components/ui/badge";
-import { User, Phone, Mail, Bike, Star, DollarSign, LogOut, FileText, HelpCircle, Trash2 } from "lucide-react";
+import { User, Phone, Mail, Bike, Star, DollarSign, LogOut, FileText, HelpCircle, Trash2, ShieldCheck, MonitorX } from "lucide-react";
 import { useUser } from "../../context/UserContext";
 import { deleteUser } from "../../utils/userDatabase";
 import { toast } from "sonner";
@@ -11,7 +11,15 @@ import { formatPersonName } from "../../utils/nameFormatting";
 
 export default function DriverProfile() {
   const navigate = useNavigate();
-  const { user: currentUser, logout } = useUser();
+  const {
+    user: currentUser,
+    logout,
+    signOutAllDevices,
+    forgetTrustedDevice,
+    isTrustedDevice,
+    concurrentSessionCount,
+    idleTimeoutMinutes,
+  } = useUser();
 
   const driver = {
     name: formatPersonName(currentUser, "Driver"),
@@ -29,6 +37,13 @@ export default function DriverProfile() {
   const handleLogout = () => {
     if (confirm("Are you sure you want to logout?")) {
       logout();
+      navigate("/login");
+    }
+  };
+
+  const handleSignOutAllDevices = () => {
+    if (confirm("Sign out this account on all devices?")) {
+      signOutAllDevices();
       navigate("/login");
     }
   };
@@ -190,6 +205,38 @@ export default function DriverProfile() {
               <div className="flex min-w-0 items-center gap-3">
                 <FileText className="h-5 w-5 shrink-0 text-gray-400" />
                 <span className="truncate">Privacy Policy</span>
+              </div>
+            </button>
+          </CardContent>
+        </Card>
+
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle>Device & Session</CardTitle>
+            <CardDescription>
+              Idle timeout: {idleTimeoutMinutes} minutes
+              {concurrentSessionCount > 0 ? ` · ${concurrentSessionCount} other active session${concurrentSessionCount > 1 ? "s" : ""} detected` : ""}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <ShieldCheck className="h-5 w-5 shrink-0 text-gray-400" />
+                <span className="truncate">{isTrustedDevice ? "Trusted device" : "Device not trusted"}</span>
+              </div>
+              {isTrustedDevice && (
+                <Button type="button" variant="outline" size="sm" onClick={forgetTrustedDevice}>
+                  Forget
+                </Button>
+              )}
+            </div>
+            <button
+              className="w-full flex items-center justify-between gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors"
+              onClick={handleSignOutAllDevices}
+            >
+              <div className="flex min-w-0 items-center gap-3 text-red-600">
+                <MonitorX className="h-5 w-5 shrink-0" />
+                <span className="truncate font-semibold">Sign out all devices</span>
               </div>
             </button>
           </CardContent>

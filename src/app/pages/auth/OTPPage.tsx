@@ -23,6 +23,7 @@ type OtpRouteState = {
   generatedOtp?: string;
   identifier?: string;
   accountLabel?: string;
+  trustDevice?: boolean;
 };
 
 function buildRegistrationUser(state: OtpRouteState): UserData {
@@ -221,7 +222,7 @@ export default function OTPPage() {
           accountStatus: String(userData.accountStatus || "Active").toLowerCase() === "active" ? "Active" as const : userData.accountStatus,
         };
         updateUser(normalizedUserData.username, normalizedUserData);
-        setUser(normalizedUserData);
+        setUser(normalizedUserData, { rememberTrustedDevice: Boolean(state.trustDevice) });
         toast.success("Login successful!");
         if (normalizedUserData.approvalStatus === "approved" && normalizedUserData.accountStatus === "Active") {
           navigate("/driver", { replace: true });

@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, BookOpen, Map, BarChart3,
   Settings as SettingsIcon, LogOut, ChevronRight, Menu, X,
   Car, Shield, Bell, CheckCircle, AlertTriangle, Info, XCircle,
-  Archive,
+  Archive, MonitorX,
 } from "lucide-react";
 import { useUser } from "../context/UserContext";
 import { NavigationContext, type PageKey } from "./context/NavigationContext";
@@ -66,7 +66,7 @@ const NOTIF_COLOR: Record<string, string> = {
 };
 
 // ─── Inner shell (reads from both contexts) ───────────────────────────────────
-function AppShell({ onLogout }: { onLogout: () => void }) {
+function AppShell({ onLogout, onSignOutAllDevices }: { onLogout: () => void; onSignOutAllDevices: () => void }) {
   const location = useLocation();
   const routerNavigate = useRouterNavigate();
   const {
@@ -247,6 +247,15 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
               {sidebarOpen && <span style={{ fontSize: "13.5px", fontWeight: 600 }}>Sign out</span>}
             </button>
 
+            <button
+              onClick={onSignOutAllDevices}
+              title={!sidebarOpen ? "Sign out all devices" : undefined}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/50 hover:text-white/90 hover:bg-white/8 transition-all duration-150"
+            >
+              <MonitorX size={15} className="shrink-0" />
+              {sidebarOpen && <span style={{ fontSize: "13.5px", fontWeight: 600 }}>Sign out all devices</span>}
+            </button>
+
             {/* User chip */}
             <div
               className={`mt-2 rounded-xl p-2.5 flex items-center gap-2.5 ${!sidebarOpen ? "justify-center" : ""}`}
@@ -414,7 +423,7 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
 // ─── Root export ──────────────────────────────────────────────────────────────
 export default function App() {
   const routerNavigate = useRouterNavigate();
-  const { user, logout } = useUser();
+  const { user, logout, signOutAllDevices } = useUser();
 
   useEffect(() => {
     if (!user || user.role !== "admin") {
@@ -432,6 +441,12 @@ export default function App() {
         onLogout={() => {
           logout();
           routerNavigate("/login");
+        }}
+        onSignOutAllDevices={() => {
+          if (confirm("Sign out this admin account on all devices?")) {
+            signOutAllDevices();
+            routerNavigate("/login");
+          }
         }}
       />
     </AppStateProvider>

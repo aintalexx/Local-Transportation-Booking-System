@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { User, Lock, Eye, EyeOff, ArrowLeft } from "lucide-react";
+import { User, Lock, Eye, EyeOff, ArrowLeft, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
 import { authenticateUser, findUser, getAllUsers, updateUser, type UserData } from "../../utils/userDatabase";
@@ -68,6 +68,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
+  const [trustDevice, setTrustDevice] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,28 +176,28 @@ export default function LoginPage() {
 
         if (approvalStatus === "pending") {
           updateUser(driverSession.username, driverSession);
-          setUser(driverSession);
+          setUser(driverSession, { rememberTrustedDevice: trustDevice });
           navigate("/pending-approval", { replace: true });
           return;
         }
 
         if (approvalStatus === "rejected") {
           updateUser(driverSession.username, driverSession);
-          setUser(driverSession);
+          setUser(driverSession, { rememberTrustedDevice: trustDevice });
           navigate("/pending-approval", { replace: true });
           return;
         }
 
         if (approvalStatus !== "approved" || normalizedAccountStatus === "blocked" || normalizedAccountStatus === "archived" || normalizedAccountStatus === "suspended") {
           updateUser(driverSession.username, driverSession);
-          setUser(driverSession);
+          setUser(driverSession, { rememberTrustedDevice: trustDevice });
           navigate("/pending-approval", { replace: true });
           return;
         }
 
         if (sessionAccountStatus !== "Active") {
           updateUser(driverSession.username, driverSession);
-          setUser(driverSession);
+          setUser(driverSession, { rememberTrustedDevice: trustDevice });
           navigate("/pending-approval", { replace: true });
           return;
         }
@@ -213,7 +214,8 @@ export default function LoginPage() {
             userData: {
               ...driverSession,
               role: "driver" as const,
-            }
+            },
+            trustDevice,
           }
         });
       } catch (err) {
@@ -275,7 +277,7 @@ export default function LoginPage() {
           try {
             const supabaseUser = await signInWithEmailPassword(targetEmail, cleanPassword);
             if (supabaseUser?.role === "admin") {
-              setUser(createAdminSession(supabaseUser));
+              setUser(createAdminSession(supabaseUser), { rememberTrustedDevice: trustDevice });
               toast.success("Admin login successful!");
               navigate("/admin");
               return;
@@ -297,7 +299,7 @@ export default function LoginPage() {
         if (localAdmin) {
           const localAuthed = authenticateUser(localAdmin.email || localAdmin.username, cleanPassword);
           if (localAuthed?.role === "admin") {
-            setUser(createAdminSession(localAuthed));
+            setUser(createAdminSession(localAuthed), { rememberTrustedDevice: trustDevice });
             toast.success("Admin login successful!");
             navigate("/admin");
             return;
@@ -329,7 +331,7 @@ export default function LoginPage() {
           }
 
           updateUser(DEFAULT_ADMIN_USERNAME, adminUser);
-          setUser(createAdminSession(adminUser));
+          setUser(createAdminSession(adminUser), { rememberTrustedDevice: trustDevice });
           toast.success("Default admin account ready.");
           navigate("/admin");
           return;
@@ -401,7 +403,7 @@ export default function LoginPage() {
               return;
             }
             supabaseUser.emailConfirmed = true; // Bypassing confirmation check
-            setUser(supabaseUser);
+            setUser(supabaseUser, { rememberTrustedDevice: trustDevice });
             toast.success("Login successful!");
             navigate("/passenger");
             return;
@@ -440,7 +442,7 @@ export default function LoginPage() {
                 approvalStatus: "approved" as const,
                 profilePhoto: profile.profile_photo || "",
               };
-              setUser(userToUse);
+              setUser(userToUse, { rememberTrustedDevice: trustDevice });
               toast.success("Login successful!");
               navigate("/passenger");
               return;
@@ -454,7 +456,7 @@ export default function LoginPage() {
           const resetLocalAuthed = authenticateUser(targetEmail || loginIdentifier, cleanPassword);
           if (resetLocalAuthed?.role === "passenger") {
             resetLocalAuthed.emailConfirmed = true;
-            setUser(resetLocalAuthed);
+            setUser(resetLocalAuthed, { rememberTrustedDevice: trustDevice });
             toast.success("Login successful!");
             navigate("/passenger");
             return;
@@ -470,7 +472,7 @@ export default function LoginPage() {
       const localAuthed = authenticateUser(targetEmail || loginIdentifier, cleanPassword);
       if (localAuthed && localAuthed.role === "passenger") {
         localAuthed.emailConfirmed = true;
-        setUser(localAuthed);
+        setUser(localAuthed, { rememberTrustedDevice: trustDevice });
         toast.success("Login successful!");
         navigate("/passenger");
         return;
@@ -650,6 +652,24 @@ export default function LoginPage() {
               </div>
             </>
           )}
+
+          <label className="flex items-start gap-3 rounded-2xl border border-[rgba(75,15,20,0.12)] bg-white px-4 py-3">
+            <input
+              type="checkbox"
+              checked={trustDevice}
+              onChange={e => setTrustDevice(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-gray-300 accent-[#4B0F14]"
+            />
+            <span className="flex min-w-0 gap-2">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#4B0F14]" />
+              <span className="min-w-0">
+                <span className="block text-sm font-bold text-[#4B0F14]">Remember this trusted device</span>
+                <span className="block text-xs leading-5 text-[#7a6a5a]">
+                  Extends the inactivity timeout on this browser and marks it as a trusted login location.
+                </span>
+              </span>
+            </span>
+          </label>
 
           {/* Login button */}
           <button
