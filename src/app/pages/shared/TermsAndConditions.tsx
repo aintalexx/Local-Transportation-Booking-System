@@ -5,13 +5,16 @@ import { ArrowLeft, FileText } from "lucide-react";
 export default function TermsAndConditions() {
   const navigate = useNavigate();
   const location = useLocation();
-  const routeState = location.state as { returnTo?: string; returnLabel?: string; restoreRegistrationDraft?: boolean } | null;
+  const routeState = location.state as { returnTo?: string; returnLabel?: string; restoreLoginDraft?: boolean; restoreRegistrationDraft?: boolean } | null;
 
   const handleReturn = () => {
     if (routeState?.returnTo) {
       navigate(routeState.returnTo, {
         replace: true,
-        state: routeState.restoreRegistrationDraft ? { restoreRegistrationDraft: true } : undefined,
+        state: {
+          ...(routeState.restoreLoginDraft ? { restoreLoginDraft: true } : {}),
+          ...(routeState.restoreRegistrationDraft ? { restoreRegistrationDraft: true } : {}),
+        },
       });
       return;
     }

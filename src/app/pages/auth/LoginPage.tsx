@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { User, Lock, Eye, EyeOff, ArrowLeft, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
@@ -20,6 +20,7 @@ import logoImg from "../../../imports/logo.png";
 const DEFAULT_ADMIN_EMAIL = "admin@arangkada.ph";
 const DEFAULT_ADMIN_USERNAME = "admin";
 const DEFAULT_ADMIN_PASSWORD = "Admin@2025";
+const LOGIN_DRAFT_KEY = "arangkada_login_draft";
 
 function getDefaultAdminUser(): UserData {
   return {
@@ -60,6 +61,7 @@ function createAdminSession(user: UserData): UserData {
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { setUser } = useUser();
   const [loginType, setLoginType] = useState<"passenger" | "driver" | "admin">("passenger");
   const [usernameOrPhone, setUsernameOrPhone] = useState("");
@@ -69,6 +71,53 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
   const [trustDevice, setTrustDevice] = useState(false);
+
+  useEffect(() => {
+    const rawDraft = sessionStorage.getItem(LOGIN_DRAFT_KEY);
+    if (!rawDraft) return;
+
+    try {
+      const draft = JSON.parse(rawDraft);
+      if (draft.loginType) setLoginType(draft.loginType);
+      if (typeof draft.usernameOrPhone === "string") setUsernameOrPhone(draft.usernameOrPhone);
+      if (typeof draft.password === "string") setPassword(draft.password);
+      if (typeof draft.driverPhone === "string") setDriverPhone(draft.driverPhone);
+      if (typeof draft.showPassword === "boolean") setShowPassword(draft.showPassword);
+      if (typeof draft.showValidation === "boolean") setShowValidation(draft.showValidation);
+      if (typeof draft.trustDevice === "boolean") setTrustDevice(draft.trustDevice);
+    } catch (error) {
+      console.warn("Unable to restore login draft:", error);
+      sessionStorage.removeItem(LOGIN_DRAFT_KEY);
+    }
+  }, [location.key]);
+
+  const saveLoginDraft = () => {
+    sessionStorage.setItem(LOGIN_DRAFT_KEY, JSON.stringify({
+      loginType,
+      usernameOrPhone,
+      password,
+      driverPhone,
+      showPassword,
+      showValidation,
+      trustDevice,
+    }));
+  };
+
+  const openLegalPage = (path: "/terms" | "/privacy") => {
+    saveLoginDraft();
+    navigate(path, {
+      state: {
+        returnTo: "/login",
+        returnLabel: "Back to login",
+        restoreLoginDraft: true,
+      },
+    });
+  };
+
+  const completeLoginNavigation = (path: string, options?: { replace?: boolean; state?: unknown }) => {
+    sessionStorage.removeItem(LOGIN_DRAFT_KEY);
+    navigate(path, options);
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -178,35 +227,35 @@ export default function LoginPage() {
         if (approvalStatus === "pending") {
           updateUser(driverSession.username, driverSession);
           setUser(driverSession, { rememberTrustedDevice: trustDevice });
-          navigate("/pending-approval", { replace: true });
+          completeLoginNavigation("/pending-approval", { replace: true });
           return;
         }
 
         if (approvalStatus === "rejected") {
           updateUser(driverSession.username, driverSession);
           setUser(driverSession, { rememberTrustedDevice: trustDevice });
-          navigate("/pending-approval", { replace: true });
+          completeLoginNavigation("/pending-approval", { replace: true });
           return;
         }
 
         if (approvalStatus !== "approved" || normalizedAccountStatus === "blocked" || normalizedAccountStatus === "archived" || normalizedAccountStatus === "suspended") {
           updateUser(driverSession.username, driverSession);
           setUser(driverSession, { rememberTrustedDevice: trustDevice });
-          navigate("/pending-approval", { replace: true });
+          completeLoginNavigation("/pending-approval", { replace: true });
           return;
         }
 
         if (sessionAccountStatus !== "Active") {
           updateUser(driverSession.username, driverSession);
           setUser(driverSession, { rememberTrustedDevice: trustDevice });
-          navigate("/pending-approval", { replace: true });
+          completeLoginNavigation("/pending-approval", { replace: true });
           return;
         }
 
         const otp = createDemoOtp();
         toast.success(`Demo OTP: ${otp}`, { duration: 10000 });
 
-        navigate("/otp", {
+        completeLoginNavigation("/otp", {
           state: {
             mode: "login",
             role: "driver",
@@ -280,7 +329,7 @@ export default function LoginPage() {
             if (supabaseUser?.role === "admin") {
               setUser(createAdminSession(supabaseUser), { rememberTrustedDevice: trustDevice });
               toast.success("Admin login successful!");
-              navigate("/admin");
+              completeLoginNavigation("/admin");
               return;
             }
 
@@ -302,7 +351,7 @@ export default function LoginPage() {
           if (localAuthed?.role === "admin") {
             setUser(createAdminSession(localAuthed), { rememberTrustedDevice: trustDevice });
             toast.success("Admin login successful!");
-            navigate("/admin");
+            completeLoginNavigation("/admin");
             return;
           }
 
@@ -334,7 +383,7 @@ export default function LoginPage() {
           updateUser(DEFAULT_ADMIN_USERNAME, adminUser);
           setUser(createAdminSession(adminUser), { rememberTrustedDevice: trustDevice });
           toast.success("Default admin account ready.");
-          navigate("/admin");
+          completeLoginNavigation("/admin");
           return;
         }
 
@@ -407,7 +456,7 @@ export default function LoginPage() {
             supabaseUser.emailConfirmed = true; // Bypassing confirmation check
             setUser(supabaseUser, { rememberTrustedDevice: trustDevice });
             toast.success("Login successful!");
-            navigate("/passenger");
+            completeLoginNavigation("/passenger");
             return;
           }
         } catch (supabaseError) {
@@ -447,7 +496,7 @@ export default function LoginPage() {
               };
               setUser(userToUse, { rememberTrustedDevice: trustDevice });
               toast.success("Login successful!");
-              navigate("/passenger");
+              completeLoginNavigation("/passenger");
               return;
             } else if (profile) {
               toast.error("This account is not registered as a passenger.");
@@ -461,7 +510,7 @@ export default function LoginPage() {
             resetLocalAuthed.emailConfirmed = true;
             setUser(resetLocalAuthed, { rememberTrustedDevice: trustDevice });
             toast.success("Login successful!");
-            navigate("/passenger");
+            completeLoginNavigation("/passenger");
             return;
           }
 
@@ -477,7 +526,7 @@ export default function LoginPage() {
         localAuthed.emailConfirmed = true;
         setUser(localAuthed, { rememberTrustedDevice: trustDevice });
         toast.success("Login successful!");
-        navigate("/passenger");
+        completeLoginNavigation("/passenger");
         return;
       } else if (localAuthed) {
         toast.error("This account is not registered as a passenger.");
@@ -688,9 +737,9 @@ export default function LoginPage() {
 
           <p className="text-center" style={{ color: "#7a6a5a", fontSize: 12, lineHeight: 1.5 }}>
             By signing in, you agree to the{" "}
-            <button type="button" onClick={() => navigate("/terms")} style={{ color: "#4B0F14", fontWeight: 700 }}>Terms</button>{" "}
+            <button type="button" onClick={() => openLegalPage("/terms")} style={{ color: "#4B0F14", fontWeight: 700 }}>Terms</button>{" "}
             and{" "}
-            <button type="button" onClick={() => navigate("/privacy")} style={{ color: "#4B0F14", fontWeight: 700 }}>Privacy Policy</button>.
+            <button type="button" onClick={() => openLegalPage("/privacy")} style={{ color: "#4B0F14", fontWeight: 700 }}>Privacy Policy</button>.
           </p>
         </form>
 
