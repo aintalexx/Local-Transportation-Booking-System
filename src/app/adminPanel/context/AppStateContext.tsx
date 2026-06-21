@@ -739,8 +739,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       });
       toast.success("Driver approved successfully");
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [drivers]);
 
   const rejectDriver = useCallback(async (id: string) => {
     const driver = validateDriverAction(id, "reject");
@@ -761,12 +760,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!supabase) { toast.error("Supabase not configured."); return; }
     const { error } = await supabase
       .from("drivers")
-      .update({ approval_status: "rejected", updated_at: new Date().toISOString() })
+      .update({ approval_status: "rejected", account_status: "Blocked", updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) {
       toast.error("Failed to reject driver", { description: error.message });
     } else {
-      await supabase.from("profiles").update({ approval_status: "rejected", updated_at: new Date().toISOString() }).eq("id", id);
+      await supabase.from("profiles").update({ approval_status: "rejected", account_status: "Blocked", updated_at: new Date().toISOString() }).eq("id", id);
       updateDriverState(id, "rejected", "Blocked", "Blocked");
       void logAdminActivity({
         action: "Driver Rejection",
@@ -776,8 +775,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       });
       toast.success("Driver application rejected");
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [drivers]);
 
   const blockDriver = useCallback(async (id: string) => {
     const driver = validateDriverAction(id, "block");
@@ -813,8 +811,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       });
       toast.warning("Driver blocked successfully");
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [drivers]);
 
   const reinstateDriver = useCallback(async (id: string) => {
     const driver = validateDriverAction(id, "reinstate");
@@ -846,8 +843,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       });
       toast.success("Driver reinstated successfully");
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [drivers]);
 
   const approveBatch = useCallback(async () => {
     const pendingDrivers = drivers.filter(d => d.status === "Pending");
