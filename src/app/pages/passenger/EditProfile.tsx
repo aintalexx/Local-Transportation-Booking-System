@@ -7,22 +7,19 @@ import { Label } from "../../components/ui/label";
 import { ArrowLeft, UserCircle, Phone, Camera } from "lucide-react";
 import { useUser } from "../../context/UserContext";
 import { toast } from "sonner";
-import { emailExists, getAllUsers, phoneExists, updateUser } from "../../utils/userDatabase";
+import { phoneExists, updateUser } from "../../utils/userDatabase";
 import { uploadBase64ToStorage } from "../../utils/supabaseDrivers";
 import {
   getCurrentSupabaseUserId,
   profileContactExistsForOther,
-  profileUsernameExistsForOther,
   updateOwnSupabaseProfile,
 } from "../../utils/supabaseProfiles";
 import {
   firstInvalid,
   formatPHPhoneInput,
   normalizeSpaces,
-  validateEmail,
   validateName,
   validatePHPhone,
-  validateUsername,
 } from "../../utils/validators";
 import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
 
@@ -73,16 +70,12 @@ export default function EditProfile() {
 
     const normalizedPhone = formatPHPhoneInput(formData.phoneNumber);
     const normalizedGuardianPhone = formatPHPhoneInput(formData.guardianPhone);
-    const normalizedEmail = formData.email.trim();
-    const normalizedUsername = formData.username.trim();
 
     const basicCheck = firstInvalid([
-      validateUsername(normalizedUsername),
       validateName(formData.surname, "Surname"),
       validateName(formData.firstName, "First name"),
       validateName(formData.middleName, "Middle name", false),
       validatePHPhone(normalizedPhone),
-      validateEmail(normalizedEmail),
     ]);
 
     if (!basicCheck.valid) {
@@ -109,7 +102,7 @@ export default function EditProfile() {
       return;
     }
 
-    const contactCheck = await profileContactExistsForOther(normalizedEmail, normalizedPhone, authUserId);
+    const contactCheck = await profileContactExistsForOther("", normalizedPhone, authUserId);
     if (contactCheck.error) {
       toast.error(contactCheck.error);
       return;
@@ -117,29 +110,6 @@ export default function EditProfile() {
 
     if (contactCheck.phoneExists || phoneExists(normalizedPhone, user.username)) {
       toast.error("Phone number already registered. Please use a different number.");
-      return;
-    }
-
-    if (normalizedEmail && (contactCheck.emailExists || emailExists(normalizedEmail, user.username))) {
-      toast.error("Email already registered. Please use a different email.");
-      return;
-    }
-
-    const usernameCheck = await profileUsernameExistsForOther(normalizedUsername, authUserId);
-    if (usernameCheck.error) {
-      toast.error(usernameCheck.error);
-      return;
-    }
-
-    const localUsernameExists = getAllUsers().some(
-      (item) =>
-        item.username.toLowerCase() === normalizedUsername.toLowerCase() &&
-        item.username !== user.username &&
-        item.supabaseId !== authUserId
-    );
-
-    if (usernameCheck.exists || localUsernameExists) {
-      toast.error("Username already exists. Please use a different username.");
       return;
     }
 
@@ -171,23 +141,21 @@ export default function EditProfile() {
     const updatedUser = {
       ...user,
       ...nextName,
-      username: normalizedUsername,
+      username: user.username,
       displayName: nameFieldsChanged ? "" : user.displayName,
       phoneNumber: normalizedPhone,
-      email: normalizedEmail,
+      email: user.email || "",
       guardianName: normalizeSpaces(formData.guardianName),
       guardianPhone: normalizedGuardianPhone,
       profilePhoto: savedProfilePhoto,
     };
 
     const { profile, error } = await updateOwnSupabaseProfile(user, {
-      username: updatedUser.username,
       firstName: updatedUser.firstName,
       middleName: updatedUser.middleName,
       surname: updatedUser.surname,
       suffix: updatedUser.suffix,
       phoneNumber: updatedUser.phoneNumber,
-      email: updatedUser.email,
       guardianName: updatedUser.guardianName,
       guardianPhone: updatedUser.guardianPhone,
       profilePhoto: updatedUser.profilePhoto,
@@ -202,13 +170,13 @@ export default function EditProfile() {
     const savedUser = {
       ...updatedUser,
       supabaseId: profile.id,
-      username: profile.username || updatedUser.username,
+      username: user.username,
       firstName: profile.first_name || updatedUser.firstName,
       middleName: profile.middle_name || "",
       surname: profile.surname || updatedUser.surname,
       suffix: normalizeOptionalSuffix(profile.suffix || updatedUser.suffix),
       phoneNumber: profile.phone || updatedUser.phoneNumber,
-      email: profile.email || "",
+      email: user.email || "",
       guardianName: profile.guardian_name || "",
       guardianPhone: profile.guardian_phone || "",
       profilePhoto: profile.profile_photo || "",
@@ -283,9 +251,10 @@ export default function EditProfile() {
               <Input
                 id="username"
                 value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                placeholder="Enter username"
+                readOnly
+                disabled
               />
+              <p className="text-xs text-gray-500">Username cannot be changed after account creation.</p>
             </div>
 
             <div className="space-y-2">
@@ -348,14 +317,15 @@ export default function EditProfile() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email (Optional)</Label>
+              <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value.trim() })}
-                placeholder="your.email@example.com"
+                readOnly
+                disabled
               />
+              <p className="text-xs text-gray-500">Email is read-only and shown for reference only.</p>
             </div>
           </CardContent>
         </Card>

@@ -4,21 +4,19 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import { ArrowLeft, Phone, Bike, Camera } from "lucide-react";
+import { ArrowLeft, Phone, Bike, Camera, Mail } from "lucide-react";
 import { useUser } from "../../context/UserContext";
 import { toast } from "sonner";
-import { getAllUsers, updateUser } from "../../utils/userDatabase";
+import { updateUser } from "../../utils/userDatabase";
 import { uploadBase64ToStorage } from "../../utils/supabaseDrivers";
 import {
   getCurrentSupabaseUserId,
-  profileUsernameExistsForOther,
   updateApprovedDriverEditableProfile,
 } from "../../utils/supabaseProfiles";
 import {
   firstInvalid,
   normalizeSpaces,
   validateName,
-  validateUsername,
 } from "../../utils/validators";
 import { normalizeOptionalSuffix } from "../../utils/nameFormatting";
 
@@ -48,10 +46,7 @@ export default function DriverEditProfile() {
     if (!user) return;
     if (isSaving) return;
 
-    const normalizedUsername = formData.username.trim();
-
     const basicCheck = firstInvalid([
-      validateUsername(normalizedUsername),
       validateName(formData.surname, "Surname"),
       validateName(formData.firstName, "First name"),
       validateName(formData.middleName, "Middle name", false),
@@ -65,24 +60,6 @@ export default function DriverEditProfile() {
     const profileId = user.supabaseId || await getCurrentSupabaseUserId();
     if (!profileId) {
       toast.error("Unable to save profile. Please log in again.");
-      return;
-    }
-
-    const usernameCheck = await profileUsernameExistsForOther(normalizedUsername, profileId);
-    if (usernameCheck.error) {
-      toast.error(usernameCheck.error);
-      return;
-    }
-
-    const localUsernameExists = getAllUsers().some(
-      (item) =>
-        item.username.toLowerCase() === normalizedUsername.toLowerCase() &&
-        item.username !== user.username &&
-        item.supabaseId !== profileId
-    );
-
-    if (usernameCheck.exists || localUsernameExists) {
-      toast.error("Username already exists. Please use a different username.");
       return;
     }
 
@@ -114,13 +91,13 @@ export default function DriverEditProfile() {
     const updatedUser = {
       ...user,
       ...nextName,
-      username: normalizedUsername,
+      username: user.username,
+      email: user.email || "",
       displayName: nameFieldsChanged ? "" : user.displayName,
       profilePhoto: savedProfilePhoto,
     };
 
     const { profile, error } = await updateApprovedDriverEditableProfile(user, {
-      username: updatedUser.username,
       firstName: updatedUser.firstName,
       middleName: updatedUser.middleName,
       surname: updatedUser.surname,
@@ -137,7 +114,7 @@ export default function DriverEditProfile() {
     const savedUser = {
       ...updatedUser,
       supabaseId: profile.id,
-      username: profile.username || updatedUser.username,
+      username: user.username,
       firstName: profile.first_name || updatedUser.firstName,
       middleName: profile.middle_name || "",
       surname: profile.surname || updatedUser.surname,
@@ -222,9 +199,10 @@ export default function DriverEditProfile() {
               <Input
                 id="username"
                 value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                placeholder="Enter username"
+                readOnly
+                disabled
               />
+              <p className="text-xs text-gray-500">Username cannot be changed after account creation.</p>
             </div>
 
             <div className="space-y-2">
@@ -271,10 +249,19 @@ export default function DriverEditProfile() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Bike className="h-5 w-5 text-[#4B0F14]" />
-              Vehicle Information
+              Account & Vehicle Information
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input value={user?.email || "No email on file"} className="pl-10" readOnly disabled />
+              </div>
+              <p className="text-xs text-gray-500">Email is read-only and shown for reference only.</p>
+            </div>
+
             <div className="space-y-2">
               <Label>Phone Number</Label>
               <div className="relative">
@@ -305,7 +292,7 @@ export default function DriverEditProfile() {
             </div>
 
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-              Vehicle details, documents, phone number, approval status, account status, and role are reviewed by admin and cannot be edited here.
+              Email, username, vehicle details, documents, phone number, approval status, account status, and role are reviewed by admin and cannot be edited here.
             </div>
           </CardContent>
         </Card>

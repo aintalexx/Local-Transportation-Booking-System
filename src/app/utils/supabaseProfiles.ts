@@ -51,8 +51,10 @@ export type EditableProfileData = {
 
 export type DriverEditableProfileData = Pick<
   EditableProfileData,
-  "username" | "firstName" | "middleName" | "surname" | "suffix" | "profilePhoto"
+  "firstName" | "middleName" | "surname" | "suffix" | "profilePhoto"
 >;
+
+type OwnEditableProfileUpdate = Omit<EditableProfileData, "username" | "email">;
 
 export type LiveDriverProfile = Pick<
   SupabaseProfile,
@@ -219,7 +221,7 @@ export async function getOwnSupabaseProfile(user: UserData): Promise<SupabasePro
 
 export async function updateOwnSupabaseProfile(
   user: UserData,
-  updates: EditableProfileData
+  updates: OwnEditableProfileUpdate
 ): Promise<{ profile: SupabaseProfile | null; error: string | null }> {
   if (!supabase) {
     return { profile: null, error: "Supabase is not configured." };
@@ -243,14 +245,12 @@ export async function updateOwnSupabaseProfile(
   );
 
   const payload = {
-    username: updates.username?.trim() || user.username,
     first_name: updates.firstName,
     middle_name: updates.middleName || null,
     surname: updates.surname,
     suffix: updates.suffix || null,
     full_name: fullName,
     phone: updates.phoneNumber,
-    email: updates.email?.trim().toLowerCase() || null,
     guardian_name: updates.guardianName || null,
     guardian_phone: updates.guardianPhone || null,
     plate_number: updates.plateNumber || user.plateNumber || null,
@@ -292,7 +292,7 @@ export async function updateApprovedDriverEditableProfile(
   const { data, error } = await supabase.rpc("update_driver_editable_profile", {
     p_driver_phone: user.phoneNumber,
     p_driver_password: user.password,
-    p_username: updates.username?.trim() || user.username,
+    p_username: user.username,
     p_first_name: updates.firstName,
     p_middle_name: updates.middleName || null,
     p_surname: updates.surname,
