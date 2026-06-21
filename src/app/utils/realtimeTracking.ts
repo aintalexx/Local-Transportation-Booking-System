@@ -17,6 +17,11 @@ export type RealtimeDriverLocation = {
   updatedAt?: string;
 };
 
+export type AdminLiveDriverLocation = RealtimeDriverLocation & {
+  bookingId: string;
+  driverUsername: string;
+};
+
 type DriverLocationRow = {
   booking_id: string;
   driver_username: string;
@@ -51,6 +56,61 @@ export async function publishDriverLocation(payload: DriverLocationPayload): Pro
   }
 
   return true;
+}
+
+export async function getLatestDriverLocations(): Promise<AdminLiveDriverLocation[]> {
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("driver_locations")
+    .select("booking_id, driver_username, lat, lng, heading, speed, updated_at")
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    console.info("Live driver locations are unavailable:", error.message);
+    return [];
+  }
+
+  const latestByDriver = new Map<string, AdminLiveDriverLocation>();
+  (data as DriverLocationRow[] | null)?.forEach((row) => {
+    if (!row.driver_username || !Number.isFinite(row.lat) || !Number.isFinite(row.lng)) return;
+
+    const key = row.driver_username.trim().toLowerCase();
+    if (latestByDriver.has(key)) return;
+
+    latestByDriver.set(key, {
+      bookingId: row.booking_id,
+      driverUsername: row.driver_username,
+      lat: row.lat,
+      lng: row.lng,
+      heading: row.heading,
+      speed: row.speed,
+      updatedAt: row.updated_at,
+    });
+  });
+
+  return Array.from(latestByDriver.values());
+}
+
+export function subscribeToAllDriverLocations(onChange: () => void): () => void {
+  if (!supabase) return () => undefined;
+
+  const channel = supabase
+    .channel("admin-live-driver-locations")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "driver_locations",
+      },
+      () => onChange()
+    )
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
 }
 
 export function subscribeToDriverLocation(

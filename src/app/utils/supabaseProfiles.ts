@@ -52,6 +52,11 @@ export type DriverEditableProfileData = Pick<
   "username" | "firstName" | "middleName" | "surname" | "suffix" | "profilePhoto"
 >;
 
+export type LiveDriverProfile = Pick<
+  SupabaseProfile,
+  "id" | "username" | "full_name" | "phone" | "vehicle_type" | "plate_number" | "is_online" | "approval_status"
+>;
+
 export async function getCurrentSupabaseUserId(): Promise<string | null> {
   if (!supabase) return null;
 
@@ -400,4 +405,44 @@ export async function setDriverOnlineStatus(user: UserData, isOnline: boolean): 
       updated_at: new Date().toISOString(),
     })
     .eq("id", userId);
+}
+
+export async function getApprovedOnlineDriverProfiles(): Promise<LiveDriverProfile[]> {
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, username, full_name, phone, vehicle_type, plate_number, is_online, approval_status")
+    .eq("role", "driver")
+    .eq("approval_status", "approved")
+    .eq("is_online", true);
+
+  if (error) {
+    console.info("Approved online driver profiles are unavailable:", error.message);
+    return [];
+  }
+
+  return (data as LiveDriverProfile[] | null) || [];
+}
+
+export function subscribeToDriverProfilePresence(onChange: () => void): () => void {
+  if (!supabase) return () => undefined;
+
+  const channel = supabase
+    .channel("admin-live-driver-profiles")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "profiles",
+        filter: "role=eq.driver",
+      },
+      () => onChange()
+    )
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
 }

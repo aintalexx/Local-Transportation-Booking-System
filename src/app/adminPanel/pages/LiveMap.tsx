@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { toast } from "sonner";
 import {
   Navigation, MapPin, Layers,
@@ -12,6 +12,16 @@ import {
   BTN_OUTLINE_SM, BTN_SECONDARY, BTN_ICON_SM,
   CARD, CARD_HEADER, SECTION_TITLE, PAGE_TITLE, PAGE_SUBTITLE,
 } from "../lib/ui";
+import {
+  getLatestDriverLocations,
+  subscribeToAllDriverLocations,
+  type AdminLiveDriverLocation,
+} from "../../utils/realtimeTracking";
+import {
+  getApprovedOnlineDriverProfiles,
+  subscribeToDriverProfilePresence,
+  type LiveDriverProfile,
+} from "../../utils/supabaseProfiles";
 
 const MAROON = "#6B0E1A";
 const GOLD   = "#C49A1A";
@@ -23,14 +33,6 @@ interface MarkerData {
   name: string; detail: string; status: MarkerStatus;
   lat: number; lng: number; route?: string; phone?: string;
 }
-
-const markers: MarkerData[] = [
-  { id: "d1", type: "driver", name: "Rodrigo Santos",  detail: "Kawasaki Barako · Plate 1234", status: "Ongoing", lat: 14.5979, lng: 121.0108, route: "PUP Sta. Mesa ↔ V. Mapa LRT",  phone: "09281234567" },
-  { id: "d2", type: "driver", name: "Maria Reyes",     detail: "Honda TMX · Plate 5678",       status: "Active",  lat: 14.6016, lng: 121.0061, route: "Pureza St ↔ Teresa St",        phone: "09991234567" },
-  { id: "d3", type: "driver", name: "Jose Dela Cruz",  detail: "Suzuki GD110 · Plate 1111",    status: "Idle",    lat: 14.5945, lng: 121.0125, route: "PUP Pepsi Terminal ↔ Bacood",  phone: "09201234567" },
-  { id: "d4", type: "driver", name: "Ana Lim",         detail: "Yamaha YTX · Plate 3456",      status: "Ongoing", lat: 14.6010, lng: 121.0150, route: "Magsaysay Blvd ↔ Altura St",   phone: "09451234567" },
-  { id: "d5", type: "driver", name: "Pedro Garcia",    detail: "Kawasaki Barako · Plate 7890", status: "Active",  lat: 14.6025, lng: 121.0115, route: "Stop and Shop ↔ Bataan St",    phone: "09671234567" },
-];
 
 // Unified marker color by status
 const MARKER_COLOR: Record<MarkerStatus, string> = {
@@ -48,6 +50,78 @@ const STATUS_LABEL: Record<MarkerStatus, string> = {
   Idle:    "Idle",
   Ongoing: "On Ride",
 };
+
+const normalizeKey = (value?: string | null) => value?.trim().toLowerCase() || "";
+const normalizePhone = (value?: string | null) => value?.replace(/\D/g, "") || "";
+
+const formatLastUpdate = (updatedAt?: string) => {
+  if (!updatedAt) return "Live GPS update";
+
+  const timestamp = new Date(updatedAt).getTime();
+  if (!Number.isFinite(timestamp)) return "Live GPS update";
+
+  const diffMs = Date.now() - timestamp;
+  if (diffMs < 60_000) return "Updated just now";
+
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 60) return `Updated ${minutes} min ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Updated ${hours} hr ago`;
+
+  return `Updated ${Math.floor(hours / 24)} day ago`;
+};
+
+const isValidCoordinate = (lat: number, lng: number) =>
+  Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+
+function buildDriverMarkers(
+  profiles: LiveDriverProfile[],
+  locations: AdminLiveDriverLocation[]
+): MarkerData[] {
+  const latestLocations = new Map<string, AdminLiveDriverLocation>();
+
+  locations.forEach((location) => {
+    if (!isValidCoordinate(location.lat, location.lng)) return;
+
+    const usernameKey = normalizeKey(location.driverUsername);
+    if (usernameKey && !latestLocations.has(usernameKey)) latestLocations.set(usernameKey, location);
+
+    const phoneKey = normalizePhone(location.driverUsername);
+    if (phoneKey && !latestLocations.has(phoneKey)) latestLocations.set(phoneKey, location);
+  });
+
+  return profiles
+    .filter((profile) => profile.is_online && profile.approval_status === "approved")
+    .map((profile) => {
+      const matchingKeys = [
+        normalizeKey(profile.username),
+        normalizePhone(profile.phone),
+        normalizeKey(profile.id),
+      ].filter(Boolean);
+      const location = matchingKeys
+        .map((key) => latestLocations.get(key))
+        .find(Boolean);
+
+      if (!location) return null;
+
+      const vehicle = profile.vehicle_type?.trim() || "Tricycle";
+      const plate = profile.plate_number?.trim();
+
+      return {
+        id: profile.id,
+        type: "driver" as const,
+        name: profile.full_name || profile.username || "Driver",
+        detail: plate ? `${vehicle} - Plate ${plate}` : vehicle,
+        status: "Active" as const,
+        lat: location.lat,
+        lng: location.lng,
+        route: formatLastUpdate(location.updatedAt),
+        phone: profile.phone || undefined,
+      };
+    })
+    .filter((marker): marker is MarkerData => Boolean(marker));
+}
 
 // Tricycle Icon SVG component for React
 function TricycleIcon({ size = 14, className = "" }: { size?: number; className?: string }) {
@@ -102,15 +176,71 @@ const createCustomIcon = (m: MarkerData, isSelected: boolean) => {
 export function LiveMap() {
   const { navigate } = useNavigate();
   const [selected, setSelected]       = useState<MarkerData | null>(null);
+  const [markers, setMarkers]         = useState<MarkerData[]>([]);
   const [showDrivers, setShowDrivers] = useState(true);
   const [zoom, setZoom]               = useState(15);
   const [refreshing, setRefreshing]   = useState(false);
+  const [loadingDrivers, setLoadingDrivers] = useState(true);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
-  const visible = showDrivers ? markers : [];
+  const visible = useMemo(() => showDrivers ? markers : [], [showDrivers, markers]);
+  const syncLabel = lastSyncedAt
+    ? `Last synced ${new Date(lastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+    : "Waiting for live GPS";
 
   const mapRef = useRef<HTMLDivElement>(null);
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const markerInstancesRef = useRef<Map<string, L.Marker>>(new Map());
+
+  const loadLiveDrivers = useCallback(async (notify = false) => {
+    setRefreshing(true);
+
+    try {
+      const [profiles, locations] = await Promise.all([
+        getApprovedOnlineDriverProfiles(),
+        getLatestDriverLocations(),
+      ]);
+
+      const nextMarkers = buildDriverMarkers(profiles, locations);
+      setMarkers(nextMarkers);
+      setLastSyncedAt(new Date().toISOString());
+
+      if (notify) {
+        toast.success("Map refreshed", {
+          description: `${nextMarkers.length} approved online driver${nextMarkers.length === 1 ? "" : "s"} with live GPS.`,
+          duration: 2000,
+        });
+      }
+    } catch (error) {
+      console.info("Live map refresh failed:", error);
+      if (notify) toast.error("Unable to refresh live map");
+    } finally {
+      setLoadingDrivers(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadLiveDrivers();
+
+    const unsubscribeLocations = subscribeToAllDriverLocations(() => {
+      void loadLiveDrivers();
+    });
+    const unsubscribeProfiles = subscribeToDriverProfilePresence(() => {
+      void loadLiveDrivers();
+    });
+
+    return () => {
+      unsubscribeLocations();
+      unsubscribeProfiles();
+    };
+  }, [loadLiveDrivers]);
+
+  useEffect(() => {
+    if (selected && !markers.some(marker => marker.id === selected.id)) {
+      setSelected(null);
+    }
+  }, [markers, selected]);
 
   // Initialize Map
   useEffect(() => {
@@ -206,11 +336,7 @@ export function LiveMap() {
   }, [visible, selected, mapInstance]);
 
   function handleRefresh() {
-    setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-      toast.success("Map refreshed", { description: "All positions updated.", duration: 2000 });
-    }, 1200);
+    void loadLiveDrivers(true);
   }
 
   return (
@@ -219,12 +345,12 @@ export function LiveMap() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className={PAGE_TITLE}>Live Map Monitoring</h1>
-          <p className={PAGE_SUBTITLE}>Real-time tricycle positions · Sta. Mesa, Manila Service Area</p>
+          <p className={PAGE_SUBTITLE}>Real-time approved online driver positions - Sta. Mesa, Manila Service Area</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-full">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            GPS Live
+            {loadingDrivers ? "Loading GPS" : "GPS Live"}
           </span>
           <button
             onClick={handleRefresh}
@@ -232,7 +358,7 @@ export function LiveMap() {
             className={`${BTN_OUTLINE_SM} disabled:opacity-60`}
           >
             <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
-            {refreshing ? "Refreshing…" : "Refresh"}
+            {refreshing ? "Refreshing..." : "Refresh"}
           </button>
         </div>
       </div>
@@ -300,11 +426,21 @@ export function LiveMap() {
             <div className={CARD_HEADER}>
               <div>
                 <h3 className={SECTION_TITLE}>Active Vehicles</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">{markers.length} tricycles tracked</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{markers.length} tricycles tracked - {syncLabel}</p>
               </div>
             </div>
             <div className="divide-y divide-border overflow-y-auto" style={{ maxHeight: 220 }}>
-              {markers.map((m) => (
+              {markers.length === 0 ? (
+                <div className="px-4 py-6 text-center">
+                  <MapPin size={18} className="mx-auto text-muted-foreground mb-2" />
+                  <p className="text-xs font-semibold text-foreground">
+                    {loadingDrivers ? "Loading live driver positions" : "No approved online drivers with live GPS yet"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Demo markers are hidden. Drivers appear here only after approval, going online, and sending GPS.
+                  </p>
+                </div>
+              ) : markers.map((m) => (
                 <button
                   key={m.id}
                   onClick={() => setSelected(selected?.id === m.id ? null : m)}
