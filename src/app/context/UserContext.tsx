@@ -41,6 +41,22 @@ interface UserContextType {
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
+function showConcurrentSessionWarning() {
+  toast.warning("Concurrent login warning", {
+    description: (
+      <span style={{ color: "#4B0F14", fontWeight: 600 }}>
+        This account is signed in on 3 or more browsers/devices.
+      </span>
+    ),
+    duration: 7000,
+    style: {
+      background: "#FFF8E7",
+      border: "1px solid rgba(75, 15, 20, 0.18)",
+      color: "#4B0F14",
+    },
+  });
+}
+
 export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<UserData | null>(() => {
     try {
@@ -89,10 +105,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       console.log("Current user set:", userData.username);
 
       if (sessionResult.concurrentSessions.length + 1 >= 3) {
-        toast.warning("3 or more active sessions were detected for this account.", {
-          description: "Review your device access or use Sign out all devices from your profile.",
-          duration: 6000,
-        });
+        showConcurrentSessionWarning();
       }
 
       void registerSupabaseSession(userData, Boolean(options.rememberTrustedDevice)).then((remoteSessionResult) => {
@@ -100,10 +113,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setConcurrentSessionCount(remoteSessionResult.concurrentSessionCount);
 
         if (remoteSessionResult.shouldWarnConcurrentLimit) {
-          toast.warning("3 or more active sessions were detected for this account.", {
-            description: "This account is signed in from multiple browsers or devices.",
-            duration: 7000,
-          });
+          showConcurrentSessionWarning();
         }
       });
     } else {
