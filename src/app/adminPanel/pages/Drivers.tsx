@@ -9,6 +9,7 @@ import {
 import { useNavigate } from "../context/NavigationContext";
 import { useAppState } from "../context/AppStateContext";
 import { StatusBadge } from "../components/ui/StatusBadge";
+import { AdminActionConfirmModal } from "../components/AdminActionConfirmModal";
 import {
   BTN_PRIMARY, BTN_SECONDARY, BTN_DANGER, BTN_OUTLINE_SM,
   BTN_ICON_SM, CARD,
@@ -29,6 +30,12 @@ const FLASH_BG: Record<string, string> = {
 const TABS = ["All", "Active", "Pending", "Blocked"] as const;
 type TabKey = typeof TABS[number];
 type DetailTab = "overview" | "documents";
+type DriverConfirmAction = "approve" | "reject" | "block" | "archive" | "approveBatch";
+
+type DriverConfirmRequest = {
+  action: DriverConfirmAction;
+  driver?: Driver;
+};
 
 // ─── Driver Detail Modal ───────────────────────────────────────────────────────
 function DriverDetailModal({
@@ -52,7 +59,6 @@ function DriverDetailModal({
 }) {
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
   const [zoomDoc, setZoomDoc] = useState<{ url: string; title: string } | null>(null);
-  const [confirming, setConfirming] = useState<"block" | "reject" | "archive" | null>(null);
 
   const docs = [
     { label: "Profile Photo",           photo: driver.profilePhoto,                                    icon: <User size={16} /> },
@@ -77,18 +83,6 @@ function DriverDetailModal({
     { label: "Account Status",  value: driver.status,                            icon: <ShieldOff size={13} /> },
     { label: "Driver ID",       value: driver.id,                                icon: <Hash size={13} /> },
   ];
-
-  function handleAction(action: "block" | "reject" | "archive") {
-    if (confirming === action) {
-      if (action === "block")   onBlock();
-      if (action === "reject")  onReject();
-      if (action === "archive") { onArchive(); onClose(); }
-      setConfirming(null);
-    } else {
-      setConfirming(action);
-      setTimeout(() => setConfirming(null), 4000);
-    }
-  }
 
   return (
     <>
@@ -307,37 +301,21 @@ function DriverDetailModal({
                   <CheckCircle size={14} /> Approve Driver
                 </button>
 
-                {confirming === "reject" ? (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-rose-50 border border-rose-200 rounded-lg">
-                    <span className="text-xs font-semibold text-rose-700">Reject this application?</span>
-                    <button onClick={() => handleAction("reject")} className="px-2.5 py-1 rounded-md bg-rose-600 text-white text-xs font-bold hover:bg-rose-700">Confirm</button>
-                    <button onClick={() => setConfirming(null)} className="px-2.5 py-1 rounded-md border border-rose-300 text-rose-700 text-xs font-bold hover:bg-rose-100">Cancel</button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => handleAction("reject")}
-                    className={`${BTN_DANGER} gap-2`}
-                    style={{ background: "#dc2626" }}
-                  >
-                    <XCircle size={14} /> Reject Application
-                  </button>
-                )}
+                <button
+                  onClick={onReject}
+                  className={`${BTN_DANGER} gap-2`}
+                  style={{ background: "#dc2626" }}
+                >
+                  <XCircle size={14} /> Reject Application
+                </button>
               </>
             )}
 
             {driver.status === "Active" && (
               <>
-                {confirming === "block" ? (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-rose-50 border border-rose-200 rounded-lg">
-                    <span className="text-xs font-semibold text-rose-700">Block this driver?</span>
-                    <button onClick={() => handleAction("block")} className="px-2.5 py-1 rounded-md bg-rose-600 text-white text-xs font-bold hover:bg-rose-700">Confirm</button>
-                    <button onClick={() => setConfirming(null)} className="px-2.5 py-1 rounded-md border border-rose-300 text-rose-700 text-xs font-bold hover:bg-rose-100">Cancel</button>
-                  </div>
-                ) : (
-                  <button onClick={() => handleAction("block")} className={`${BTN_SECONDARY} gap-2`}>
-                    <ShieldOff size={14} /> Block Driver
-                  </button>
-                )}
+                <button onClick={onBlock} className={`${BTN_SECONDARY} gap-2`}>
+                  <ShieldOff size={14} /> Block Driver
+                </button>
                 <button onClick={onNavigateMap} className={`${BTN_SECONDARY} gap-2`}>
                   <MapPin size={14} /> View on Map
                 </button>
@@ -355,20 +333,12 @@ function DriverDetailModal({
             )}
 
             {/* Archive — available for all statuses */}
-            {confirming === "archive" ? (
-              <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg">
-                <span className="text-xs font-semibold text-gray-700">Move to Archives?</span>
-                <button onClick={() => handleAction("archive")} className="px-2.5 py-1 rounded-md bg-gray-700 text-white text-xs font-bold hover:bg-gray-800">Confirm</button>
-                <button onClick={() => setConfirming(null)} className="px-2.5 py-1 rounded-md border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-100">Cancel</button>
-              </div>
-            ) : (
-              <button
-                onClick={() => handleAction("archive")}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors"
-              >
-                <Archive size={13} /> Archive Driver
-              </button>
-            )}
+            <button
+              onClick={onArchive}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors"
+            >
+              <Archive size={13} /> Archive Driver
+            </button>
 
             <button onClick={onClose} className={`${BTN_OUTLINE_SM} ml-auto gap-1`}>
               <X size={12} /> Close
@@ -418,7 +388,7 @@ export function Drivers() {
   const [search,         setSearch]         = useState("");
   const [tab,            setTab]            = useState<TabKey>("All");
   const [modalDriverId,  setModalDriverId]  = useState<string | null>(null);
-  const [confirming,     setConfirming]     = useState<Record<string, "block" | "reject">>({});
+  const [confirmRequest, setConfirmRequest] = useState<DriverConfirmRequest | null>(null);
 
   const filtered = drivers.filter((d) => {
     const q = search.toLowerCase();
@@ -436,20 +406,94 @@ export function Drivers() {
 
   const modalDriver = drivers.find(d => d.id === modalDriverId) ?? null;
 
-  function requestConfirm(id: string, action: "block" | "reject") {
-    setConfirming(prev => ({ ...prev, [id]: action }));
-    setTimeout(() => setConfirming(prev => {
-      const next = { ...prev }; delete next[id]; return next;
-    }), 4000);
+  const pendingDrivers = drivers.filter(driver => driver.status === "Pending");
+
+  function openConfirm(action: DriverConfirmAction, driver?: Driver) {
+    setConfirmRequest({ action, driver });
   }
-  function cancelConfirm(id: string) {
-    setConfirming(prev => { const next = { ...prev }; delete next[id]; return next; });
+
+  function closeConfirm() {
+    setConfirmRequest(null);
   }
-  function confirmAction(id: string) {
-    const action = confirming[id];
-    cancelConfirm(id);
-    if (action === "block")  blockDriver(id);
-    if (action === "reject") rejectDriver(id);
+
+  function confirmDriverAction() {
+    if (!confirmRequest) return;
+    const { action, driver } = confirmRequest;
+
+    if (action === "approveBatch") {
+      approveBatch();
+    } else if (driver) {
+      if (action === "approve") approveDriver(driver.id);
+      if (action === "reject") rejectDriver(driver.id);
+      if (action === "block") blockDriver(driver.id);
+      if (action === "archive") archiveDriver(driver.id);
+    }
+
+    closeConfirm();
+    if (modalDriverId && driver?.id === modalDriverId) {
+      closeModal();
+    }
+  }
+
+  function getConfirmCopy(request: DriverConfirmRequest | null) {
+    if (!request) {
+      return {
+        title: "",
+        actionLabel: "",
+        description: "",
+        target: "",
+        confirmLabel: "Confirm",
+        destructive: false,
+      };
+    }
+
+    if (request.action === "approveBatch") {
+      return {
+        title: "Approve All Pending Drivers",
+        actionLabel: "Approve all pending drivers",
+        description: "This will approve every driver application currently marked as pending.",
+        target: `${pendingDrivers.length} pending driver${pendingDrivers.length === 1 ? "" : "s"}`,
+        confirmLabel: "Approve All",
+        destructive: false,
+      };
+    }
+
+    const target = request.driver
+      ? `${request.driver.name} (${request.driver.id})`
+      : "";
+
+    const copy = {
+      approve: {
+        title: "Approve Driver",
+        actionLabel: "Approve driver",
+        description: "This will approve the driver application and activate the account.",
+        confirmLabel: "Approve",
+        destructive: false,
+      },
+      reject: {
+        title: "Reject Driver",
+        actionLabel: "Reject driver",
+        description: "This will reject the pending driver application.",
+        confirmLabel: "Reject",
+        destructive: true,
+      },
+      block: {
+        title: "Suspend User",
+        actionLabel: "Suspend user",
+        description: "This will suspend the active driver account from operating in the system.",
+        confirmLabel: "Suspend",
+        destructive: true,
+      },
+      archive: {
+        title: "Delete Record",
+        actionLabel: "Delete record",
+        description: "This will move the driver record to Archives for recovery instead of permanently deleting it.",
+        confirmLabel: "Delete Record",
+        destructive: true,
+      },
+    }[request.action];
+
+    return { ...copy, target };
   }
 
   function openModal(id: string) { setModalDriverId(id); }
@@ -465,7 +509,8 @@ export function Drivers() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={approveBatch}
+            onClick={() => openConfirm("approveBatch")}
+            disabled={pendingDriverCount === 0}
             className={`${BTN_PRIMARY} relative`}
             style={{ background: MAROON }}
           >
@@ -560,13 +605,11 @@ export function Drivers() {
               <tbody className="divide-y divide-border">
                 {filtered.map(d => {
                   const flash        = recentChanges[d.id];
-                  const isConfirming = !!confirming[d.id];
                   return (
                     <tr
                       key={d.id}
                       className={`transition-all duration-500 ${
                         flash        ? FLASH_BG[flash] :
-                        isConfirming ? "bg-rose-50/60" :
                         "hover:bg-muted/30"
                       }`}
                     >
@@ -613,20 +656,7 @@ export function Drivers() {
                       <td className="px-4 py-3"><StatusBadge status={d.license} /></td>
                       {/* Actions */}
                       <td className="px-4 py-3">
-                        {isConfirming ? (
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-semibold text-rose-600 mr-1">
-                              {confirming[d.id] === "block" ? "Block?" : "Reject?"}
-                            </span>
-                            <button onClick={() => confirmAction(d.id)} className={`${BTN_ICON_SM} text-white bg-rose-500 border-rose-500 hover:bg-rose-600`} title="Confirm">
-                              <Check size={13} />
-                            </button>
-                            <button onClick={() => cancelConfirm(d.id)} className={`${BTN_ICON_SM} hover:text-foreground`} title="Cancel">
-                              <X size={13} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5">
                             {/* ── View Details button ── */}
                             <button
                               onClick={() => openModal(d.id)}
@@ -639,14 +669,14 @@ export function Drivers() {
                             {d.status === "Pending" && (
                               <>
                                 <button
-                                  onClick={() => approveDriver(d.id)}
+                                  onClick={() => openConfirm("approve", d)}
                                   className={`${BTN_ICON_SM} text-green-600 border-green-200 bg-green-50 hover:bg-green-100`}
                                   title="Quick approve"
                                 >
                                   <Check size={13} />
                                 </button>
                                 <button
-                                  onClick={() => requestConfirm(d.id, "reject")}
+                                  onClick={() => openConfirm("reject", d)}
                                   className={`${BTN_ICON_SM} text-red-500 border-red-200 bg-red-50 hover:bg-red-100`}
                                   title="Reject application"
                                 >
@@ -656,7 +686,7 @@ export function Drivers() {
                             )}
                             {d.status === "Active" && (
                               <button
-                                onClick={() => requestConfirm(d.id, "block")}
+                                onClick={() => openConfirm("block", d)}
                                 className={`${BTN_ICON_SM} hover:text-rose-600 hover:border-rose-300 hover:bg-rose-50`}
                                 title="Block driver"
                               >
@@ -672,8 +702,7 @@ export function Drivers() {
                                 <CheckCircle size={13} />
                               </button>
                             )}
-                          </div>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -689,9 +718,9 @@ export function Drivers() {
         <DriverDetailModal
           driver={modalDriver}
           onClose={closeModal}
-          onApprove={() => { approveDriver(modalDriver.id); closeModal(); }}
-          onReject={() => { rejectDriver(modalDriver.id); closeModal(); }}
-          onBlock={() => { blockDriver(modalDriver.id); closeModal(); }}
+          onApprove={() => openConfirm("approve", modalDriver)}
+          onReject={() => openConfirm("reject", modalDriver)}
+          onBlock={() => openConfirm("block", modalDriver)}
           onReinstate={() => { reinstateDriver(modalDriver.id); closeModal(); }}
           onNavigateMap={() => {
             navigate("map", {
@@ -703,9 +732,15 @@ export function Drivers() {
             });
             closeModal();
           }}
-          onArchive={() => { archiveDriver(modalDriver.id); closeModal(); }}
+          onArchive={() => openConfirm("archive", modalDriver)}
         />
       )}
+      <AdminActionConfirmModal
+        open={Boolean(confirmRequest)}
+        {...getConfirmCopy(confirmRequest)}
+        onConfirm={confirmDriverAction}
+        onCancel={closeConfirm}
+      />
     </div>
   );
 }

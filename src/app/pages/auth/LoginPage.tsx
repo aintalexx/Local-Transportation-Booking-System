@@ -91,6 +91,7 @@ export default function LoginPage() {
               .select("*")
               .eq("phone", normalizedPhone)
               .eq("role", "driver")
+              .eq("is_deleted", false)
               .maybeSingle()
           : { data: null };
 
@@ -364,6 +365,7 @@ export default function LoginPage() {
             .from("profiles")
             .select("role")
             .eq("email", authEmail)
+            .eq("is_deleted", false)
             .maybeSingle();
           if (profile && profile.role === "passenger") {
             isPassenger = true;
@@ -416,6 +418,7 @@ export default function LoginPage() {
               .from("profiles")
               .select("*")
               .eq("email", targetEmail)
+              .eq("is_deleted", false)
               .maybeSingle();
 
             if (profile && profile.role === "passenger") {

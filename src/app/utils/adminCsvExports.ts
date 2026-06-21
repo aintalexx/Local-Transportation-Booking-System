@@ -76,6 +76,7 @@ export async function exportPassengersCsv(search: string): Promise<ExportResult>
     .from("profiles")
     .select("id, username, full_name, first_name, middle_name, surname, suffix, email, phone, account_status, registration_date, created_at, updated_at")
     .eq("role", "passenger")
+    .eq("is_deleted", false)
     .order("created_at", { ascending: false });
 
   if (error) return { success: false, count: 0, error: error.message };
@@ -108,6 +109,7 @@ export async function exportRatingsCsv(search: string): Promise<ExportResult> {
   const { data, error } = await supabase
     .from("ratings")
     .select("id, booking_id, passenger_id, driver_id, rating, feedback, created_at")
+    .eq("is_deleted", false)
     .order("created_at", { ascending: false });
 
   if (error) return { success: false, count: 0, error: error.message };

@@ -4,8 +4,10 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
-import { getAllUsers, updateUser } from "../../utils/userDatabase";
+import { getAllUsers, getAllUsersIncludingDeleted, restoreUser, updateUser } from "../../utils/userDatabase";
 import { getAllDriverRatingSummaries, subscribeToRatings } from "../../utils/supabaseRatings";
+import { isSoftDeletedRecord, restoreSupabaseRecord, softDeleteSupabaseRecord } from "../../utils/softDelete";
+import { validateBookingStatusTransition, validateDriverWorkflowTransition, type AdminDriverAction, type AdminDriverStatus } from "../../utils/adminWorkflowValidation";
 
 /** Returns true if the string looks like a Supabase UUID */
 function isUUID(id: string): boolean {
@@ -78,6 +80,8 @@ export interface Driver {
   clearancePhoto?: string;
   vehiclePhoto?: string;
   profilePhoto?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
 }
 
 export interface Booking {
@@ -279,6 +283,8 @@ function mapDbDriverToAdminDriver(p: any): Driver {
     clearancePhoto: p.clearance_photo || "",
     vehiclePhoto: p.vehicle_photo || "",
     profilePhoto: p.profile_photo || "",
+    isDeleted: Boolean(p.is_deleted),
+    deletedAt: p.deleted_at || undefined,
   } satisfies Driver;
 }
 
@@ -440,11 +446,57 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setNotifications((prev) => [{ ...n, id: notifSeq, read: false }, ...prev]);
   }
 
+  function validateDriverAction(id: string, action: AdminDriverAction, source: Driver[] = drivers): Driver | null {
+    const driver = source.find(d => d.id === id);
+    if (!driver) return null;
+
+    const transition = validateDriverWorkflowTransition(driver.status as AdminDriverStatus, action);
+    if (!transition.valid) {
+      toast.error("Invalid driver status change", { description: transition.message });
+      return null;
+    }
+
+    return driver;
+  }
+
   // Fetch initial data and set up real-time subscriptions
   useEffect(() => {
     const localReset = clearStoredLocalDriversOnce();
     if (localReset.clearedArchive) {
       setArchivedDrivers([]);
+    }
+
+    async function loadArchivedDrivers() {
+      const localArchived = getArchivedDrivers();
+      const localSoftDeletedDrivers = getAllUsersIncludingDeleted()
+        .filter(u => u.role === "driver" && isSoftDeletedRecord(u))
+        .map(mapLocalUserToDriver)
+        .map(driver => normalizeDriverTheme({ ...driver, status: "Archived" as DriverStatus }));
+
+      let supabaseArchived: Driver[] = [];
+      if (supabase) {
+        const { data, error } = await supabase
+          .from("drivers")
+          .select("*")
+          .eq("is_deleted", true)
+          .order("deleted_at", { ascending: false });
+
+        if (!error && data) {
+          supabaseArchived = data
+            .map(mapDbDriverToAdminDriver)
+            .map(driver => normalizeDriverTheme({ ...driver, status: "Archived" as DriverStatus }));
+        }
+      }
+
+      const merged: Driver[] = [];
+      [...supabaseArchived, ...localSoftDeletedDrivers, ...localArchived].forEach((driver) => {
+        if (!merged.some(existing => sameDriverRecord(existing, driver))) {
+          merged.push(driver);
+        }
+      });
+
+      setArchivedDrivers(merged);
+      saveArchivedDrivers(merged);
     }
 
     async function loadDrivers() {
@@ -455,6 +507,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         const { data, error } = await supabase
           .from("drivers")
           .select("*")
+          .eq("is_deleted", false)
           .order("created_at", { ascending: false });
 
       if (!error && data) {
@@ -471,7 +524,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
                 ratingCount: summary.totalRatings,
               };
             })
-            .filter(driver => !isArchivedDriver(driver, archivedSnapshot));
+            .filter(driver => !isArchivedDriver(driver, archivedSnapshot) && !isSoftDeletedRecord(driver));
         }
       }
 
@@ -481,7 +534,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         .filter(u => u.role === "driver")
         .map(mapLocalUserToDriver)
         .map(normalizeDriverTheme)
-        .filter(driver => !isArchivedDriver(driver));
+        .filter(driver => !isArchivedDriver(driver) && !isSoftDeletedRecord(driver));
 
       // Deduplicate: prefer Supabase record if the same driver exists in both
       const merged = [...supabaseDrivers];
@@ -502,6 +555,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       const { data, error } = await supabase
         .from("bookings")
         .select("*")
+        .eq("is_deleted", false)
         .order("created_at", { ascending: false });
 
       if (!error && data && data.length > 0) {
@@ -515,6 +569,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    loadArchivedDrivers();
     loadDrivers();
 
     if (!supabase) return;
@@ -529,7 +584,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         (payload) => {
           if (payload.eventType === "INSERT") {
             const newDriver = mapDbDriverToAdminDriver(payload.new);
-            if (isArchivedDriver(newDriver)) return;
+            if (isArchivedDriver(newDriver) || isSoftDeletedRecord(payload.new)) return;
             setDrivers((prev) => {
               if (prev.some(d => d.id === newDriver.id)) return prev;
               return [newDriver, ...prev];
@@ -543,10 +598,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             flashRow(newDriver.id, "success");
           } else if (payload.eventType === "UPDATE") {
             const updatedDriver = mapDbDriverToAdminDriver(payload.new);
-            if (isArchivedDriver(updatedDriver)) {
+            if (isArchivedDriver(updatedDriver) || isSoftDeletedRecord(payload.new)) {
               setDrivers((prev) => prev.filter(d => !sameDriverRecord(d, updatedDriver)));
+              setArchivedDrivers((prev) => {
+                if (prev.some(d => sameDriverRecord(d, updatedDriver))) return prev;
+                const next = [{ ...updatedDriver, status: "Archived" as DriverStatus }, ...prev];
+                saveArchivedDrivers(next);
+                return next;
+              });
               return;
             }
+            setArchivedDrivers((prev) => {
+              const next = prev.filter(d => !sameDriverRecord(d, updatedDriver));
+              if (next.length !== prev.length) saveArchivedDrivers(next);
+              return next;
+            });
             setDrivers((prev) => prev.map(d => d.id === updatedDriver.id ? updatedDriver : d));
             flashRow(updatedDriver.id, "success");
           } else if (payload.eventType === "DELETE") {
@@ -563,6 +629,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         { event: "*", schema: "public", table: "bookings" },
         (payload) => {
           if (payload.eventType === "INSERT") {
+            if (isSoftDeletedRecord(payload.new)) return;
             const newBooking = mapRowToBooking(payload.new);
             setBookings((prev) => {
               if (prev.some(b => b.id === newBooking.id)) return prev;
@@ -576,6 +643,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             });
             flashRow(newBooking.id, "success");
           } else if (payload.eventType === "UPDATE") {
+            if (isSoftDeletedRecord(payload.new)) {
+              setBookings((prev) => prev.filter(b => b.id !== payload.new.id));
+              return;
+            }
             const updatedBooking = mapRowToBooking(payload.new);
             setBookings((prev) => prev.map(b => b.id === updatedBooking.id ? updatedBooking : b));
             flashRow(updatedBooking.id, "success");
@@ -633,6 +704,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   const approveDriver = useCallback(async (id: string) => {
+    if (!validateDriverAction(id, "approve")) return;
+
     if (!isUUID(id)) {
       updateDriverState(id, "approved", "Active", "Approved");
       await syncLocalDriverApprovalToSupabase(id, "approved");
@@ -651,6 +724,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const rejectDriver = useCallback(async (id: string) => {
+    if (!validateDriverAction(id, "reject")) return;
+
     if (!isUUID(id)) {
       updateDriverState(id, "rejected", "Blocked", "Blocked");
       await syncLocalDriverApprovalToSupabase(id, "rejected");
@@ -673,6 +748,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const blockDriver = useCallback(async (id: string) => {
+    if (!validateDriverAction(id, "block")) return;
+
     if (!isUUID(id)) {
       updateDriverState(id, "rejected", "Blocked", "Blocked");
       await syncLocalDriverApprovalToSupabase(id, "rejected");
@@ -695,6 +772,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const reinstateDriver = useCallback(async (id: string) => {
+    if (!validateDriverAction(id, "reinstate")) return;
+
     if (!isUUID(id)) {
       updateDriverState(id, "approved", "Active", "Approved");
       await syncLocalDriverApprovalToSupabase(id, "approved");
@@ -768,7 +847,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // ─── Archive actions ──────────────────────────────────────────────────────
   const archiveDriver = useCallback(async (id: string) => {
     // Find the driver in active list
-    const driver = drivers.find(d => d.id === id);
+    const driver = validateDriverAction(id, "archive");
     if (!driver) return;
 
     const archived: Driver = { ...driver, status: "Archived" as DriverStatus };
@@ -783,17 +862,42 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setDrivers(prev => prev.filter(d => !sameDriverRecord(d, archived)));
 
     const matchedLocal = findMatchingLocalDriver(driver);
+    const deletedAt = new Date().toISOString();
     if (matchedLocal) {
-      updateUser(matchedLocal.username, { approvalStatus: "rejected", role: "driver" });
+      updateUser(matchedLocal.username, {
+        approvalStatus: "rejected",
+        role: "driver",
+        accountStatus: "Archived",
+        isDeleted: true,
+        deletedAt,
+        deletedBy: "admin",
+      });
     }
 
     // Update localStorage for local-only drivers
     if (!isUUID(id)) {
-      updateUser(id, { approvalStatus: "rejected", role: "driver" }); // mark as rejected so they don't re-appear
+      updateUser(id, {
+        approvalStatus: "rejected",
+        role: "driver",
+        accountStatus: "Archived",
+        isDeleted: true,
+        deletedAt,
+        deletedBy: "admin",
+      });
     } else if (supabase) {
-      // For Supabase drivers, mark as archived/rejected
-      await supabase.from("drivers").update({ approval_status: "rejected", account_status: "Archived", updated_at: new Date().toISOString() }).eq("id", id);
-      await supabase.from("profiles").update({ approval_status: "rejected", updated_at: new Date().toISOString() }).eq("id", id);
+      const driverResult = await softDeleteSupabaseRecord("drivers", id, {
+        approval_status: "rejected",
+        account_status: "Archived",
+      });
+      const profileResult = await softDeleteSupabaseRecord("profiles", id, {
+        approval_status: "rejected",
+        account_status: "Archived",
+      });
+      if (!driverResult.success || !profileResult.success) {
+        toast.error("Driver archived locally, but Supabase soft-delete failed.", {
+          description: driverResult.error || profileResult.error,
+        });
+      }
     }
 
     toast.success(`${driver.name} has been archived.`);
@@ -807,7 +911,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [drivers, archivedDrivers]);
 
   const restoreDriver = useCallback(async (id: string) => {
-    const driver = archivedDrivers.find(d => d.id === id);
+    const driver = validateDriverAction(id, "restore", archivedDrivers);
     if (!driver) return;
 
     const restored: Driver = { ...driver, status: "Active" as DriverStatus, license: "Approved" as LicenseStatus };
@@ -823,10 +927,30 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     // Update storage
     if (!isUUID(id)) {
-      updateUser(id, { approvalStatus: "approved" });
+      restoreUser(id);
+      const matchedLocal = findMatchingLocalDriver(driver, getAllUsersIncludingDeleted());
+      if (matchedLocal) {
+        restoreUser(matchedLocal.username);
+        updateUser(matchedLocal.username, { approvalStatus: "approved", accountStatus: "Active" });
+      } else {
+        updateUser(id, { approvalStatus: "approved", accountStatus: "Active" });
+      }
     } else if (supabase) {
-      await supabase.from("drivers").update({ approval_status: "approved", account_status: "Active", updated_at: new Date().toISOString() }).eq("id", id);
-      await syncDriverToProfile(id);
+      const driverResult = await restoreSupabaseRecord("drivers", id, {
+        approval_status: "approved",
+        account_status: "Active",
+      });
+      const profileResult = await restoreSupabaseRecord("profiles", id, {
+        approval_status: "approved",
+        account_status: "Active",
+      });
+      if (!driverResult.success || !profileResult.success) {
+        toast.error("Driver restored locally, but Supabase recovery failed.", {
+          description: driverResult.error || profileResult.error,
+        });
+      } else {
+        await syncDriverToProfile(id);
+      }
     }
 
     toast.success(`${driver.name} has been restored.`);
@@ -842,17 +966,28 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // ─── Booking actions ──────────────────────────────────────────────────────
   const cancelBooking = useCallback(async (id: string) => {
     if (!supabase) return;
+
+    const booking = bookings.find(b => b.id === id);
+    if (!booking) return;
+
+    const transition = validateBookingStatusTransition(booking.status, "Cancelled");
+    if (!transition.valid) {
+      toast.error("Invalid booking status change", { description: transition.message });
+      return;
+    }
+
     const { error } = await supabase
       .from("bookings")
       .update({ status: "cancelled" })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("is_deleted", false);
 
     if (error) {
       toast.error("Failed to cancel booking", { description: error.message });
     } else {
       toast.success("Booking cancelled successfully");
     }
-  }, []);
+  }, [bookings]);
 
   // ─── Notification actions ─────────────────────────────────────────────────
   const markRead = useCallback((id: number) => {

@@ -22,6 +22,8 @@ export type SupabaseDriverRow = {
   account_status: "Active" | "Blocked" | "Archived" | "Suspended";
   created_at: string;
   updated_at: string;
+  is_deleted?: boolean | null;
+  deleted_at?: string | null;
 };
 
 /**
@@ -79,6 +81,7 @@ export async function getSupabaseDriverByPhone(phone: string): Promise<SupabaseD
     .from("drivers")
     .select("*")
     .in("phone", candidatePhones)
+    .eq("is_deleted", false)
     .limit(1)
     .maybeSingle();
 
@@ -94,6 +97,7 @@ export async function getSupabaseDriverByPhone(phone: string): Promise<SupabaseD
   const { data: possibleRows, error: fallbackError } = await supabase
     .from("drivers")
     .select("*")
+    .eq("is_deleted", false)
     .limit(100);
 
   if (fallbackError) {
@@ -163,6 +167,7 @@ export async function getSupabaseDriverById(id: string): Promise<SupabaseDriverR
     .from("drivers")
     .select("*")
     .eq("id", id)
+    .eq("is_deleted", false)
     .maybeSingle();
 
   if (error) {
@@ -214,6 +219,7 @@ export async function getAllSupabaseDrivers(): Promise<SupabaseDriverRow[]> {
   const { data, error } = await supabase
     .from("drivers")
     .select("*")
+    .eq("is_deleted", false)
     .order("created_at", { ascending: false });
 
   if (error) {

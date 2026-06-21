@@ -10,6 +10,7 @@ import {
   BTN_PRIMARY, BTN_SECONDARY, BTN_OUTLINE_SM,
   CARD, CARD_HEADER, SECTION_TITLE, PAGE_TITLE, PAGE_SUBTITLE,
 } from "../lib/ui";
+import { AdminActionConfirmModal } from "../components/AdminActionConfirmModal";
 
 const MAROON = "#6B0E1A";
 const GOLD = "#C49A1A";
@@ -265,6 +266,7 @@ function RoutesTab() {
   const [routeList, setRouteList] = useState(routes);
   const [adding, setAdding] = useState(false);
   const [newRoute, setNewRoute] = useState("");
+  const [deleteRouteId, setDeleteRouteId] = useState<number | null>(null);
 
   function toggleRoute(id: number) {
     setRouteList((prev) =>
@@ -294,6 +296,8 @@ function RoutesTab() {
     toast.error("Route removed", { description: route?.name, duration: 2500 });
   }
 
+  const routeToDelete = routeList.find((route) => route.id === deleteRouteId) || null;
+
   return (
     <div className="max-w-xl">
       <SectionTitle>Managed Routes</SectionTitle>
@@ -312,7 +316,7 @@ function RoutesTab() {
               <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Toggle value={r.active} onChange={() => toggleRoute(r.id)} />
                 <button
-                  onClick={() => removeRoute(r.id)}
+                  onClick={() => setDeleteRouteId(r.id)}
                   className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-red-50 transition-colors"
                 >
                   <Trash2 size={13} />
@@ -348,6 +352,21 @@ function RoutesTab() {
         )}
       </div>
 
+      <AdminActionConfirmModal
+        open={Boolean(routeToDelete)}
+        title="Delete Record"
+        actionLabel="Delete route record"
+        description="This will remove the selected route record from the settings list."
+        target={routeToDelete?.name}
+        confirmLabel="Delete Record"
+        destructive
+        onConfirm={() => {
+          if (routeToDelete) removeRoute(routeToDelete.id);
+          setDeleteRouteId(null);
+        }}
+        onCancel={() => setDeleteRouteId(null)}
+      />
+
       <div className="mt-4 p-4 rounded-xl border border-border bg-card flex items-start gap-3">
         <Map size={14} className="mt-0.5 shrink-0" style={{ color: GOLD }} />
         <div>
@@ -361,11 +380,26 @@ function RoutesTab() {
 
 function AccessTab() {
   const [adminList, setAdminList] = useState(admins);
+  const [deletedAdmins, setDeletedAdmins] = useState<typeof admins>([]);
+  const [adminToRemoveEmail, setAdminToRemoveEmail] = useState<string | null>(null);
 
   function removeAdmin(email: string) {
+    const admin = adminList.find((a) => a.email === email);
+    if (!admin) return;
     setAdminList((prev) => prev.filter((a) => a.email !== email));
-    toast.error("User removed", { description: email, duration: 2500 });
+    setDeletedAdmins((prev) => [{ ...admin }, ...prev.filter((a) => a.email !== email)]);
+    toast.error("User archived", { description: email, duration: 2500 });
   }
+
+  function restoreAdmin(email: string) {
+    const admin = deletedAdmins.find((a) => a.email === email);
+    if (!admin) return;
+    setDeletedAdmins((prev) => prev.filter((a) => a.email !== email));
+    setAdminList((prev) => [...prev, admin]);
+    toast.success("Admin restored", { description: email, duration: 2500 });
+  }
+
+  const adminToRemove = adminList.find((admin) => admin.email === adminToRemoveEmail) || null;
 
   const roleColors: Record<string, string> = {
     "Super Admin": "bg-red-50 text-red-700 border-red-200",
@@ -393,7 +427,7 @@ function AccessTab() {
               </span>
               {a.role !== "Super Admin" && (
                 <button
-                  onClick={() => removeAdmin(a.email)}
+                  onClick={() => setAdminToRemoveEmail(a.email)}
                   className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
                 >
                   <Trash2 size={13} />
@@ -409,6 +443,49 @@ function AccessTab() {
           <Plus size={13} /> Invite new admin
         </button>
       </div>
+
+      <AdminActionConfirmModal
+        open={Boolean(adminToRemove)}
+        title="Remove Admin"
+        actionLabel="Remove admin"
+        description="This will suspend admin access and move the admin account out of the active access list."
+        target={adminToRemove ? `${adminToRemove.name} (${adminToRemove.email})` : ""}
+        confirmLabel="Remove Admin"
+        destructive
+        onConfirm={() => {
+          if (adminToRemove) removeAdmin(adminToRemove.email);
+          setAdminToRemoveEmail(null);
+        }}
+        onCancel={() => setAdminToRemoveEmail(null)}
+      />
+
+      {deletedAdmins.length > 0 && (
+        <>
+          <SectionTitle>Archived Admin Accounts</SectionTitle>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="divide-y divide-border">
+              {deletedAdmins.map((a) => (
+                <div key={a.email} className="flex items-center gap-4 px-5 py-3.5 hover:bg-muted/30 transition-colors">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white shrink-0 opacity-60"
+                    style={{ background: MAROON }}>
+                    {a.avatar}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground">{a.name}</p>
+                    <p className="text-xs text-muted-foreground">{a.email}</p>
+                  </div>
+                  <button
+                    onClick={() => restoreAdmin(a.email)}
+                    className={BTN_OUTLINE_SM}
+                  >
+                    <RefreshCw size={12} /> Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       <SectionTitle>Role Permissions</SectionTitle>
       <div className="bg-card border border-border rounded-xl overflow-hidden">

@@ -6,6 +6,7 @@ import { Badge } from "../../components/ui/badge";
 import { User, Phone, Mail, Bike, Star, DollarSign, LogOut, FileText, HelpCircle, Trash2, ShieldCheck, MonitorX } from "lucide-react";
 import { useUser } from "../../context/UserContext";
 import { deleteUser } from "../../utils/userDatabase";
+import { softDeleteCurrentUserAccount } from "../../utils/softDelete";
 import { toast } from "sonner";
 import { formatPersonName } from "../../utils/nameFormatting";
 
@@ -48,30 +49,35 @@ export default function DriverProfile() {
     }
   };
 
-  const handleDeleteAccount = () => {
+  const handleDeleteAccount = async () => {
     if (!currentUser) return;
 
     const confirmation = confirm(
-      "Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently deleted."
+      "Are you sure you want to delete your account? Your account will be archived and can be restored by a Super Admin."
     );
 
     if (!confirmation) return;
 
     const secondConfirmation = confirm(
-      "This is your last chance! Are you absolutely sure you want to delete your account?"
+      "This is your last chance. Continue archiving this account?"
     );
 
     if (!secondConfirmation) return;
 
-    // Delete from database
+    const onlineResult = await softDeleteCurrentUserAccount(currentUser);
+    if (!onlineResult.success) {
+      toast.error("Failed to archive account.", { description: onlineResult.error });
+      return;
+    }
+
     const success = deleteUser(currentUser.username);
 
     if (success) {
-      toast.success("Account deleted successfully");
+      toast.success("Account archived successfully");
       logout();
       navigate("/login");
     } else {
-      toast.error("Failed to delete account. Please try again.");
+      toast.error("Failed to archive account. Please try again.");
     }
   };
 

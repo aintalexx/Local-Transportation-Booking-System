@@ -1,9 +1,11 @@
 import { validatePositiveMoney } from "./validators";
+import { applyLocalRestore, applyLocalSoftDelete, isSoftDeletedRecord, type SoftDeleteFields } from "./softDelete";
+import { validateBookingStatusTransition } from "./adminWorkflowValidation";
 
 // Booking Database using localStorage
 // This stores all bookings and handles booking lifecycle
 
-export interface BookingData {
+export interface BookingData extends SoftDeleteFields {
   id: string;
   passengerUsername: string;
   passengerName: string;
@@ -93,6 +95,17 @@ export function getAllBookings(): BookingData[] {
   try {
     const bookingsJson = localStorage.getItem(BOOKINGS_KEY);
     if (!bookingsJson) return [];
+    return (JSON.parse(bookingsJson) as BookingData[]).filter(booking => !isSoftDeletedRecord(booking));
+  } catch (error) {
+    console.error("Error reading bookings database:", error);
+    return [];
+  }
+}
+
+export function getAllBookingsIncludingDeleted(): BookingData[] {
+  try {
+    const bookingsJson = localStorage.getItem(BOOKINGS_KEY);
+    if (!bookingsJson) return [];
     return JSON.parse(bookingsJson);
   } catch (error) {
     console.error("Error reading bookings database:", error);
@@ -111,7 +124,7 @@ function saveAllBookings(bookings: BookingData[]): void {
 }
 
 export function upsertBooking(bookingData: BookingData): BookingData {
-  const bookings = getAllBookings();
+  const bookings = getAllBookingsIncludingDeleted();
   const bookingIndex = bookings.findIndex(b => b.id === bookingData.id);
   const nextBooking = {
     ...bookingData,
@@ -150,7 +163,7 @@ export function createBooking(bookingData: Omit<BookingData, "id" | "createdAt" 
     throw new Error("Distance must be greater than 0 and realistic.");
   }
 
-  const bookings = getAllBookings();
+  const bookings = getAllBookingsIncludingDeleted();
 
   const newBooking: BookingData = {
     ...bookingData,
@@ -249,6 +262,12 @@ export function updateBookingStatus(bookingId: string, status: BookingData["stat
       return false;
     }
 
+    const transition = validateBookingStatusTransition(bookings[bookingIndex].status, status);
+    if (!transition.valid) {
+      console.error(transition.message || "Invalid booking status transition");
+      return false;
+    }
+
     bookings[bookingIndex] = {
       ...bookings[bookingIndex],
       ...updates,
@@ -275,6 +294,14 @@ export function updateBooking(bookingId: string, updates: Partial<BookingData>):
     if (bookingIndex === -1) {
       console.error("Booking not found:", bookingId);
       return null;
+    }
+
+    if (updates.status) {
+      const transition = validateBookingStatusTransition(bookings[bookingIndex].status, updates.status);
+      if (!transition.valid) {
+        console.error(transition.message || "Invalid booking status transition");
+        return null;
+      }
     }
 
     bookings[bookingIndex] = {
@@ -321,6 +348,46 @@ export function cancelBooking(bookingId: string, reason = ""): boolean {
   return updateBookingStatus(bookingId, "cancelled", {
     ...(trimmedReason ? { cancellationReason: trimmedReason } : {}),
   });
+}
+
+export function deleteBooking(bookingId: string, deletedBy = "admin"): boolean {
+  try {
+    const bookings = getAllBookingsIncludingDeleted();
+    const bookingIndex = bookings.findIndex(b => b.id === bookingId);
+
+    if (bookingIndex === -1) {
+      console.error("Booking not found for deletion:", bookingId);
+      return false;
+    }
+
+    bookings[bookingIndex] = applyLocalSoftDelete(bookings[bookingIndex], deletedBy);
+    saveAllBookings(bookings);
+    console.log("Booking soft-deleted:", bookingId);
+    return true;
+  } catch (error) {
+    console.error("Error deleting booking:", error);
+    return false;
+  }
+}
+
+export function restoreBooking(bookingId: string, restoredBy = "admin"): boolean {
+  try {
+    const bookings = getAllBookingsIncludingDeleted();
+    const bookingIndex = bookings.findIndex(b => b.id === bookingId);
+
+    if (bookingIndex === -1) {
+      console.error("Booking not found for restore:", bookingId);
+      return false;
+    }
+
+    bookings[bookingIndex] = applyLocalRestore(bookings[bookingIndex], restoredBy);
+    saveAllBookings(bookings);
+    console.log("Booking restored:", bookingId);
+    return true;
+  } catch (error) {
+    console.error("Error restoring booking:", error);
+    return false;
+  }
 }
 
 // Get passenger's booking history

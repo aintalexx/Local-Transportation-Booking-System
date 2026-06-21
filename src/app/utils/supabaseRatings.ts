@@ -25,6 +25,8 @@ export type RatingRow = {
   rating: number;
   feedback: string | null;
   created_at: string;
+  is_deleted?: boolean | null;
+  deleted_at?: string | null;
 };
 
 export async function getBookingRating(bookingId: string): Promise<RatingRow | null> {
@@ -34,6 +36,7 @@ export async function getBookingRating(bookingId: string): Promise<RatingRow | n
     .from("ratings")
     .select("*")
     .eq("booking_id", bookingId)
+    .eq("is_deleted", false)
     .maybeSingle();
 
   if (error || !data) return null;
@@ -114,6 +117,7 @@ export async function getDriverRatingSummary(user: UserData): Promise<DriverRati
     .from("ratings")
     .select("*")
     .eq("driver_id", driverId)
+    .eq("is_deleted", false)
     .order("created_at", { ascending: false });
 
   if (error || !data || data.length === 0) {
@@ -152,6 +156,7 @@ export async function getAllDriverRatingSummaries(): Promise<Record<string, Driv
   const { data, error } = await supabase
     .from("ratings")
     .select("*")
+    .eq("is_deleted", false)
     .order("created_at", { ascending: false });
 
   if (error || !data) return {};

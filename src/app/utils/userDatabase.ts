@@ -1,10 +1,11 @@
 import { formatPHPhoneInput, validateEmail, validatePHPhone, validatePassword, validateUsername } from "./validators";
 import { normalizeDisplayName, normalizeOptionalSuffix } from "./nameFormatting";
+import { applyLocalRestore, applyLocalSoftDelete, isSoftDeletedRecord, type SoftDeleteFields } from "./softDelete";
 
 // User Database using localStorage
 // This stores multiple users and handles registration/login
 
-export interface UserData {
+export interface UserData extends SoftDeleteFields {
   supabaseId?: string;
   displayName?: string;
   username: string;
@@ -52,6 +53,17 @@ function sanitizeSessionUser(user: UserData): UserData {
 
 // Get all users from database
 export function getAllUsers(): UserData[] {
+  try {
+    const usersJson = localStorage.getItem(USERS_KEY);
+    if (!usersJson) return [];
+    return (JSON.parse(usersJson) as UserData[]).filter(user => !isSoftDeletedRecord(user));
+  } catch (error) {
+    console.error("Error reading users database:", error);
+    return [];
+  }
+}
+
+export function getAllUsersIncludingDeleted(): UserData[] {
   try {
     const usersJson = localStorage.getItem(USERS_KEY);
     if (!usersJson) return [];
@@ -150,7 +162,7 @@ export function emailExists(email: string, exceptUsername?: string): boolean {
 // Register a new user
 export function registerUser(userData: UserData): { success: boolean; message: string } {
   try {
-    const users = getAllUsers();
+    const users = getAllUsersIncludingDeleted();
     const normalizedUser = {
       ...userData,
       username: userData.username.trim(),
@@ -254,7 +266,7 @@ export function resetLocalUserPassword(identifier: string, nextPassword: string)
       return { success: false, message: passwordCheck.message };
     }
 
-    const users = getAllUsers();
+    const users = getAllUsersIncludingDeleted();
     const normalizedPhone = formatPHPhoneInput(identifier);
     const normalizedLower = identifier.trim().toLowerCase();
     const userIndex = users.findIndex(
@@ -294,7 +306,7 @@ export function resetLocalUserPassword(identifier: string, nextPassword: string)
 
 export function updateUser(identifier: string, updatedData: Partial<UserData>): boolean {
   try {
-    const users = getAllUsers();
+    const users = getAllUsersIncludingDeleted();
     const userIndex = users.findIndex(u => u.username === identifier || u.supabaseId === identifier);
     const actualUsername = userIndex !== -1 ? users[userIndex].username : (updatedData.username || identifier);
 
@@ -355,22 +367,49 @@ export function updateUser(identifier: string, updatedData: Partial<UserData>): 
   }
 }
 
-// Delete user
+// Soft-delete user so Super Admin can restore it later.
 export function deleteUser(username: string): boolean {
   try {
-    const users = getAllUsers();
-    const filteredUsers = users.filter(u => u.username !== username);
+    const users = getAllUsersIncludingDeleted();
+    const userIndex = users.findIndex(u => u.username === username);
 
-    if (filteredUsers.length === users.length) {
+    if (userIndex === -1) {
       console.error("User not found for deletion:", username);
       return false;
     }
 
-    saveAllUsers(filteredUsers);
-    console.log("User deleted successfully:", username);
+    users[userIndex] = {
+      ...applyLocalSoftDelete(users[userIndex], "self"),
+      accountStatus: "Archived",
+    };
+    saveAllUsers(users);
+    console.log("User soft-deleted successfully:", username);
     return true;
   } catch (error) {
     console.error("Error deleting user:", error);
+    return false;
+  }
+}
+
+export function restoreUser(username: string, restoredBy = "admin"): boolean {
+  try {
+    const users = getAllUsersIncludingDeleted();
+    const userIndex = users.findIndex(u => u.username === username || u.supabaseId === username);
+
+    if (userIndex === -1) {
+      console.error("User not found for restore:", username);
+      return false;
+    }
+
+    users[userIndex] = {
+      ...applyLocalRestore(users[userIndex], restoredBy),
+      accountStatus: "Active",
+    };
+    saveAllUsers(users);
+    console.log("User restored successfully:", username);
+    return true;
+  } catch (error) {
+    console.error("Error restoring user:", error);
     return false;
   }
 }

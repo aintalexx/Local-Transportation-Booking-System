@@ -30,6 +30,8 @@ export type SupabaseProfile = {
   approval_status?: "pending" | "approved" | "rejected";
   registration_date?: string | null;
   account_status?: "Active" | "Blocked" | "Archived" | "Suspended" | null;
+  is_deleted?: boolean | null;
+  deleted_at?: string | null;
 };
 
 export type EditableProfileData = {
@@ -76,10 +78,10 @@ export async function profileContactExists(email: string, phone: string): Promis
   try {
     const [emailResult, phoneResult] = await Promise.all([
       normalizedEmail
-        ? supabase.from("profiles").select("id").eq("email", normalizedEmail).limit(1)
+        ? supabase.from("profiles").select("id").eq("email", normalizedEmail).eq("is_deleted", false).limit(1)
         : Promise.resolve({ data: [], error: null }),
       phone
-        ? supabase.from("profiles").select("id").eq("phone", phone).limit(1)
+        ? supabase.from("profiles").select("id").eq("phone", phone).eq("is_deleted", false).limit(1)
         : Promise.resolve({ data: [], error: null }),
     ]);
 
@@ -101,7 +103,8 @@ export async function getSupabaseProfileByPhone(
   let query = supabase
     .from("profiles")
     .select("*")
-    .eq("phone", phone);
+    .eq("phone", phone)
+    .eq("is_deleted", false);
 
   if (role) {
     query = query.eq("role", role);
@@ -136,6 +139,7 @@ export async function profileContactExistsForOther(
             .from("profiles")
             .select("id")
             .eq("email", normalizedEmail)
+            .eq("is_deleted", false)
             .neq("id", currentUserId)
             .limit(1)
         : Promise.resolve({ data: [], error: null }),
@@ -144,6 +148,7 @@ export async function profileContactExistsForOther(
             .from("profiles")
             .select("id")
             .eq("phone", phone)
+            .eq("is_deleted", false)
             .neq("id", currentUserId)
             .limit(1)
         : Promise.resolve({ data: [], error: null }),
@@ -178,6 +183,7 @@ export async function profileUsernameExistsForOther(
       .from("profiles")
       .select("id")
       .eq("username", normalizedUsername)
+      .eq("is_deleted", false)
       .neq("id", currentUserId)
       .limit(1);
 
@@ -204,6 +210,7 @@ export async function getOwnSupabaseProfile(user: UserData): Promise<SupabasePro
     .from("profiles")
     .select("*")
     .eq("id", authUserId)
+    .eq("is_deleted", false)
     .maybeSingle();
 
   if (error || !data) return null;
@@ -311,6 +318,7 @@ export async function syncSupabaseProfile(user: UserData): Promise<SupabaseProfi
     .from("profiles")
     .select("approval_status")
     .eq("id", userId)
+    .eq("is_deleted", false)
     .maybeSingle();
 
   const approvalStatus =
@@ -415,6 +423,7 @@ export async function getApprovedOnlineDriverProfiles(): Promise<LiveDriverProfi
     .select("id, username, full_name, phone, vehicle_type, plate_number, is_online, approval_status")
     .eq("role", "driver")
     .eq("approval_status", "approved")
+    .eq("is_deleted", false)
     .eq("is_online", true);
 
   if (error) {

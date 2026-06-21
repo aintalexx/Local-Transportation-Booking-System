@@ -1,19 +1,27 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  Search, RotateCcw, Trash2, X, Archive, User, Car,
+  Search, RotateCcw, X, Archive, User, Car,
   IdCard, Phone as PhoneIcon, Calendar, Hash, Eye,
-  FileText, ClipboardList, ChevronDown, Filter,
+  FileText, ClipboardList,
 } from "lucide-react";
 import { useAppState } from "../context/AppStateContext";
-import { StatusBadge } from "../components/ui/StatusBadge";
 import {
-  CARD, PAGE_TITLE, PAGE_SUBTITLE, TH, BTN_OUTLINE_SM,
+  CARD, PAGE_TITLE, PAGE_SUBTITLE, BTN_OUTLINE_SM,
 } from "../lib/ui";
-import { toast } from "sonner";
 import type { Driver } from "../context/AppStateContext";
+import { supabase } from "../../lib/supabase";
+import { getAllUsersIncludingDeleted, restoreUser } from "../../utils/userDatabase";
+import { isSoftDeletedRecord, restoreSupabaseRecord, type SoftDeleteTable } from "../../utils/softDelete";
 
-const MAROON = "#6B0E1A";
-const GOLD   = "#C49A1A";
+type DeletedRecordKind = "Passenger" | "Booking" | "Rating" | "Admin";
+type DeletedRecord = {
+  id: string;
+  type: DeletedRecordKind;
+  label: string;
+  detail: string;
+  source: "local" | "supabase";
+  table?: SoftDeleteTable;
+};
 
 // ─── Driver Detail Mini-Modal (for Archives) ───────────────────────────────────
 function ArchiveDetailModal({
@@ -183,8 +191,8 @@ export function Archives() {
 
   const [search,      setSearch]      = useState("");
   const [detailId,    setDetailId]    = useState<string | null>(null);
-  const [confirming,  setConfirming]  = useState<string | null>(null); // permanent delete confirm
-  const [localArchive, setLocalArchive] = useState<Driver[]>(archivedDrivers);
+  const [deletedRecords, setDeletedRecords] = useState<DeletedRecord[]>([]);
+  const [restoringRecord, setRestoringRecord] = useState<string | null>(null);
 
   // Keep local in sync (restoreDriver updates context; we reflect that here)
   const displayed = archivedDrivers.filter(d => {
@@ -199,26 +207,98 @@ export function Archives() {
 
   const detailDriver = archivedDrivers.find(d => d.id === detailId) ?? null;
 
+  async function loadDeletedRecords() {
+    const localDeleted: DeletedRecord[] = getAllUsersIncludingDeleted()
+      .filter(user => user.role !== "driver" && isSoftDeletedRecord(user))
+      .map(user => ({
+        id: user.username,
+        type: user.role === "admin" ? "Admin" : "Passenger",
+        label: `${user.firstName || ""} ${user.surname || ""}`.trim() || user.username,
+        detail: user.email || user.phoneNumber || user.username,
+        source: "local" as const,
+      }));
+
+    const supabaseDeleted: DeletedRecord[] = [];
+    if (supabase) {
+      const [profilesResult, bookingsResult, ratingsResult] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id, role, full_name, email, phone, deleted_at")
+          .eq("is_deleted", true)
+          .in("role", ["passenger", "admin"]),
+        supabase
+          .from("bookings")
+          .select("id, passenger_name, pickup_address, destination_address, deleted_at")
+          .eq("is_deleted", true),
+        supabase
+          .from("ratings")
+          .select("id, booking_id, rating, feedback, deleted_at")
+          .eq("is_deleted", true),
+      ]);
+
+      ((profilesResult.data || []) as any[]).forEach((row) => {
+        supabaseDeleted.push({
+          id: row.id,
+          type: row.role === "admin" ? "Admin" : "Passenger",
+          label: row.full_name || row.email || row.phone || row.id,
+          detail: row.email || row.phone || "Profile record",
+          source: "supabase",
+          table: "profiles",
+        });
+      });
+
+      ((bookingsResult.data || []) as any[]).forEach((row) => {
+        supabaseDeleted.push({
+          id: row.id,
+          type: "Booking",
+          label: row.passenger_name || row.id,
+          detail: `${row.pickup_address || "Pickup"} to ${row.destination_address || "Destination"}`,
+          source: "supabase",
+          table: "bookings",
+        });
+      });
+
+      ((ratingsResult.data || []) as any[]).forEach((row) => {
+        supabaseDeleted.push({
+          id: row.id,
+          type: "Rating",
+          label: `Rating ${row.rating || ""}`.trim(),
+          detail: row.feedback || `Booking ${row.booking_id || row.id}`,
+          source: "supabase",
+          table: "ratings",
+        });
+      });
+    }
+
+    setDeletedRecords([...supabaseDeleted, ...localDeleted]);
+  }
+
+  useEffect(() => {
+    void loadDeletedRecords();
+  }, []);
+
   function handleRestore(id: string) {
     restoreDriver(id);
     if (detailId === id) setDetailId(null);
   }
 
-  function handlePermanentDelete(id: string) {
-    if (confirming !== id) {
-      setConfirming(id);
-      setTimeout(() => setConfirming(null), 4000);
-      return;
-    }
-    // Actually remove from archive permanently
-    const updated = archivedDrivers.filter(d => d.id !== id);
+  async function handleRestoreRecord(record: DeletedRecord) {
+    setRestoringRecord(record.id);
     try {
-      localStorage.setItem("ridestamesa_archived_drivers", JSON.stringify(updated));
-    } catch {}
-    // Force re-render by restoring then immediately re-archiving... 
-    // Instead: notify user and reload
-    toast.success("Driver permanently deleted from archive.");
-    window.location.reload(); // simplest approach for permanent delete
+      if (record.source === "local") {
+        restoreUser(record.id);
+      } else if (record.table) {
+        const result = await restoreSupabaseRecord(record.table, record.id, {
+          ...(record.table === "profiles" ? { account_status: "Active" } : {}),
+        });
+        if (!result.success) throw new Error(result.error);
+      }
+      await loadDeletedRecords();
+    } catch (error) {
+      console.error("Failed to restore soft-deleted record:", error);
+    } finally {
+      setRestoringRecord(null);
+    }
   }
 
   return (
@@ -228,7 +308,7 @@ export function Archives() {
         <div>
           <h1 className={PAGE_TITLE}>Archives</h1>
           <p className={PAGE_SUBTITLE}>
-            {archivedDrivers.length} archived driver account{archivedDrivers.length !== 1 ? "s" : ""} — restore or permanently remove
+            {archivedDrivers.length} soft-deleted driver account{archivedDrivers.length !== 1 ? "s" : ""} ready for recovery
           </p>
         </div>
       </div>
@@ -240,7 +320,7 @@ export function Archives() {
           <p className="text-sm font-semibold text-blue-800">About Archives</p>
           <p className="text-xs text-blue-600 mt-0.5">
             Archived drivers are removed from active Driver Management but kept here for record-keeping.
-            You can restore them at any time to make them active again, or permanently delete their record.
+            You can restore them at any time to make them active again.
           </p>
         </div>
       </div>
@@ -338,29 +418,59 @@ export function Archives() {
                         >
                           <RotateCcw size={12} /> Restore
                         </button>
-                        {/* Permanent delete */}
-                        {confirming === d.id ? (
-                          <div className="flex items-center gap-1">
-                            <span className="text-[10px] font-bold text-rose-600">Delete?</span>
-                            <button
-                              onClick={() => handlePermanentDelete(d.id)}
-                              className="px-2 py-1 rounded-md bg-rose-600 text-white text-[10px] font-bold hover:bg-rose-700"
-                            >Yes</button>
-                            <button
-                              onClick={() => setConfirming(null)}
-                              className="px-2 py-1 rounded-md border border-rose-300 text-rose-700 text-[10px] font-bold hover:bg-rose-50"
-                            >No</button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => handlePermanentDelete(d.id)}
-                            className="w-7 h-7 rounded-lg border border-rose-200 text-rose-500 bg-rose-50 hover:bg-rose-100 flex items-center justify-center transition-colors"
-                            title="Permanently delete"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        )}
                       </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className={`${CARD} overflow-hidden`}>
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
+          <div>
+            <p className="text-sm font-black text-foreground">Other Deleted Records</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Passengers, bookings, ratings, and admin profiles marked for recovery.</p>
+          </div>
+          <span className="text-xs text-muted-foreground">{deletedRecords.length} record{deletedRecords.length !== 1 ? "s" : ""}</span>
+        </div>
+
+        {deletedRecords.length === 0 ? (
+          <div className="py-10 text-center text-sm text-muted-foreground">No other soft-deleted records.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-muted/40 border-b border-border">
+                  {["Type", "Record", "Details", "Source", "Action"].map(h => (
+                    <th key={h} className="px-4 py-2.5 text-left text-[11px] font-bold text-muted-foreground uppercase tracking-wider">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {deletedRecords.map(record => (
+                  <tr key={`${record.source}-${record.type}-${record.id}`} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-4 py-3">
+                      <span className="inline-flex rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-bold text-gray-700">
+                        {record.type}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-sm font-semibold text-foreground">{record.label}</p>
+                      <p className="text-xs text-muted-foreground font-mono mt-0.5">{record.id}</p>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground max-w-sm truncate">{record.detail}</td>
+                    <td className="px-4 py-3 text-xs font-semibold text-muted-foreground capitalize">{record.source}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => void handleRestoreRecord(record)}
+                        disabled={restoringRecord === record.id}
+                        className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 disabled:opacity-60 transition-colors"
+                      >
+                        <RotateCcw size={12} /> {restoringRecord === record.id ? "Restoring" : "Restore"}
+                      </button>
                     </td>
                   </tr>
                 ))}

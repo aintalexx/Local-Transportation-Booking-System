@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
 import type { BookingData } from "./bookingDatabase";
+import { validateBookingStatusTransition } from "./adminWorkflowValidation";
 import { formatPersonName } from "./nameFormatting";
 import { getCurrentSupabaseUserId, syncSupabaseProfile } from "./supabaseProfiles";
 import type { UserData } from "./userDatabase";
@@ -59,6 +60,8 @@ type SupabaseBookingRow = {
   created_at: string;
   accepted_at: string | null;
   completed_at: string | null;
+  is_deleted?: boolean | null;
+  deleted_at?: string | null;
 };
 
 export type DriverDashboardSummary = {
@@ -141,6 +144,7 @@ export async function getSupabaseBooking(bookingId: string): Promise<BookingData
     .from("bookings")
     .select("*")
     .eq("id", bookingId)
+    .eq("is_deleted", false)
     .maybeSingle();
 
   if (error || !data) return null;
@@ -157,6 +161,7 @@ export async function getSupabasePassengerActiveBooking(user: UserData): Promise
     .from("bookings")
     .select("*")
     .eq("passenger_id", userId)
+    .eq("is_deleted", false)
     .in("status", ACTIVE_BOOKING_STATUSES)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -176,6 +181,7 @@ export async function getSupabaseDriverActiveBooking(user: UserData): Promise<Bo
     .from("bookings")
     .select("*")
     .eq("driver_id", userId)
+    .eq("is_deleted", false)
     .in("status", DRIVER_ACTIVE_BOOKING_STATUSES)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -191,6 +197,7 @@ export async function getSupabasePendingBookings(vehicleType?: string, driver?: 
   let query = supabase
     .from("bookings")
     .select("*")
+    .eq("is_deleted", false)
     .in("status", AVAILABLE_BOOKING_STATUSES)
     .is("driver_id", null)
     .order("created_at", { ascending: true });
@@ -223,6 +230,7 @@ export async function getSupabasePendingBookingsResult(vehicleType?: string): Pr
   let query = supabase
     .from("bookings")
     .select("*")
+    .eq("is_deleted", false)
     .in("status", AVAILABLE_BOOKING_STATUSES)
     .is("driver_id", null)
     .order("created_at", { ascending: true });
@@ -297,6 +305,7 @@ export async function getSupabasePassengerBookingHistory(user: UserData): Promis
     .from("bookings")
     .select("*")
     .eq("passenger_id", userId)
+    .eq("is_deleted", false)
     .in("status", ["completed", "ride_completed", "cancelled"])
     .order("created_at", { ascending: false });
 
@@ -314,6 +323,7 @@ export async function getSupabaseDriverBookingHistory(user: UserData): Promise<B
     .from("bookings")
     .select("*")
     .eq("driver_id", userId)
+    .eq("is_deleted", false)
     .in("status", ["completed", "ride_completed", "cancelled"])
     .order("created_at", { ascending: false });
 
@@ -346,6 +356,7 @@ export async function getSupabaseDriverDashboardSummary(user: UserData): Promise
     .from("bookings")
     .select("*")
     .eq("driver_id", userId)
+    .eq("is_deleted", false)
     .order("created_at", { ascending: false })
     .limit(100);
 
@@ -400,6 +411,7 @@ export async function acceptSupabaseBooking(bookingId: string, driver: UserData)
       accepted_at: new Date().toISOString(),
     })
     .eq("id", bookingId)
+    .eq("is_deleted", false)
     .in("status", AVAILABLE_BOOKING_STATUSES)
     .is("driver_id", null)
     .select()
@@ -417,6 +429,21 @@ export async function acceptSupabaseBooking(bookingId: string, driver: UserData)
 export async function updateSupabaseBookingStatus(bookingId: string, status: BookingStatus): Promise<BookingData | null> {
   if (!supabase || !isUuid(bookingId)) return null;
 
+  const { data: currentRow, error: currentError } = await supabase
+    .from("bookings")
+    .select("status")
+    .eq("id", bookingId)
+    .eq("is_deleted", false)
+    .maybeSingle();
+
+  if (currentError || !currentRow) return null;
+
+  const transition = validateBookingStatusTransition((currentRow as { status: string }).status, status);
+  if (!transition.valid) {
+    console.warn(transition.message || "Invalid booking status transition");
+    return null;
+  }
+
   const { data, error } = await supabase
     .from("bookings")
     .update({
@@ -424,6 +451,7 @@ export async function updateSupabaseBookingStatus(bookingId: string, status: Boo
       ...(status === "completed" ? { completed_at: new Date().toISOString() } : {}),
     })
     .eq("id", bookingId)
+    .eq("is_deleted", false)
     .select()
     .single();
 
@@ -436,6 +464,23 @@ export async function updateSupabaseDriverBookingStatus(
   status: BookingStatus,
   driver: UserData
 ): Promise<BookingData | null> {
+  if (supabase && isUuid(bookingId)) {
+    const { data: currentRow, error: currentError } = await supabase
+      .from("bookings")
+      .select("status")
+      .eq("id", bookingId)
+      .eq("is_deleted", false)
+      .maybeSingle();
+
+    if (currentError || !currentRow) return null;
+
+    const transition = validateBookingStatusTransition((currentRow as { status: string }).status, status);
+    if (!transition.valid) {
+      console.warn(transition.message || "Invalid booking status transition");
+      return null;
+    }
+  }
+
   const directUpdate = await updateSupabaseBookingStatus(bookingId, status);
   if (directUpdate) return directUpdate;
 

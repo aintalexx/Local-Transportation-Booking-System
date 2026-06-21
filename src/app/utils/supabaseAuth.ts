@@ -61,6 +61,7 @@ export async function resolveAuthEmailForLogin(identifier: string): Promise<stri
     .from("profiles")
     .select("email")
     .or(`username.eq.${normalizedLower},phone.eq.${normalizedLower},phone.eq.${normalizedPhone}`)
+    .eq("is_deleted", false)
     .maybeSingle();
 
   if (error) {
@@ -81,6 +82,7 @@ export async function createLocalUserFromGoogle(supabaseUser: SupabaseUser, role
         .from("profiles")
         .select("*")
         .eq("id", supabaseUser.id)
+        .eq("is_deleted", false)
         .maybeSingle()
     : { data: null };
 
@@ -268,6 +270,7 @@ export async function createLocalUserFromSupabaseUser(
         .from("profiles")
         .select("*")
         .eq("id", supabaseUser.id)
+        .eq("is_deleted", false)
         .maybeSingle()
     : { data: null };
 
