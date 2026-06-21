@@ -2,10 +2,10 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { ArrowLeft, Phone, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
+import { authAPI } from "../../utils/api";
 import { formatPHPhoneInput, validatePHPhone } from "../../utils/validators";
 import { getSupabaseDriverByPhone } from "../../utils/supabaseDrivers";
 import { findUser } from "../../utils/userDatabase";
-import { createDemoOtp } from "../../utils/demoOtp";
 import { getSupabaseProfileByPhone } from "../../utils/supabaseProfiles";
 
 export default function DriverForgotPasswordPage() {
@@ -59,8 +59,9 @@ export default function DriverForgotPasswordPage() {
         return;
       }
 
-      // Generate demo OTP and navigate to OTP verification page
-      const otp = createDemoOtp();
+      // Generate demo OTP through the rate-limited server endpoint
+      const resetResult = await authAPI.requestPasswordReset(normalizedPhone, "driver");
+      const otp = resetResult.generatedOtp;
       toast.success(`Demo OTP: ${otp}`, { duration: 10000 });
 
       navigate("/otp", {

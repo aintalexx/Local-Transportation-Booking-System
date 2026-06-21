@@ -32,6 +32,13 @@ export const authAPI = {
     });
   },
 
+  async requestPasswordReset(phoneNumber: string, role: "passenger" | "driver") {
+    return apiCall("/auth/request-password-reset", {
+      method: "POST",
+      body: JSON.stringify({ phoneNumber, role }),
+    });
+  },
+
   async verifyOTP(phoneNumber: string, otp: string, userData?: any, mode?: string, role?: string) {
     return apiCall("/auth/verify-otp", {
       method: "POST",

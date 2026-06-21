@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import logoImg from "../../../imports/logo.png";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { createDemoOtp } from "../../utils/demoOtp";
+import { authAPI } from "../../utils/api";
 import { findUser } from "../../utils/userDatabase";
 import { getSupabaseProfileByPhone } from "../../utils/supabaseProfiles";
 import { formatPHPhoneInput, validatePHPhone } from "../../utils/validators";
@@ -46,7 +46,8 @@ export default function ForgotPasswordPage() {
         return;
       }
 
-      const generatedOtp = createDemoOtp();
+      const resetResult = await authAPI.requestPasswordReset(normalizedPhone, "passenger");
+      const generatedOtp = resetResult.generatedOtp;
       toast.success(`Demo OTP: ${generatedOtp}`, { duration: 10000 });
       navigate("/otp", {
         state: {

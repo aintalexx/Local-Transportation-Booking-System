@@ -25,6 +25,12 @@ const SENSITIVE_RATE_LIMITS = {
     windowMs: 10 * 60 * 1000,
     message: "Too many login or OTP requests. Please wait before trying again.",
   },
+  passwordReset: {
+    name: "auth-password-reset",
+    maxRequests: 5,
+    windowMs: 60 * 1000,
+    message: "Too many forgot password requests. Please wait before trying again.",
+  },
   otpVerify: {
     name: "auth-verify-otp",
     maxRequests: 10,
@@ -126,6 +132,7 @@ app.use(
 );
 
 app.use("/make-server-2b48d7fc/auth/send-otp", rateLimit(SENSITIVE_RATE_LIMITS.loginOtp));
+app.use("/make-server-2b48d7fc/auth/request-password-reset", rateLimit(SENSITIVE_RATE_LIMITS.passwordReset));
 app.use("/make-server-2b48d7fc/auth/verify-otp", rateLimit(SENSITIVE_RATE_LIMITS.otpVerify));
 app.use("/make-server-2b48d7fc/bookings/create", rateLimit(SENSITIVE_RATE_LIMITS.bookingForm));
 app.use("/make-server-2b48d7fc/bookings/:id/status", rateLimit(SENSITIVE_RATE_LIMITS.bookingStatusForm));
@@ -157,6 +164,31 @@ app.post("/make-server-2b48d7fc/auth/send-otp", async (c) => {
   } catch (error) {
     console.error("Error sending OTP:", error);
     return c.json({ success: false, error: "Failed to send OTP" }, 500);
+  }
+});
+
+// Request a demo password reset code
+app.post("/make-server-2b48d7fc/auth/request-password-reset", async (c) => {
+  try {
+    const { phoneNumber, role } = await c.req.json();
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpKey = `password-reset-otp:${role || "passenger"}:${phoneNumber}`;
+    await kv.set(otpKey, {
+      otp,
+      createdAt: new Date().toISOString(),
+    });
+
+    console.log(`Password reset OTP for ${role || "passenger"} ${phoneNumber}: ${otp}`);
+
+    return c.json({
+      success: true,
+      message: "Password reset code sent successfully",
+      generatedOtp: otp,
+    });
+  } catch (error) {
+    console.error("Error requesting password reset:", error);
+    return c.json({ success: false, error: "Failed to request password reset" }, 500);
   }
 });
 
