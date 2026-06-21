@@ -19,10 +19,10 @@ function buildCsv(rows: CsvRow[]): string {
   return lines.join("\r\n");
 }
 
-export function downloadCsv(filename: string, rows: CsvRow[], titleLines: string[] = []): boolean {
+export function downloadCsv(filename: string, rows: CsvRow[]): boolean {
   if (rows.length === 0) return false;
 
-  const csv = [...titleLines, buildCsv(rows)].filter(Boolean).join("\r\n");
+  const csv = buildCsv(rows);
   const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -38,18 +38,6 @@ export function downloadCsv(filename: string, rows: CsvRow[], titleLines: string
 }
 
 export function createCsvFilename(prefix: string): string {
-  const timestamp = new Date().toISOString().slice(0, 10);
-  return `${prefix}_${timestamp}.csv`;
-}
-
-export function formatExportTimestamp(date = new Date()): string {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours24 = date.getHours();
-  const hours12 = hours24 % 12 || 12;
-  const minutes = pad(date.getMinutes());
-  const suffix = hours24 >= 12 ? "PM" : "AM";
-  return `${year}-${month}-${day} ${pad(hours12)}:${minutes} ${suffix}`;
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return `${prefix}-${timestamp}.csv`;
 }
