@@ -1,62 +1,78 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { ArrowLeft, Mail, Navigation, UserRound } from "lucide-react";
+import { ArrowLeft, Phone } from "lucide-react";
 import { toast } from "sonner";
 import logoImg from "../../../imports/logo.png";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { createDemoOtp } from "../../utils/demoOtp";
 import { findUser } from "../../utils/userDatabase";
-import { requestSupabasePasswordReset } from "../../utils/supabaseAuth";
-import { formatPHPhoneInput, validateEmail } from "../../utils/validators";
+import { getSupabaseProfileByPhone } from "../../utils/supabaseProfiles";
+import { formatPHPhoneInput, validatePHPhone } from "../../utils/validators";
 
 function maskAccountTarget(value: string): string {
-  if (!value.includes("@")) return value;
-  const [name, domain] = value.split("@");
-  const safeName = name.length <= 2 ? `${name[0] || "*"}*` : `${name.slice(0, 2)}***`;
-  return `${safeName}@${domain}`;
+  const phone = formatPHPhoneInput(value);
+  return phone.length === 11 ? `${phone.slice(0, 4)}***${phone.slice(-4)}` : value;
 }
 
 export default function ForgotPasswordPage() {
   const navigate = useNavigate();
-  const [identifier, setIdentifier] = useState("");
+  const [mobileNumber, setMobileNumber] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const value = identifier.trim();
+    const normalizedPhone = formatPHPhoneInput(mobileNumber);
 
-    if (!value) {
-      toast.error("Please enter your email, username, or phone number.");
+    if (!normalizedPhone) {
+      toast.error("Mobile number is required.");
+      return;
+    }
+
+    const phoneCheck = validatePHPhone(normalizedPhone, "Mobile number");
+    if (!phoneCheck.valid) {
+      toast.error(phoneCheck.message);
       return;
     }
 
     setLoading(true);
     try {
-      const user = findUser(value);
-      if (user) {
-        const generatedOtp = createDemoOtp();
-        toast.success(`Demo recovery OTP: ${generatedOtp}`, { duration: 10000 });
-        navigate("/reset-password", {
-          state: {
-            mode: "local",
-            identifier: user.username,
-            accountLabel: maskAccountTarget(user.email || user.phoneNumber || user.username),
-            generatedOtp,
-          },
-        });
+      const localUser = findUser(normalizedPhone);
+      const supabaseProfile = await getSupabaseProfileByPhone(normalizedPhone, "passenger");
+      const isPassengerAccount = localUser?.role === "passenger" || supabaseProfile?.role === "passenger";
+
+      if (!isPassengerAccount) {
+        toast.error("Mobile number not found.");
         return;
       }
 
-      const emailCheck = validateEmail(value, true);
-      if (!emailCheck.valid) {
-        toast.error("Account not found. Try the email, username, or phone used during registration.");
-        return;
-      }
-
-      await requestSupabasePasswordReset(value);
-      toast.success("Password reset email sent. Please check your inbox.");
-      navigate("/login", { replace: true });
+      const generatedOtp = createDemoOtp();
+      toast.success(`Demo OTP: ${generatedOtp}`, { duration: 10000 });
+      navigate("/otp", {
+        state: {
+          mode: "forgot-password",
+          role: "passenger",
+          phoneNumber: normalizedPhone,
+          identifier: localUser?.username || normalizedPhone,
+          accountLabel: maskAccountTarget(normalizedPhone),
+          generatedOtp,
+          userData: localUser || (supabaseProfile ? {
+            supabaseId: supabaseProfile.id,
+            username: supabaseProfile.username || `passenger_${normalizedPhone.replace(/\D/g, "")}`,
+            phoneNumber: normalizedPhone,
+            surname: supabaseProfile.surname || "",
+            firstName: supabaseProfile.first_name || "",
+            middleName: supabaseProfile.middle_name || "",
+            suffix: supabaseProfile.suffix || "",
+            email: supabaseProfile.email || "",
+            birthdate: supabaseProfile.birthdate || "",
+            role: "passenger",
+            approvalStatus: "approved",
+            accountStatus: "Active",
+            profilePhoto: supabaseProfile.profile_photo || "",
+          } : undefined),
+        },
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to start password recovery.";
       toast.error(message);
@@ -77,7 +93,7 @@ export default function ForgotPasswordPage() {
         </div>
         <h1 style={{ color: "#FFF8E7", fontSize: 26, fontWeight: 800, lineHeight: 1.1 }}>Recover password</h1>
         <p style={{ color: "rgba(255,248,231,0.68)", fontSize: 14, marginTop: 6 }}>
-          Reset access for passenger, driver, or admin accounts.
+          Reset access using the mobile number used during passenger registration.
         </p>
       </div>
 
@@ -85,23 +101,16 @@ export default function ForgotPasswordPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label style={{ color: "#4B0F14", fontSize: 13, fontWeight: 700, display: "block", marginBottom: 6 }}>
-              Email, Username, or Phone Number
+              Registered Mobile Number
             </label>
             <div className="relative">
-              {identifier.includes("@") ? (
-                <Mail size={16} color="#9a8a7a" className="absolute left-4 top-1/2 -translate-y-1/2" />
-              ) : (
-                <UserRound size={16} color="#9a8a7a" className="absolute left-4 top-1/2 -translate-y-1/2" />
-              )}
+              <Phone size={16} color="#9a8a7a" className="absolute left-4 top-1/2 -translate-y-1/2" />
               <Input
-                value={identifier}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  const phoneLike = /^[+\d\s()-]*$/.test(value);
-                  setIdentifier(phoneLike ? formatPHPhoneInput(value) : value);
-                }}
+                type="tel"
+                value={mobileNumber}
+                onChange={(event) => setMobileNumber(formatPHPhoneInput(event.target.value))}
                 className="h-14 rounded-2xl border-2 bg-white pl-11"
-                placeholder="Enter account email, username, or 09 number"
+                placeholder="Enter 09 mobile number"
               />
             </div>
           </div>
@@ -111,7 +120,7 @@ export default function ForgotPasswordPage() {
           </Button>
 
           <p className="rounded-2xl border border-[#4B0F14]/10 bg-white p-4 text-sm leading-6 text-[#7a6a5a]">
-            Local/demo accounts use a displayed OTP for capstone testing. Supabase email accounts receive a real reset email.
+            Demo OTP mode uses sample code 123456. No real SMS is sent yet.
           </p>
         </form>
       </div>

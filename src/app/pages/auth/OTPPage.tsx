@@ -12,7 +12,7 @@ import { registerUser, updateUser, type UserData } from "../../utils/userDatabas
 import { signUpWithEmailPassword } from "../../utils/supabaseAuth";
 import { syncSupabaseProfile } from "../../utils/supabaseProfiles";
 
-type OtpMode = "login" | "register" | "google-phone" | "driver-forgot-password";
+type OtpMode = "login" | "register" | "google-phone" | "forgot-password" | "driver-forgot-password";
 const DEMO_OTP_EXPIRY_MS = DEMO_OTP_RESEND_SECONDS * 1000;
 
 type OtpRouteState = {
@@ -21,6 +21,8 @@ type OtpRouteState = {
   role?: "passenger" | "driver";
   userData?: Partial<UserData>;
   generatedOtp?: string;
+  identifier?: string;
+  accountLabel?: string;
 };
 
 function buildRegistrationUser(state: OtpRouteState): UserData {
@@ -193,9 +195,20 @@ export default function OTPPage() {
         return;
       }
 
-      if (state.mode === "driver-forgot-password") {
-        toast.success("Phone number verified successfully. You may now log in again.", { duration: 5000 });
-        navigate("/login", { replace: true });
+      if (state.mode === "forgot-password" || state.mode === "driver-forgot-password") {
+        toast.success("OTP verified. Set your new password.");
+        navigate("/reset-password", {
+          replace: true,
+          state: {
+            mode: "mobile-reset",
+            role: state.role || "passenger",
+            identifier: state.identifier || state.phoneNumber,
+            phoneNumber: state.phoneNumber,
+            accountLabel: state.accountLabel || state.phoneNumber,
+            otpVerified: true,
+            userData: state.userData,
+          },
+        });
       } else if (state.mode === "google-phone") {
         await handleVerifiedGooglePhone();
       } else if (state.mode === "register") {
@@ -242,7 +255,7 @@ export default function OTPPage() {
     }
   }, [otp]);
 
-  const backTarget = state.mode === "driver-forgot-password" ? "/driver-forgot-password" : state.mode === "google-phone" ? "/auth/phone" : state.mode === "register" ? "/register" : "/login";
+  const backTarget = state.mode === "driver-forgot-password" ? "/driver-forgot-password" : state.mode === "forgot-password" ? "/forgot-password" : state.mode === "google-phone" ? "/auth/phone" : state.mode === "register" ? "/register" : "/login";
   const isDriverRegistration = state.mode === "register" && state.role === "driver";
 
   return (
@@ -268,7 +281,7 @@ export default function OTPPage() {
             <CardDescription>
               {isDriverRegistration
                 ? "No SMS is sent yet. Use this demo code to finish driver phone verification."
-                : "No SMS is sent yet. Use the demo code below for capstone testing."}
+                : "No SMS is sent yet. Use sample OTP 123456 for capstone testing."}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -326,7 +339,7 @@ export default function OTPPage() {
               <div className="space-y-2 text-sm text-gray-600 bg-[rgba(75,15,20,0.05)] p-4 rounded-lg">
                 <p className="font-semibold">Demo mode:</p>
                 <ul className="space-y-1">
-                  <li>Use the displayed code to verify the phone number.</li>
+                  <li>Use sample OTP 123456 to verify the phone number.</li>
                   <li>Later, this screen can be connected to Supabase SMS OTP.</li>
                   <li>The 60-second resend timer is kept to match real OTP behavior.</li>
                 </ul>

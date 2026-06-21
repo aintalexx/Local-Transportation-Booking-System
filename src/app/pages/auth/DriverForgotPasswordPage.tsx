@@ -6,6 +6,7 @@ import { formatPHPhoneInput, validatePHPhone } from "../../utils/validators";
 import { getSupabaseDriverByPhone } from "../../utils/supabaseDrivers";
 import { findUser } from "../../utils/userDatabase";
 import { createDemoOtp } from "../../utils/demoOtp";
+import { getSupabaseProfileByPhone } from "../../utils/supabaseProfiles";
 
 export default function DriverForgotPasswordPage() {
   const navigate = useNavigate();
@@ -19,11 +20,11 @@ export default function DriverForgotPasswordPage() {
 
     const phoneInput = phone.trim();
     if (!phoneInput) {
-      toast.error("Please enter your phone number.");
+      toast.error("Mobile number is required.");
       return;
     }
 
-    const phoneValidation = validatePHPhone(phoneInput);
+    const phoneValidation = validatePHPhone(phoneInput, "Mobile number");
     if (!phoneValidation.valid) {
       toast.error(phoneValidation.message);
       return;
@@ -35,21 +36,26 @@ export default function DriverForgotPasswordPage() {
 
       // Check Supabase drivers table first
       let driverFound = false;
+      const localUser = findUser(normalizedPhone);
       const dbDriver = await getSupabaseDriverByPhone(normalizedPhone);
       if (dbDriver) {
         driverFound = true;
       }
 
+      const profileDriver = await getSupabaseProfileByPhone(normalizedPhone, "driver");
+      if (profileDriver) {
+        driverFound = true;
+      }
+
       // Local fallback: check local user database for driver accounts
       if (!driverFound) {
-        const localUser = findUser(normalizedPhone);
         if (localUser && localUser.role === "driver") {
           driverFound = true;
         }
       }
 
       if (!driverFound) {
-        toast.error("No driver account found with this phone number.");
+        toast.error("Mobile number not found.");
         return;
       }
 
@@ -62,7 +68,48 @@ export default function DriverForgotPasswordPage() {
           mode: "driver-forgot-password",
           role: "driver",
           phoneNumber: normalizedPhone,
+          identifier: localUser?.username || normalizedPhone,
+          accountLabel: normalizedPhone,
           generatedOtp: otp,
+          userData: localUser || (dbDriver ? {
+            supabaseId: dbDriver.id,
+            username: `driver_${normalizedPhone.replace(/\D/g, "")}`,
+            phoneNumber: normalizedPhone,
+            surname: dbDriver.surname || "",
+            firstName: dbDriver.first_name || "",
+            middleName: dbDriver.middle_name || "",
+            suffix: dbDriver.suffix || "",
+            email: "",
+            birthdate: dbDriver.birthdate || "",
+            role: "driver",
+            vehicleType: dbDriver.vehicle_type || "Tricycle",
+            plateNumber: dbDriver.plate_number || "",
+            licenseNumber: dbDriver.license_number || "",
+            validIdPhoto: dbDriver.valid_id_photo || "",
+            orCrPhoto: dbDriver.or_cr_photo || "",
+            clearancePhoto: dbDriver.clearance_photo || "",
+            vehiclePhoto: dbDriver.vehicle_photo || "",
+            profilePhoto: dbDriver.profile_photo || "",
+            approvalStatus: dbDriver.approval_status || "pending",
+            accountStatus: dbDriver.account_status || "Active",
+          } : profileDriver ? {
+            supabaseId: profileDriver.id,
+            username: profileDriver.username || `driver_${normalizedPhone.replace(/\D/g, "")}`,
+            phoneNumber: normalizedPhone,
+            surname: profileDriver.surname || "",
+            firstName: profileDriver.first_name || "",
+            middleName: profileDriver.middle_name || "",
+            suffix: profileDriver.suffix || "",
+            email: profileDriver.email || "",
+            birthdate: profileDriver.birthdate || "",
+            role: "driver",
+            vehicleType: profileDriver.vehicle_type || "Tricycle",
+            plateNumber: profileDriver.plate_number || "",
+            licenseNumber: profileDriver.license_number || "",
+            profilePhoto: profileDriver.profile_photo || "",
+            approvalStatus: profileDriver.approval_status || "pending",
+            accountStatus: profileDriver.account_status || "Active",
+          } : undefined),
         },
       });
     } catch (err) {
@@ -126,7 +173,7 @@ export default function DriverForgotPasswordPage() {
           {/* Info card */}
           <div className="rounded-2xl border p-4" style={{ borderColor: "rgba(75,15,20,0.1)", background: "rgba(75,15,20,0.03)" }}>
             <p style={{ color: "#7a6a5a", fontSize: 13, lineHeight: 1.6 }}>
-              Enter the phone number you registered with. We'll send a demo OTP to verify your identity before allowing you to log in again.
+              Enter the mobile number you registered with. Demo OTP mode uses sample code 123456 before password reset.
             </p>
           </div>
 

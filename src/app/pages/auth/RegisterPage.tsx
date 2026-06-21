@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Button } from "../../components/ui/button";
+import PasswordStrengthMeter from "../../components/PasswordStrengthMeter";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
@@ -1436,7 +1437,8 @@ export default function RegisterPage() {
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
-                  {passwordInvalid && <p className="text-xs text-red-600">Password must be at least 8 characters.</p>}
+                  {passwordInvalid && <p className="text-xs text-red-600">{validatePassword(formData.password).message}</p>}
+                  <PasswordStrengthMeter password={formData.password} />
                 </div>
 
                 <div className="space-y-2">
@@ -2176,9 +2178,7 @@ export default function RegisterPage() {
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500">
-                    Minimum 8 characters. Any letters, numbers, or special characters are allowed.
-                  </p>
+                  <PasswordStrengthMeter password={formData.password} />
                 </div>
 
                 <div className="space-y-2">
@@ -2639,9 +2639,7 @@ export default function RegisterPage() {
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
-                <p className="text-xs text-gray-500">
-                  Minimum 8 characters. Any letters, numbers, or special characters are allowed.
-                </p>
+                  <PasswordStrengthMeter password={formData.password} />
               </div>
 
               <div className="space-y-2">

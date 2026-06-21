@@ -40,6 +40,8 @@ export interface UserData {
 }
 
 const USERS_KEY = "ridestamesa_users";
+const PASSWORD_HISTORY_KEY = "ridestamesa_password_history";
+const PASSWORD_HISTORY_LIMIT = 5;
 
 function sanitizeSessionUser(user: UserData): UserData {
   return {
@@ -68,6 +70,60 @@ function saveAllUsers(users: UserData[]): void {
   } catch (error) {
     console.error("Error saving users database:", error);
   }
+}
+
+type PasswordHistoryMap = Record<string, string[]>;
+
+function getPasswordHistoryMap(): PasswordHistoryMap {
+  try {
+    const raw = localStorage.getItem(PASSWORD_HISTORY_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (error) {
+    console.error("Error reading password history:", error);
+    return {};
+  }
+}
+
+function savePasswordHistoryMap(history: PasswordHistoryMap): void {
+  try {
+    localStorage.setItem(PASSWORD_HISTORY_KEY, JSON.stringify(history));
+  } catch (error) {
+    console.error("Error saving password history:", error);
+  }
+}
+
+function getPasswordHistoryKeys(user: UserData): string[] {
+  return Array.from(new Set([
+    user.username?.trim().toLowerCase(),
+    user.email?.trim().toLowerCase(),
+    formatPHPhoneInput(user.phoneNumber),
+  ].filter(Boolean)));
+}
+
+function getUserPasswordHistory(user: UserData): string[] {
+  const history = getPasswordHistoryMap();
+  const values = getPasswordHistoryKeys(user).flatMap((key) => history[key] || []);
+  return Array.from(new Set(values)).slice(0, PASSWORD_HISTORY_LIMIT);
+}
+
+function saveUserPasswordHistory(user: UserData, passwords: string[]): void {
+  const history = getPasswordHistoryMap();
+  const nextHistory = Array.from(new Set(passwords.filter(Boolean))).slice(0, PASSWORD_HISTORY_LIMIT);
+  getPasswordHistoryKeys(user).forEach((key) => {
+    history[key] = nextHistory;
+  });
+  savePasswordHistoryMap(history);
+}
+
+function rememberUserPassword(user: UserData, password: string): void {
+  if (!password) return;
+  saveUserPasswordHistory(user, [password, ...getUserPasswordHistory(user)]);
+}
+
+export function isPasswordRecentlyUsed(identifier: string, nextPassword: string): boolean {
+  const user = findUser(identifier);
+  if (!user || !nextPassword) return false;
+  return getUserPasswordHistory(user).includes(nextPassword);
 }
 
 // Check if username already exists
@@ -142,6 +198,7 @@ export function registerUser(userData: UserData): { success: boolean; message: s
     // Add new user to database
     users.push(normalizedUser);
     saveAllUsers(users);
+    rememberUserPassword(normalizedUser, normalizedUser.password || "");
 
     console.log("User registered successfully:", {
       username: normalizedUser.username,
@@ -211,11 +268,16 @@ export function resetLocalUserPassword(identifier: string, nextPassword: string)
       return { success: false, message: "Account not found." };
     }
 
+    if (getUserPasswordHistory(users[userIndex]).includes(nextPassword)) {
+      return { success: false, message: "You cannot reuse any of your last 5 passwords." };
+    }
+
     users[userIndex] = {
       ...users[userIndex],
       password: nextPassword,
     };
     saveAllUsers(users);
+    rememberUserPassword(users[userIndex], nextPassword);
 
     const currentUserJson = localStorage.getItem("current_user");
     const currentUser = currentUserJson ? JSON.parse(currentUserJson) : null;
@@ -268,6 +330,11 @@ export function updateUser(identifier: string, updatedData: Partial<UserData>): 
     }
 
     saveAllUsers(users);
+
+    if (normalizedData.password) {
+      const savedUser = userIndex === -1 ? users[users.length - 1] : users[userIndex];
+      rememberUserPassword(savedUser, normalizedData.password);
+    }
 
     const currentUserJson = localStorage.getItem("current_user");
     const currentUser = currentUserJson ? JSON.parse(currentUserJson) : null;

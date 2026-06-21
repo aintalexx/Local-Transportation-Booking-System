@@ -3,26 +3,76 @@ import { useLocation, useNavigate } from "react-router";
 import { ArrowLeft, Eye, EyeOff, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import logoImg from "../../../imports/logo.png";
+import PasswordStrengthMeter from "../../components/PasswordStrengthMeter";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "../../components/ui/input-otp";
 import { DEMO_OTP_RESEND_SECONDS, createDemoOtp } from "../../utils/demoOtp";
-import { resetLocalUserPassword } from "../../utils/userDatabase";
+import { resetLocalUserPassword, updateUser, type UserData } from "../../utils/userDatabase";
 import { prepareSupabasePasswordRecovery, updateSupabasePassword } from "../../utils/supabaseAuth";
+import { updateSupabaseDriverPasswordByPhone } from "../../utils/supabaseDrivers";
 import { validatePassword } from "../../utils/validators";
 
 type ResetRouteState = {
-  mode?: "local";
+  mode?: "local" | "mobile-reset";
+  role?: "passenger" | "driver";
   identifier?: string;
+  phoneNumber?: string;
   accountLabel?: string;
   generatedOtp?: string;
+  otpVerified?: boolean;
+  userData?: Partial<UserData>;
 };
+
+function buildRecoveredLocalUser(state: ResetRouteState, password: string): UserData | null {
+  if (!state.userData && !state.phoneNumber) return null;
+
+  const role = state.role || state.userData?.role || "passenger";
+  const phoneDigits = String(state.phoneNumber || state.userData?.phoneNumber || "").replace(/\D/g, "");
+  const username = state.userData?.username || `${role}_${phoneDigits || Date.now()}`;
+
+  return {
+    username,
+    password,
+    phoneNumber: state.phoneNumber || state.userData?.phoneNumber || "",
+    surname: state.userData?.surname || "",
+    firstName: state.userData?.firstName || "",
+    middleName: state.userData?.middleName || "",
+    suffix: state.userData?.suffix || "",
+    email: state.userData?.email || "",
+    emailConfirmed: true,
+    birthdate: state.userData?.birthdate || "",
+    role,
+    guardianName: state.userData?.guardianName || "",
+    guardianPhone: state.userData?.guardianPhone || "",
+    rating: state.userData?.rating || 5,
+    totalTrips: state.userData?.totalTrips || 0,
+    totalEarnings: state.userData?.totalEarnings || 0,
+    vehicleType: state.userData?.vehicleType || "",
+    plateNumber: state.userData?.plateNumber || "",
+    driverLicensePhoto: state.userData?.driverLicensePhoto || "",
+    licenseNumber: state.userData?.licenseNumber || "",
+    orCrPhoto: state.userData?.orCrPhoto || "",
+    validIdPhoto: state.userData?.validIdPhoto || "",
+    clearancePhoto: state.userData?.clearancePhoto || "",
+    vehiclePhoto: state.userData?.vehiclePhoto || "",
+    vehicleColor: state.userData?.vehicleColor || "",
+    memberSince: state.userData?.memberSince || new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+    approvalStatus: state.userData?.approvalStatus || (role === "driver" ? "pending" : "approved"),
+    profilePhoto: state.userData?.profilePhoto || "",
+    registrationDate: state.userData?.registrationDate || new Date().toISOString(),
+    accountStatus: state.userData?.accountStatus || "Active",
+    supabaseId: state.userData?.supabaseId,
+    displayName: state.userData?.displayName,
+  };
+}
 
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const state = (location.state || {}) as ResetRouteState;
   const isLocalReset = state.mode === "local" && Boolean(state.identifier);
+  const isMobileReset = state.mode === "mobile-reset" && Boolean(state.otpVerified) && Boolean(state.identifier || state.phoneNumber);
   const hasSupabaseRecoveryParams = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
@@ -38,9 +88,13 @@ export default function ResetPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [preparingRecovery, setPreparingRecovery] = useState(!isLocalReset);
+  const [preparingRecovery, setPreparingRecovery] = useState(!isLocalReset && !isMobileReset);
 
   useEffect(() => {
+    if (isMobileReset) {
+      return;
+    }
+
     if (isLocalReset) {
       toast.success(`Demo recovery OTP: ${currentOtp}`, { duration: 10000 });
       return;
@@ -125,7 +179,33 @@ export default function ResetPasswordPage() {
 
     setLoading(true);
     try {
-      if (isLocalReset) {
+      if (isMobileReset) {
+        const identifier = state.identifier || state.phoneNumber || "";
+        const result = resetLocalUserPassword(identifier, password);
+
+        if (!result.success && result.message !== "Account not found.") {
+          toast.error(result.message);
+          return;
+        }
+
+        const driverUpdated = state.role === "driver" && state.phoneNumber
+          ? await updateSupabaseDriverPasswordByPhone(state.phoneNumber, password)
+          : false;
+
+        if (!result.success && !driverUpdated) {
+          if (result.message === "Account not found." && state.userData) {
+            const recoveredUser = buildRecoveredLocalUser(state, password);
+            const saved = recoveredUser ? updateUser(recoveredUser.username, recoveredUser) : false;
+            if (!saved) {
+              toast.error(result.message);
+              return;
+            }
+          } else {
+            toast.error(result.message);
+            return;
+          }
+        }
+      } else if (isLocalReset) {
         const result = resetLocalUserPassword(state.identifier || "", password);
         if (!result.success) {
           toast.error(result.message);
@@ -157,7 +237,7 @@ export default function ResetPasswordPage() {
         </div>
         <h1 style={{ color: "#FFF8E7", fontSize: 26, fontWeight: 800, lineHeight: 1.1 }}>Set new password</h1>
         <p style={{ color: "rgba(255,248,231,0.68)", fontSize: 14, marginTop: 6 }}>
-          {isLocalReset ? `Recovering ${state.accountLabel || "your account"}` : "Complete your Supabase password reset."}
+          {isMobileReset || isLocalReset ? `Recovering ${state.accountLabel || "your account"}` : "Complete your Supabase password reset."}
         </p>
       </div>
 
@@ -218,9 +298,7 @@ export default function ResetPasswordPage() {
               placeholder="Confirm new password"
               disabled={preparingRecovery}
             />
-            <p className="text-xs leading-5 text-[#7a6a5a]">
-              Use at least 8 characters. Any letters, numbers, or special characters are allowed.
-            </p>
+            <PasswordStrengthMeter password={password} />
           </div>
 
           <Button type="submit" disabled={loading || preparingRecovery} className="h-14 w-full rounded-2xl bg-[#4B0F14] text-[#D4AF37] hover:bg-[#6E171D]">

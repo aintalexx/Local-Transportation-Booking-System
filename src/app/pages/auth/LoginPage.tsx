@@ -451,6 +451,15 @@ export default function LoginPage() {
             }
           }
 
+          const resetLocalAuthed = authenticateUser(targetEmail || loginIdentifier, cleanPassword);
+          if (resetLocalAuthed?.role === "passenger") {
+            resetLocalAuthed.emailConfirmed = true;
+            setUser(resetLocalAuthed);
+            toast.success("Login successful!");
+            navigate("/passenger");
+            return;
+          }
+
           toast.error("Invalid email/phone number or password.");
           setLoading(false);
           return;

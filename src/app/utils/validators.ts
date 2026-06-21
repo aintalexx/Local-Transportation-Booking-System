@@ -120,7 +120,45 @@ export function validatePassword(password: string): ValidationResult {
     return fail("Password must be at least 8 characters.");
   }
 
+  if (!/[A-Z]/.test(password)) {
+    return fail("Password must include at least 1 uppercase letter.");
+  }
+
+  if (!/[a-z]/.test(password)) {
+    return fail("Password must include at least 1 lowercase letter.");
+  }
+
+  if (!/\d/.test(password)) {
+    return fail("Password must include at least 1 digit.");
+  }
+
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return fail("Password must include at least 1 special character.");
+  }
+
   return ok;
+}
+
+export type PasswordStrengthLevel = "Weak" | "Fair" | "Strong" | "Very Strong";
+
+export function getPasswordStrength(password: string): {
+  level: PasswordStrengthLevel;
+  score: number;
+  percent: number;
+} {
+  let score = 0;
+
+  if (password.length >= 8) score += 1;
+  if (/[A-Z]/.test(password)) score += 1;
+  if (/[a-z]/.test(password)) score += 1;
+  if (/\d/.test(password)) score += 1;
+  if (/[^A-Za-z0-9]/.test(password)) score += 1;
+  if (password.length >= 12) score += 1;
+
+  if (score <= 2) return { level: "Weak", score, percent: 25 };
+  if (score <= 4) return { level: "Fair", score, percent: 50 };
+  if (score === 5) return { level: "Strong", score, percent: 75 };
+  return { level: "Very Strong", score, percent: 100 };
 }
 
 export function calculateAge(birthdate: Date): number {

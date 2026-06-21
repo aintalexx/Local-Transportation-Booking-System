@@ -110,6 +110,29 @@ export async function getSupabaseDriverByPhone(phone: string): Promise<SupabaseD
   return data as SupabaseDriverRow;
 }
 
+export async function updateSupabaseDriverPasswordByPhone(phone: string, nextPassword: string): Promise<boolean> {
+  if (!supabase) return false;
+
+  const normalizedPhone = normalizePhoneDigits(phone);
+  const driver = await getSupabaseDriverByPhone(normalizedPhone);
+  if (!driver) return false;
+
+  const { error } = await supabase
+    .from("drivers")
+    .update({
+      password: nextPassword,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", driver.id);
+
+  if (error) {
+    console.error("Error updating driver password in Supabase:", error.message);
+    return false;
+  }
+
+  return true;
+}
+
 function normalizePhoneDigits(value: string | null | undefined): string {
   const digits = String(value || "").replace(/\D/g, "");
   if (digits.startsWith("63")) return `0${digits.slice(2, 12)}`.slice(0, 11);

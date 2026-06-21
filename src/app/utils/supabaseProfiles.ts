@@ -87,6 +87,30 @@ export async function profileContactExists(email: string, phone: string): Promis
   }
 }
 
+export async function getSupabaseProfileByPhone(
+  phone: string,
+  role?: "passenger" | "driver" | "admin"
+): Promise<SupabaseProfile | null> {
+  if (!supabase || !phone) return null;
+
+  let query = supabase
+    .from("profiles")
+    .select("*")
+    .eq("phone", phone);
+
+  if (role) {
+    query = query.eq("role", role);
+  }
+
+  const { data, error } = await query.limit(1).maybeSingle();
+  if (error) {
+    console.info("Profile phone lookup failed:", error.message);
+    return null;
+  }
+
+  return data as SupabaseProfile | null;
+}
+
 export async function profileContactExistsForOther(
   email: string,
   phone: string,
