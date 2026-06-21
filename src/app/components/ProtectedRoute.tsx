@@ -7,14 +7,15 @@ import type { UserData } from "../utils/userDatabase";
 type ProtectedRouteProps = {
   children: ReactNode;
   allowedRoles?: UserData["role"][];
+  loginPath?: string;
 };
 
-export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
+export default function ProtectedRoute({ children, allowedRoles, loginPath = "/login" }: ProtectedRouteProps) {
   const { user } = useUser();
   const location = useLocation();
 
   if (!user) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return <Navigate to={loginPath} replace state={{ from: location.pathname }} />;
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {

@@ -12,6 +12,7 @@ import ResetPasswordPage from "./pages/auth/ResetPasswordPage";
 import PendingApproval from "./pages/auth/PendingApproval";
 import AuthCallbackPage from "./pages/auth/AuthCallbackPage";
 import GooglePhonePage from "./pages/auth/GooglePhonePage";
+import AdminLoginPage from "./pages/auth/AdminLoginPage";
 
 // Passenger pages
 import PassengerLayout from "./pages/passenger/PassengerLayout";
@@ -63,7 +64,7 @@ function ProtectedDriverLayout() {
 
 function ProtectedAdminPanelApp() {
   return (
-    <ProtectedRoute allowedRoles={["admin"]}>
+    <ProtectedRoute allowedRoles={["admin"]} loginPath="/admin-login">
       <AdminPanelApp />
     </ProtectedRoute>
   );
@@ -89,6 +90,10 @@ export const router = createBrowserRouter([
   {
     path: "/admin/*",
     Component: ProtectedAdminPanelApp,
+  },
+  {
+    path: "/admin-login",
+    Component: AdminLoginPage,
   },
   {
     path: "/",

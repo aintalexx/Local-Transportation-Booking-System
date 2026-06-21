@@ -440,7 +440,7 @@ export default function App() {
 
   useEffect(() => {
     if (!user || user.role !== "admin") {
-      routerNavigate("/login", { replace: true });
+      routerNavigate("/admin-login", { replace: true });
     }
   }, [user, routerNavigate]);
 
@@ -453,12 +453,12 @@ export default function App() {
       <AppShell
         onLogout={() => {
           logout();
-          routerNavigate("/login");
+          routerNavigate("/admin-login");
         }}
         onSignOutAllDevices={() => {
           if (confirm("Sign out this admin account on all devices?")) {
             signOutAllDevices();
-            routerNavigate("/login");
+            routerNavigate("/admin-login");
           }
         }}
       />
