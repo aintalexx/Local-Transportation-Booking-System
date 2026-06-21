@@ -1,6 +1,8 @@
+import { useState } from "react";
 import {
   Car, Users, CheckCircle, Clock, TrendingUp, TrendingDown,
   Activity, ArrowUpRight, RefreshCw, AlertTriangle,
+  Download, Search,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -11,6 +13,12 @@ import { useAppState } from "../context/AppStateContext";
 import { toast } from "sonner";
 import { StatusBadge, type StatusKey } from "../components/ui/StatusBadge";
 import { BTN_OUTLINE_SM, BTN_GHOST_LINK, CARD, CARD_HEADER, SECTION_TITLE, PAGE_TITLE, PAGE_SUBTITLE } from "../lib/ui";
+import {
+  exportBookingsCsv,
+  exportDriversCsv,
+  exportPassengersCsv,
+  exportRatingsCsv,
+} from "../../utils/adminCsvExports";
 
 const MAROON = "#6B0E1A";
 const GOLD   = "#C49A1A";
@@ -49,6 +57,8 @@ function ChartTooltip({ active, payload, label }: any) {
 export function Overview() {
   const { navigate }   = useNavigate();
   const { drivers, bookings, pendingDriverCount } = useAppState();
+  const [exportSearch, setExportSearch] = useState("");
+  const [exporting, setExporting] = useState<"passengers" | "drivers" | "bookings" | "ratings" | null>(null);
 
   // ─── Live-computed stats ────────────────────────────────────────────────────
   const activeDriverCount    = drivers.filter(d => d.status === "Active").length;
@@ -104,6 +114,35 @@ export function Overview() {
 
   // Show the 5 most recent bookings from live context (reverse-chronological)
   const recentActivity = [...bookings].slice(0, 5);
+
+  const matchesExportSearch = (row: Record<string, unknown>) => {
+    const q = exportSearch.trim().toLowerCase();
+    if (!q) return true;
+    return Object.values(row).some((value) => String(value || "").toLowerCase().includes(q));
+  };
+
+  async function handleAdminExport(type: "passengers" | "drivers" | "bookings" | "ratings") {
+    setExporting(type);
+
+    const result = type === "passengers"
+      ? await exportPassengersCsv(exportSearch)
+      : type === "ratings"
+      ? await exportRatingsCsv(exportSearch)
+      : type === "drivers"
+      ? exportDriversCsv(drivers.filter((driver) => matchesExportSearch(driver as unknown as Record<string, unknown>)))
+      : exportBookingsCsv(bookings.filter((booking) => matchesExportSearch(booking as unknown as Record<string, unknown>)));
+
+    setExporting(null);
+
+    if (result.success) {
+      toast.success(`${type[0].toUpperCase()}${type.slice(1)} CSV exported`, {
+        description: `${result.count} record${result.count === 1 ? "" : "s"} downloaded from admin data.`,
+        duration: 3000,
+      });
+    } else {
+      toast.error("Export failed", { description: result.error, duration: 3500 });
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -180,6 +219,37 @@ export function Overview() {
           </span>
         </div>
       )}
+
+      <div className={`${CARD} p-4`}>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="min-w-0">
+            <h3 className={SECTION_TITLE}>Admin Export CSV</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Export real records from the admin dashboard.</p>
+          </div>
+          <div className="relative lg:ml-auto lg:w-64">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={exportSearch}
+              onChange={(e) => setExportSearch(e.target.value)}
+              placeholder="Search before export..."
+              className="w-full pl-8 pr-3 py-2 text-xs rounded-lg bg-muted border border-border focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(["passengers", "drivers", "bookings", "ratings"] as const).map((type) => (
+              <button
+                key={type}
+                onClick={() => void handleAdminExport(type)}
+                disabled={exporting !== null}
+                className={`${BTN_OUTLINE_SM} disabled:opacity-60`}
+              >
+                <Download size={12} />
+                {exporting === type ? "Exporting..." : `Export ${type[0].toUpperCase()}${type.slice(1)}`}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
       {/* ── Charts row ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
