@@ -207,6 +207,7 @@ export default function OTPPage() {
             phoneNumber: state.phoneNumber,
             accountLabel: state.accountLabel || state.phoneNumber,
             otpVerified: true,
+            resetStartedAt: Date.now(),
             userData: state.userData,
           },
         });

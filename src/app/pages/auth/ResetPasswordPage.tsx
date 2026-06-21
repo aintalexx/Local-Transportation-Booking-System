@@ -13,6 +13,8 @@ import { prepareSupabasePasswordRecovery, updateSupabasePassword } from "../../u
 import { updateSupabaseDriverPasswordByPhone } from "../../utils/supabaseDrivers";
 import { validatePassword } from "../../utils/validators";
 
+const RESET_TOKEN_EXPIRY_MS = 3 * 60 * 1000;
+
 type ResetRouteState = {
   mode?: "local" | "mobile-reset";
   role?: "passenger" | "driver";
@@ -21,8 +23,16 @@ type ResetRouteState = {
   accountLabel?: string;
   generatedOtp?: string;
   otpVerified?: boolean;
+  resetStartedAt?: number;
   userData?: Partial<UserData>;
 };
+
+function formatResetTime(ms: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
 
 function buildRecoveredLocalUser(state: ResetRouteState, password: string): UserData | null {
   if (!state.userData && !state.phoneNumber) return null;
@@ -89,6 +99,11 @@ export default function ResetPasswordPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [preparingRecovery, setPreparingRecovery] = useState(!isLocalReset && !isMobileReset);
+  const [resetTimeLeftMs, setResetTimeLeftMs] = useState(RESET_TOKEN_EXPIRY_MS);
+  const resetStartedAt = useMemo(() => state.resetStartedAt || Date.now(), []);
+  const isTimedReset = isMobileReset || isLocalReset;
+  const resetExpired = isTimedReset && resetTimeLeftMs <= 0;
+  const recoveryStartPath = state.role === "driver" ? "/driver-forgot-password" : "/forgot-password";
 
   useEffect(() => {
     if (isMobileReset) {
@@ -114,6 +129,24 @@ export default function ResetPasswordPage() {
       })
       .finally(() => setPreparingRecovery(false));
   }, []);
+
+  useEffect(() => {
+    if (!isTimedReset) return;
+
+    const updateRemainingTime = () => {
+      const timeLeft = RESET_TOKEN_EXPIRY_MS - (Date.now() - resetStartedAt);
+      setResetTimeLeftMs(Math.max(0, timeLeft));
+
+      if (timeLeft <= 0) {
+        toast.error("Password reset token expired. Please start forgot password again.");
+        navigate(recoveryStartPath, { replace: true });
+      }
+    };
+
+    updateRemainingTime();
+    const timer = window.setInterval(updateRemainingTime, 1000);
+    return () => window.clearInterval(timer);
+  }, [isTimedReset, navigate, recoveryStartPath, resetStartedAt]);
 
   useEffect(() => {
     if (!isLocalReset || canResend) return;
@@ -154,6 +187,12 @@ export default function ResetPasswordPage() {
 
     if (password !== confirmPassword) {
       toast.error("Passwords do not match.");
+      return;
+    }
+
+    if (resetExpired) {
+      toast.error("Password reset token expired. Please start forgot password again.");
+      navigate(recoveryStartPath, { replace: true });
       return;
     }
 
@@ -249,6 +288,13 @@ export default function ResetPasswordPage() {
             </div>
           )}
 
+          {isTimedReset && (
+            <div className="rounded-2xl border border-[#4B0F14]/12 bg-white p-4 text-sm leading-6 text-[#4B0F14]">
+              <p className="font-bold">Reset token expires in {formatResetTime(resetTimeLeftMs)}</p>
+              <p className="text-xs text-[#7a6a5a]">Finish changing your password within 3 minutes.</p>
+            </div>
+          )}
+
           {isLocalReset && (
             <div className="rounded-2xl border border-[#4B0F14]/12 bg-white p-4">
               <p className="mb-3 text-sm font-bold text-[#4B0F14]">Recovery OTP</p>
@@ -301,7 +347,7 @@ export default function ResetPasswordPage() {
             <PasswordStrengthMeter password={password} />
           </div>
 
-          <Button type="submit" disabled={loading || preparingRecovery} className="h-14 w-full rounded-2xl bg-[#4B0F14] text-[#D4AF37] hover:bg-[#6E171D]">
+          <Button type="submit" disabled={loading || preparingRecovery || resetExpired} className="h-14 w-full rounded-2xl bg-[#4B0F14] text-[#D4AF37] hover:bg-[#6E171D]">
             {loading ? "Saving password..." : "Reset Password"}
           </Button>
         </form>
