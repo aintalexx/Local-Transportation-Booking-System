@@ -7,6 +7,7 @@ import { formatPHPhoneInput, validatePHPhone } from "../../utils/validators";
 import { getSupabaseDriverByPhone } from "../../utils/supabaseDrivers";
 import { findUser } from "../../utils/userDatabase";
 import { getSupabaseProfileByPhone } from "../../utils/supabaseProfiles";
+import { createDemoOtp } from "../../utils/demoOtp";
 
 export default function DriverForgotPasswordPage() {
   const navigate = useNavigate();
@@ -59,9 +60,17 @@ export default function DriverForgotPasswordPage() {
         return;
       }
 
-      // Generate demo OTP through the rate-limited server endpoint
-      const resetResult = await authAPI.requestPasswordReset(normalizedPhone, "driver");
-      const otp = resetResult.generatedOtp;
+      let otp = createDemoOtp();
+      try {
+        const resetResult = await authAPI.requestPasswordReset(normalizedPhone, "driver");
+        otp = resetResult.generatedOtp || otp;
+      } catch (resetError) {
+        const message = resetError instanceof Error ? resetError.message : "";
+        if (!/failed to fetch|network/i.test(message)) {
+          throw resetError;
+        }
+        console.info("Password reset endpoint unavailable; continuing with local demo OTP.");
+      }
       toast.success(`Demo OTP: ${otp}`, { duration: 10000 });
 
       navigate("/otp", {

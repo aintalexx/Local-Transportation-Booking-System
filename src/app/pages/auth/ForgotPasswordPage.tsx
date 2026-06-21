@@ -6,6 +6,7 @@ import logoImg from "../../../imports/logo.png";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { authAPI } from "../../utils/api";
+import { createDemoOtp } from "../../utils/demoOtp";
 import { findUser } from "../../utils/userDatabase";
 import { getSupabaseProfileByPhone } from "../../utils/supabaseProfiles";
 import { formatPHPhoneInput, validatePHPhone } from "../../utils/validators";
@@ -46,8 +47,17 @@ export default function ForgotPasswordPage() {
         return;
       }
 
-      const resetResult = await authAPI.requestPasswordReset(normalizedPhone, "passenger");
-      const generatedOtp = resetResult.generatedOtp;
+      let generatedOtp = createDemoOtp();
+      try {
+        const resetResult = await authAPI.requestPasswordReset(normalizedPhone, "passenger");
+        generatedOtp = resetResult.generatedOtp || generatedOtp;
+      } catch (resetError) {
+        const message = resetError instanceof Error ? resetError.message : "";
+        if (!/failed to fetch|network/i.test(message)) {
+          throw resetError;
+        }
+        console.info("Password reset endpoint unavailable; continuing with local demo OTP.");
+      }
       toast.success(`Demo OTP: ${generatedOtp}`, { duration: 10000 });
       navigate("/otp", {
         state: {
