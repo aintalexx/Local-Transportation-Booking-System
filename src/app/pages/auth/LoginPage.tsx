@@ -604,6 +604,7 @@ export default function LoginPage() {
               onClick={() => {
                 setLoginType("admin");
                 setShowValidation(false);
+                setTrustDevice(false);
               }}
               className="flex-1 py-3 text-sm font-extrabold rounded-xl transition-all duration-200"
               style={{
@@ -691,37 +692,41 @@ export default function LoginPage() {
                     {showPassword ? <EyeOff size={18} color="#9a8a7a" /> : <Eye size={18} color="#9a8a7a" />}
                   </button>
                 </div>
-                <div className="mt-2 text-right">
-                  <button
-                    type="button"
-                    onClick={() => navigate("/forgot-password")}
-                    className="text-sm font-bold"
-                    style={{ color: "#4B0F14" }}
-                  >
-                    Forgot password?
-                  </button>
-                </div>
+                {loginType !== "admin" && (
+                  <div className="mt-2 text-right">
+                    <button
+                      type="button"
+                      onClick={() => navigate("/forgot-password")}
+                      className="text-sm font-bold"
+                      style={{ color: "#4B0F14" }}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
               </div>
             </>
           )}
 
-          <label className="flex items-start gap-3 rounded-2xl border border-[rgba(75,15,20,0.12)] bg-white px-4 py-3">
-            <input
-              type="checkbox"
-              checked={trustDevice}
-              onChange={e => setTrustDevice(e.target.checked)}
-              className="mt-1 h-4 w-4 rounded border-gray-300 accent-[#4B0F14]"
-            />
-            <span className="flex min-w-0 gap-2">
-              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#4B0F14]" />
-              <span className="min-w-0">
-                <span className="block text-sm font-bold text-[#4B0F14]">Remember this trusted device</span>
-                <span className="block text-xs leading-5 text-[#7a6a5a]">
-                  Extends the inactivity timeout on this browser and marks it as a trusted login location.
+          {loginType !== "admin" && (
+            <label className="flex items-start gap-3 rounded-2xl border border-[rgba(75,15,20,0.12)] bg-white px-4 py-3">
+              <input
+                type="checkbox"
+                checked={trustDevice}
+                onChange={e => setTrustDevice(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-gray-300 accent-[#4B0F14]"
+              />
+              <span className="flex min-w-0 gap-2">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#4B0F14]" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold text-[#4B0F14]">Remember this trusted device</span>
+                  <span className="block text-xs leading-5 text-[#7a6a5a]">
+                    Extends the inactivity timeout on this browser and marks it as a trusted login location.
+                  </span>
                 </span>
               </span>
-            </span>
-          </label>
+            </label>
+          )}
 
           {/* Login button */}
           <button
@@ -735,12 +740,14 @@ export default function LoginPage() {
             </span>
           </button>
 
-          <p className="text-center" style={{ color: "#7a6a5a", fontSize: 12, lineHeight: 1.5 }}>
-            By signing in, you agree to the{" "}
-            <button type="button" onClick={() => openLegalPage("/terms")} style={{ color: "#4B0F14", fontWeight: 700 }}>Terms</button>{" "}
-            and{" "}
-            <button type="button" onClick={() => openLegalPage("/privacy")} style={{ color: "#4B0F14", fontWeight: 700 }}>Privacy Policy</button>.
-          </p>
+          {loginType !== "admin" && (
+            <p className="text-center" style={{ color: "#7a6a5a", fontSize: 12, lineHeight: 1.5 }}>
+              By signing in, you agree to the{" "}
+              <button type="button" onClick={() => openLegalPage("/terms")} style={{ color: "#4B0F14", fontWeight: 700 }}>Terms</button>{" "}
+              and{" "}
+              <button type="button" onClick={() => openLegalPage("/privacy")} style={{ color: "#4B0F14", fontWeight: 700 }}>Privacy Policy</button>.
+            </p>
+          )}
         </form>
 
         <p className="text-center mt-6" style={{ color: "#7a6a5a", fontSize: 14 }}>
