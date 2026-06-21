@@ -6,8 +6,8 @@ const SESSIONS_KEY = "ridestamesa_sessions";
 const TRUSTED_DEVICES_KEY = "ridestamesa_trusted_devices";
 export const SESSION_SIGN_OUT_ALL_KEY = "ridestamesa_signout_all";
 
-export const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
-export const TRUSTED_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+export const DEFAULT_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
+export const TRUSTED_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 const ACTIVE_SESSION_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export type SessionRecord = {
