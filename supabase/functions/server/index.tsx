@@ -5,6 +5,111 @@ import * as kv from "./kv_store.tsx";
 
 const app = new Hono();
 
+type RateLimitConfig = {
+  name: string;
+  maxRequests: number;
+  windowMs: number;
+  message: string;
+};
+
+type RateLimitState = {
+  count: number;
+  resetAt: number;
+};
+
+const RATE_LIMIT_PREFIX = "rate-limit";
+const SENSITIVE_RATE_LIMITS = {
+  loginOtp: {
+    name: "auth-send-otp",
+    maxRequests: 5,
+    windowMs: 10 * 60 * 1000,
+    message: "Too many login or OTP requests. Please wait before trying again.",
+  },
+  otpVerify: {
+    name: "auth-verify-otp",
+    maxRequests: 10,
+    windowMs: 10 * 60 * 1000,
+    message: "Too many verification attempts. Please wait before trying again.",
+  },
+  bookingForm: {
+    name: "booking-create",
+    maxRequests: 12,
+    windowMs: 10 * 60 * 1000,
+    message: "Too many booking submissions. Please wait before trying again.",
+  },
+  bookingStatusForm: {
+    name: "booking-status",
+    maxRequests: 30,
+    windowMs: 10 * 60 * 1000,
+    message: "Too many booking status submissions. Please wait before trying again.",
+  },
+  chatForm: {
+    name: "chat-message",
+    maxRequests: 30,
+    windowMs: 60 * 1000,
+    message: "Too many message submissions. Please slow down.",
+  },
+} satisfies Record<string, RateLimitConfig>;
+
+function getClientIp(c: any): string {
+  const forwardedFor = c.req.header("x-forwarded-for") || "";
+  const firstForwardedIp = forwardedFor.split(",")[0]?.trim();
+  return (
+    c.req.header("cf-connecting-ip") ||
+    c.req.header("x-real-ip") ||
+    firstForwardedIp ||
+    "unknown"
+  );
+}
+
+function rateLimitKey(config: RateLimitConfig, ip: string): string {
+  const safeIp = ip.replace(/[^a-zA-Z0-9:.:-]/g, "_");
+  return `${RATE_LIMIT_PREFIX}:${config.name}:${safeIp}`;
+}
+
+async function checkRateLimit(c: any, config: RateLimitConfig) {
+  const now = Date.now();
+  const ip = getClientIp(c);
+  const key = rateLimitKey(config, ip);
+  const current = await kv.get(key) as RateLimitState | null;
+  const state = current && current.resetAt > now
+    ? current
+    : { count: 0, resetAt: now + config.windowMs };
+
+  if (state.count >= config.maxRequests) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((state.resetAt - now) / 1000));
+    c.header("Retry-After", String(retryAfterSeconds));
+    c.header("X-RateLimit-Limit", String(config.maxRequests));
+    c.header("X-RateLimit-Remaining", "0");
+    c.header("X-RateLimit-Reset", String(Math.ceil(state.resetAt / 1000)));
+    return c.json({
+      success: false,
+      error: config.message,
+      retryAfterSeconds,
+    }, 429);
+  }
+
+  const nextState = { ...state, count: state.count + 1 };
+  await kv.set(key, nextState);
+  c.header("X-RateLimit-Limit", String(config.maxRequests));
+  c.header("X-RateLimit-Remaining", String(Math.max(0, config.maxRequests - nextState.count)));
+  c.header("X-RateLimit-Reset", String(Math.ceil(nextState.resetAt / 1000)));
+  return null;
+}
+
+function rateLimit(config: RateLimitConfig) {
+  return async (c: any, next: () => Promise<void>) => {
+    if (["GET", "HEAD", "OPTIONS"].includes(c.req.method.toUpperCase())) {
+      await next();
+      return;
+    }
+
+    const limitedResponse = await checkRateLimit(c, config);
+    if (limitedResponse) return limitedResponse;
+    await next();
+  };
+}
+
 // Enable logger
 app.use('*', logger(console.log));
 
@@ -19,6 +124,12 @@ app.use(
     maxAge: 600,
   }),
 );
+
+app.use("/make-server-2b48d7fc/auth/send-otp", rateLimit(SENSITIVE_RATE_LIMITS.loginOtp));
+app.use("/make-server-2b48d7fc/auth/verify-otp", rateLimit(SENSITIVE_RATE_LIMITS.otpVerify));
+app.use("/make-server-2b48d7fc/bookings/create", rateLimit(SENSITIVE_RATE_LIMITS.bookingForm));
+app.use("/make-server-2b48d7fc/bookings/:id/status", rateLimit(SENSITIVE_RATE_LIMITS.bookingStatusForm));
+app.use("/make-server-2b48d7fc/chat/:rideId/messages", rateLimit(SENSITIVE_RATE_LIMITS.chatForm));
 
 // Health check endpoint
 app.get("/make-server-2b48d7fc/health", (c) => {
