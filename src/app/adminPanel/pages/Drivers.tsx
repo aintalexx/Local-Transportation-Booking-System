@@ -16,6 +16,7 @@ import {
 } from "../lib/ui";
 import { toast } from "sonner";
 import type { Driver } from "../context/AppStateContext";
+import { exportDriversCsv } from "../../utils/adminCsvExports";
 
 const MAROON = "#6B0E1A";
 const GOLD   = "#C49A1A";
@@ -454,6 +455,14 @@ export function Drivers() {
 
   function openModal(id: string) { setModalDriverId(id); }
   function closeModal()          { setModalDriverId(null); }
+  function handleExport() {
+    const result = exportDriversCsv(filtered);
+    if (result.success) {
+      toast.success("Driver CSV exported", { description: `${result.count} filtered driver record${result.count === 1 ? "" : "s"} downloaded.`, duration: 3000 });
+    } else {
+      toast.error("Export failed", { description: result.error, duration: 3000 });
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -465,7 +474,7 @@ export function Drivers() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => toast.info("Generating export…", { description: "Driver list CSV will be ready shortly.", duration: 3000 })}
+            onClick={handleExport}
             className={BTN_SECONDARY}
           >
             <Download size={14} /> Export

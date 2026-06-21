@@ -13,6 +13,7 @@ import {
   BTN_ICON_SM, CARD, CARD_HEADER,
   SECTION_TITLE, PAGE_TITLE, PAGE_SUBTITLE, TH,
 } from "../lib/ui";
+import { exportBookingsCsv } from "../../utils/adminCsvExports";
 
 const MAROON = "#6B0E1A";
 
@@ -48,6 +49,15 @@ export function Bookings() {
 
   const detailBooking = bookings.find((b) => b.id === detail) ?? null;
 
+  function handleExport() {
+    const result = exportBookingsCsv(filtered);
+    if (result.success) {
+      toast.success("Booking CSV exported", { description: `${result.count} filtered booking record${result.count === 1 ? "" : "s"} downloaded.`, duration: 3000 });
+    } else {
+      toast.error("Export failed", { description: result.error, duration: 3000 });
+    }
+  }
+
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5">
@@ -76,7 +86,7 @@ export function Bookings() {
           );
         })}
         <button
-          onClick={() => toast.info("Generating export…", { description: "CSV will be ready shortly.", duration: 3000 })}
+          onClick={handleExport}
           className={`${BTN_OUTLINE_SM} ml-auto`}
         >
           <Download size={12} /> Export CSV

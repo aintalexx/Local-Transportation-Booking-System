@@ -4,12 +4,13 @@ import {
   User, Bell, Map, Shield, Info,
   Save, RefreshCw, ChevronRight,
   Phone, Mail, Globe, Eye, EyeOff,
-  Plus, Trash2, CheckCircle,
+  Plus, Trash2, CheckCircle, Download, Search,
 } from "lucide-react";
 import {
   BTN_PRIMARY, BTN_SECONDARY, BTN_OUTLINE_SM,
   CARD, CARD_HEADER, SECTION_TITLE, PAGE_TITLE, PAGE_SUBTITLE,
 } from "../lib/ui";
+import { exportPassengersCsv, exportRatingsCsv } from "../../utils/adminCsvExports";
 
 const MAROON = "#6B0E1A";
 const GOLD = "#C49A1A";
@@ -361,10 +362,29 @@ function RoutesTab() {
 
 function AccessTab() {
   const [adminList, setAdminList] = useState(admins);
+  const [exportSearch, setExportSearch] = useState("");
+  const [exporting, setExporting] = useState<"passengers" | "ratings" | null>(null);
 
   function removeAdmin(email: string) {
     setAdminList((prev) => prev.filter((a) => a.email !== email));
     toast.error("User removed", { description: email, duration: 2500 });
+  }
+
+  async function handleDatabaseExport(type: "passengers" | "ratings") {
+    setExporting(type);
+    const result = type === "passengers"
+      ? await exportPassengersCsv(exportSearch)
+      : await exportRatingsCsv(exportSearch);
+    setExporting(null);
+
+    if (result.success) {
+      toast.success(`${type === "passengers" ? "Passenger" : "Rating"} CSV exported`, {
+        description: `${result.count} database record${result.count === 1 ? "" : "s"} downloaded.`,
+        duration: 3000,
+      });
+    } else {
+      toast.error("Export failed", { description: result.error, duration: 3500 });
+    }
   }
 
   const roleColors: Record<string, string> = {
@@ -428,6 +448,35 @@ function AccessTab() {
             </div>
           </div>
         ))}
+      </div>
+
+      <SectionTitle>Database Export</SectionTitle>
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="relative mb-3">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={exportSearch}
+            onChange={(e) => setExportSearch(e.target.value)}
+            placeholder="Search passenger or rating records..."
+            className="w-full pl-8 pr-3 py-2 text-xs rounded-lg bg-muted border border-border focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button
+            onClick={() => void handleDatabaseExport("passengers")}
+            disabled={exporting !== null}
+            className={`${BTN_OUTLINE_SM} justify-center disabled:opacity-60`}
+          >
+            <Download size={12} /> {exporting === "passengers" ? "Exporting..." : "Export Passengers"}
+          </button>
+          <button
+            onClick={() => void handleDatabaseExport("ratings")}
+            disabled={exporting !== null}
+            className={`${BTN_OUTLINE_SM} justify-center disabled:opacity-60`}
+          >
+            <Download size={12} /> {exporting === "ratings" ? "Exporting..." : "Export Ratings"}
+          </button>
+        </div>
       </div>
     </div>
   );
