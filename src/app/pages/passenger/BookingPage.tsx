@@ -5,6 +5,7 @@ import "leaflet/dist/leaflet.css";
 import {
   MapPin, Locate, ArrowLeft, Search,
   Navigation2, Clock, Ruler, CreditCard,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
@@ -15,6 +16,7 @@ import {
   Dialog, DialogPortal,
 } from "../../components/ui/dialog";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { SANTA_MESA_PICKUP_POINTS } from "../../utils/demoLocations";
 
 // ─── Leaflet icon fix ─────────────────────────────────────────────────────────
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -44,6 +46,25 @@ interface PlaceSuggestion {
   lat: number;
   lng: number;
   category: string;
+}
+
+function getLocalPlaceSuggestions(query: string): PlaceSuggestion[] {
+  const normalizeSearchText = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const normalizedQuery = normalizeSearchText(query);
+  if (normalizedQuery.length < 2) return [];
+
+  return SANTA_MESA_PICKUP_POINTS
+    .filter((place) => {
+      const searchable = normalizeSearchText(`${place.name} ${place.address}`);
+      return searchable.includes(normalizedQuery);
+    })
+    .map((place) => ({
+      id: `local-${place.id}`,
+      label: place.address,
+      lat: place.lat,
+      lng: place.lng,
+      category: "local landmark",
+    }));
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -77,13 +98,18 @@ function makeDropoffIcon() {
 
 async function reverseGeocode(lat: number, lng: number): Promise<string> {
   try {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 8000);
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
-      { headers: { "Accept-Language": "en" } }
+      { headers: { "Accept-Language": "en" }, signal: controller.signal }
     );
+    window.clearTimeout(timeout);
+    if (!res.ok) throw new Error(`Reverse geocoding failed: ${res.status}`);
     const data = await res.json();
     return data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-  } catch {
+  } catch (error) {
+    console.info("Reverse geocoding unavailable, using coordinates:", error);
     return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   }
 }
@@ -92,21 +118,29 @@ async function searchPlaces(query: string): Promise<PlaceSuggestion[]> {
   const trimmed = query.trim();
   if (trimmed.length < 3) return [];
 
+  const localSuggestions = getLocalPlaceSuggestions(trimmed);
+
   try {
     const params = new URLSearchParams({
       format: "jsonv2",
-      q: trimmed,
+      q: `${trimmed}, Sta. Mesa, Manila, Philippines`,
       limit: "6",
       countrycodes: "ph",
       addressdetails: "1",
       "accept-language": "en",
     });
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+      signal: controller.signal,
+    });
+    window.clearTimeout(timeout);
+    if (!res.ok) throw new Error(`Place search failed: ${res.status}`);
     const data = await res.json();
 
-    if (!Array.isArray(data)) return [];
+    if (!Array.isArray(data)) return localSuggestions;
 
-    return data
+    const remoteSuggestions = data
       .map((item: any): PlaceSuggestion | null => {
         const lat = Number(item.lat);
         const lng = Number(item.lon);
@@ -121,8 +155,15 @@ async function searchPlaces(query: string): Promise<PlaceSuggestion[]> {
         };
       })
       .filter(Boolean) as PlaceSuggestion[];
-  } catch {
-    return [];
+
+    const suggestionsById = new Map<string, PlaceSuggestion>();
+    [...localSuggestions, ...remoteSuggestions].forEach((suggestion) => {
+      suggestionsById.set(suggestion.id, suggestion);
+    });
+    return Array.from(suggestionsById.values()).slice(0, 8);
+  } catch (error) {
+    console.info("Place search unavailable, using local landmarks:", error);
+    return localSuggestions;
   }
 }
 
@@ -137,6 +178,7 @@ async function fetchOSRMRoute(from: LatLng, to: LatLng): Promise<{
       `${from.lng},${from.lat};${to.lng},${to.lat}` +
       `?overview=full&geometries=geojson`;
     const res  = await fetch(url);
+    if (!res.ok) throw new Error(`Route request failed: ${res.status}`);
     const data = await res.json();
     if (data.code !== "Ok" || !data.routes?.[0]) return null;
     const route = data.routes[0];
@@ -148,7 +190,8 @@ async function fetchOSRMRoute(from: LatLng, to: LatLng): Promise<{
       distanceKm: route.distance / 1000,
       durationMin: Math.round(route.duration / 60),
     };
-  } catch {
+  } catch (error) {
+    console.info("Route calculation unavailable:", error);
     return null;
   }
 }
