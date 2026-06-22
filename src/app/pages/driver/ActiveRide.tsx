@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { useUser } from "../../context/UserContext";
 import { useBooking } from "../../context/BookingContext";
 import {
+  getDriverActiveBooking,
   getDriverBookingHistory,
   updateBookingStatus,
   updateDriverLocation,
@@ -101,10 +102,17 @@ export default function ActiveRide() {
       }
 
       setLoadingBooking(true);
-      const assignedBooking = await getSupabaseDriverActiveBooking(user);
+      const assignedBooking = await getSupabaseDriverActiveBooking(user) || getDriverActiveBooking(user.username);
       if (cancelled) return;
 
       if (assignedBooking) {
+        if (!hasRequiredRideDetails(assignedBooking)) {
+          toast.error("Accepted booking is missing ride details. Please ask the passenger to book again.");
+          setLoadingBooking(false);
+          navigate("/driver", { replace: true });
+          return;
+        }
+
         setActiveBooking(assignedBooking);
         upsertBooking(assignedBooking);
         setLoadingBooking(false);
@@ -256,6 +264,27 @@ export default function ActiveRide() {
     return null;
   }
 
+  if (!hasRequiredRideDetails(activeBooking)) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50 px-6">
+        <Card className="max-w-sm border-red-200 shadow-sm">
+          <CardContent className="space-y-4 p-5 text-center">
+            <AlertCircleIcon />
+            <div>
+              <h2 className="text-lg font-bold text-[#4B0F14]">Booking details unavailable</h2>
+              <p className="mt-2 text-sm text-gray-600">
+                This accepted booking is missing pickup, destination, or fare details. Return to the dashboard and wait for a valid request.
+              </p>
+            </div>
+            <Button className="w-full bg-[#4B0F14] hover:bg-[#6E171D]" onClick={() => navigate("/driver", { replace: true })}>
+              Back to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const statusInfo = getDriverStatusInfo(activeBooking.status, etaToPickup, tripEta);
   const StatusIcon = statusInfo.icon;
 
@@ -338,10 +367,10 @@ export default function ActiveRide() {
           <LocationRow label="Destination" value={activeBooking.destination.address} color="red" />
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <InfoBox label="Distance" value={`${activeBooking.distance.toFixed(1)} km`} />
+            <InfoBox label="Distance" value={`${formatDistance(activeBooking.distance)} km`} />
             <InfoBox label="Pickup ETA" value={etaToPickup ? `${etaToPickup} min` : "Tracking"} />
             <InfoBox label="Trip ETA" value={tripEta ? `${tripEta} min` : "Calculating"} />
-            <InfoBox label="Driver Earnings" value={`PHP ${activeBooking.totalFare ?? activeBooking.finalPrice}`} strong />
+            <InfoBox label="Driver Earnings" value={`PHP ${formatFare(activeBooking.totalFare ?? activeBooking.finalPrice)}`} strong />
           </div>
 
           <div className="rounded-lg bg-gray-50 p-3">
@@ -373,7 +402,7 @@ export default function ActiveRide() {
             <AlertDialogTitle>Complete Trip?</AlertDialogTitle>
             <AlertDialogDescription>
               Confirm that you have arrived at the destination and the passenger has been dropped off.
-              You will earn PHP {activeBooking.totalFare ?? activeBooking.finalPrice} for this trip.
+              You will earn PHP {formatFare(activeBooking.totalFare ?? activeBooking.finalPrice)} for this trip.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -494,6 +523,45 @@ function LocationRow({ label, value, color }: { label: string; value: string; co
       </div>
     </div>
   );
+}
+
+function AlertCircleIcon() {
+  return (
+    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600">
+      <X className="h-6 w-6" />
+    </div>
+  );
+}
+
+function hasRequiredRideDetails(booking: BookingData): boolean {
+  return Boolean(
+    booking.pickupLocation &&
+    Number.isFinite(Number(booking.pickupLocation.lat)) &&
+    Number.isFinite(Number(booking.pickupLocation.lng)) &&
+    booking.destination &&
+    Number.isFinite(Number(booking.destination.lat)) &&
+    Number.isFinite(Number(booking.destination.lng)) &&
+    Number.isFinite(Number(booking.distance)) &&
+    getFiniteFare(booking) !== null
+  );
+}
+
+function formatDistance(value: number): string {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue.toFixed(1) : "0.0";
+}
+
+function formatFare(value: number | undefined): string {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue.toFixed(2) : "0.00";
+}
+
+function getFiniteFare(booking: BookingData): number | null {
+  const finalPrice = Number(booking.finalPrice);
+  if (Number.isFinite(finalPrice)) return finalPrice;
+
+  const totalFare = Number(booking.totalFare);
+  return Number.isFinite(totalFare) ? totalFare : null;
 }
 
 function InfoBox({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
